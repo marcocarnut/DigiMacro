@@ -199,20 +199,27 @@ The password and lockout carry over, but the threat model shifts:
 | `DigiMacroCDC` | V-USB vendoring, dynamic descriptors, re-enumeration, morse decoding, the macro table, `\p`/`\j` playback, touch sensing, the host test harness |
 | `DigiISP` | `usbconfig.h` for vendor class, BOS and MS OS 2.0 descriptors, `protocol.h` conventions, the web app's WebUSB plumbing and build setup |
 
-## First session
+## Next, in this order
 
-1. Copy DigiMacroCDC across; strip the CDC personality, `handle_cmdline`,
-   `run_command`, every `cmd_*`, and `keymapUS`. Confirm it still types from a
-   table written into EEPROM by hand. Measure — this is where the ~4.4 KB
-   guess gets tested.
-2. Repack the table and make the walk read-only and bounded.
-3. Bring DigiISP's vendor-class personality in as the second mode. Success is
-   `lsusb` showing the vendor device after a four-second hold, and the
-   keyboard coming back.
-4. One request answered — `INFO` — to a WebUSB page. That is the spike.
-5. Then `READ`/`WRITE`, then `STATUS`/`UNLOCK`, then the app.
+The USB layer is done and lives in `DigiModeUSB`; the spike is 3550 bytes of
+6650, so there is about 3 KB to spend. Each step below is separately testable,
+which is why they are in this order rather than firmware-then-app.
 
-## Spike: built, verified on paper, untested on hardware
+1. **Playback from a packed table.** Bring the morse decoding, the table walk
+   and `\p`-style playback over from DigiMacroCDC, repacked and read-only, and
+   write a table into EEPROM by hand to confirm a code types. Drop `keymapUS`
+   and store shift-flagged usages, since the app will do the translation.
+2. **`READ` and `WRITE`** vendor requests, chunked. At that point the app can
+   replace the hand-written table.
+3. **The app.** Table editor, ASCII to usages, and the loop check before it
+   writes.
+4. **`STATUS` and `UNLOCK`**, the password and the lockout — including
+   counting failed password attempts, which the CDC version does not do and
+   which matters far more over USB.
+5. **`\j`** last: it is the one feature that can brick a board, and by then
+   the app can refuse a looping `autoexec`.
+
+## Spike: passed on hardware
 
 `spike/spike.ino` with the `DigiModeUSB` library: HID keyboard, a four-second
 hold to vendor class and back, and one vendor request. **3372 bytes (50%),
@@ -260,12 +267,30 @@ diagnostic DigiMacroCDC's `touch` command gave over the terminal — by the only
 channel a device with no serial port has. `raw base .` or `raw base T`, in hex.
 3606 bytes.
 
-### What the test decides
+### It works
 
-Serve `web/` over localhost, hold the pad four seconds, connect. The page
-reports each step, and the interesting one is `claimInterface(0)`: a
-vendor-class interface allows it where a HID interface would refuse, which is
-the whole reason for the mode switch.
+```
+picked digimacro.postcogito.org / DigiMacro
+  16c0:05dc  USB 2.1
+open() ok
+configuration 1
+claimInterface(0) ok -- the interface is not a protected class
+INFO -> 44 4d 01 01
+  magic "DM", protocol 1, firmware 1
+```
 
-If it works, tasks 1-2 (strip and repack) are ordinary work. If it fails, the
-fallbacks are recorded above as options A and C.
+A keyboard became a WebUSB device and answered a vendor request. The line that
+matters is `claimInterface(0)`: that is what a HID interface refuses, and why
+the mode switch exists rather than a composite device.
+
+Proven: the two personalities, the re-enumeration, `bcdUSB 2.10` bringing on a
+BOS request, the BOS itself, a vendor interface with no endpoints, and control
+transfers in both directions through `usbFunctionSetup`.
+
+Still unproven:
+
+- **Windows.** The MS OS 2.0 set is verified on paper only. Worth trying while
+  the spike is still small, since that descriptor is the whole of the
+  no-driver-install claim.
+- The landing-page URL, which is only advisory and needs the site to exist.
+- Everything downstream: the packed table, the EEPROM requests, the app.

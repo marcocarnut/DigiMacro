@@ -99,7 +99,9 @@ Five things follow from it:
   already performs, where an ordinal would need a second walk that counts. A
   dangling code simply matches nothing, which is the safe failure.
 - **The walk must be bounded to the table region.** A table written without a
-  terminator would otherwise run straight into the password.
+  terminator would otherwise run straight into the password. Settled at
+  0x000-0x1F0, 497 bytes, with the config bytes above it; both the lookup and
+  playback stop at that boundary, and two of the tests are about nothing else.
 - **`\j` survives only for loops**, its original purpose — getting past 30
   characters — having disappeared. Worth keeping (~150 bytes is cheap now) but
   **implement it last**: it is the one feature that can brick a board, and it
@@ -128,15 +130,25 @@ shape that already works:
 ```
  0x01 nn   pause nn tenths of a second
  0x02 mm   latch modifier bits mm into the next keystroke
- 0x03 'n'  carry on with slot n            (jump; chaining and loops)
- 0x04 nn   repeat the previous keystroke nn more times
+ 0x03 nn   repeat the previous keystroke nn more times
+ 0x81 hh   carry on with the macro whose header is hh   (jump; loops)
 ```
 
+**Corrected while implementing: 0x04 was going to be the repeat, and 0x04 is
+the usage for "a".** Once the table holds usages rather than characters, the low
+control bytes are no longer free just because a command line could not type
+them. What *is* free: usages 0x01 to 0x03 are ErrorRollOver, POSTFail and
+ErrorUndefined, states a keyboard reports rather than keys anyone presses — and
+so are the same three with bit 7 set, Shift+ErrorRollOver being no more real.
+Six values where four were wanted, and the test for one is a byte whose low
+seven bits are below four.
+
 `0x02` replaces `\kE0`-style latching with a direct modifier mask, since the
-app can compose it. `0x04` is the run-length idea: "left arrow eleven times"
+app can compose it. `0x03` is the run-length idea: "left arrow eleven times"
 becomes 3 bytes rather than 11. Repeating *the previous keystroke* rather than
 taking a usage of its own is both shorter and more general — it repeats
-whatever modifiers were latched.
+whatever modifiers were latched. The jump takes a header byte rather than an
+ordinal, for the reason given above: playback already looks headers up.
 
 No argument may be zero: a zero byte terminates the string. The app must
 enforce that, and the firmware must reject it, as `\p00` taught us.
@@ -201,21 +213,39 @@ The password and lockout carry over, but the threat model shifts:
 
 ## Next, in this order
 
-The USB layer is done and lives in `DigiModeUSB`; the spike is 3550 bytes of
-6650, so there is about 3 KB to spend. Each step below is separately testable,
-which is why they are in this order rather than firmware-then-app.
+The USB layer is done and lives in `DigiModeUSB`. Each step is separately
+testable, which is why they are in this order rather than firmware-then-app.
 
-1. **Playback from a packed table.** Bring the morse decoding, the table walk
-   and `\p`-style playback over from DigiMacroCDC, repacked and read-only, and
-   write a table into EEPROM by hand to confirm a code types. Drop `keymapUS`
-   and store shift-flagged usages, since the app will do the translation.
+1. ~~**Playback from a packed table.**~~ **Done: 3804 bytes of 6650, 102 RAM.**
+   The morse decoding, the table walk and playback came over from DigiMacroCDC,
+   repacked and read-only, with `keymapUS` dropped. The linker takes the keymap
+   and `dusbTypeChar` out of the binary by itself now that nothing calls them,
+   so the library keeps both for the spike at no cost here. The whole of
+   playback — table walk, three escapes, morse — cost 254 bytes over the
+   spike's 3550, less than the keymap and ASCII mapping it replaced.
+
+   Two things came with it that were not planned. **`tools/loadtable`**, which
+   writes a sample table into EEPROM over USB: micronucleus cannot write EEPROM,
+   but it does not erase it either, so a one-off sketch that writes the table
+   and then sits blinking is enough, and the firmware upload that follows leaves
+   it alone. And **a fourth test suite** that plays that same table against the
+   real firmware, because the table is the interface between the two halves of
+   the project, `tools/loadtable/sample_table.h` is the one original both ends
+   read, and hand-written hex is exactly where a wrong byte hides.
+
+   Left undone deliberately: no `autoexec` yet, which wants the password work
+   beside it; and a pause is not interruptible, which is `\j`'s problem to
+   solve in step 5, since without jumps a macro cannot run for ever.
+
 2. **`READ` and `WRITE`** vendor requests, chunked. At that point the app can
-   replace the hand-written table.
+   replace the hand-written table. `tools/loadtable` stays useful afterwards as
+   a way to get a board going without a browser.
 3. **The app.** Table editor, ASCII to usages, and the loop check before it
    writes.
 4. **`STATUS` and `UNLOCK`**, the password and the lockout — including
    counting failed password attempts, which the CDC version does not do and
-   which matters far more over USB.
+   which matters far more over USB. `autoexec` belongs here too, beside the
+   lockout that has to gate it; its byte is already reserved at 0x1F3.
 5. **`\j`** last: it is the one feature that can brick a board, and by then
    the app can refuse a looping `autoexec`.
 

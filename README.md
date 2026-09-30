@@ -12,9 +12,19 @@ its own EEPROM.
 Sibling of [DigiMacroCDC](../DigiMacroCDC), which keeps an on-device CDC command
 line instead. That one is finished and in use; this one is early.
 
-## Status: architecture proven, firmware not written
+## Status: it types
 
-`spike/` answers the one question everything rested on — whether a keyboard can
+The firmware plays macros out of a packed EEPROM table, which is the first half
+of the job. What is missing is the way the table gets there: the `READ` and
+`WRITE` vendor requests, and the app that drives them. Until then
+`tools/loadtable` writes a sample table with a programmer-free upload, and
+`test/` plays that same table against the same code the board runs.
+
+**3804 bytes of the 6650** the stock bootloader leaves, and 102 of RAM — so it
+installs over USB like any sketch, with about 2.8 KB still to spend on the
+EEPROM requests, the password and the lockout.
+
+`spike/` answered the one question everything rested on — whether a keyboard can
 become something WebUSB will talk to — and **it does**:
 
 ```
@@ -31,10 +41,52 @@ INFO -> 44 4d 01 01
 | Linux, Chrome | works |
 | Windows 10, Chrome and Edge | works, nothing to install |
 
-3550 bytes of the 6650 the stock bootloader leaves, so this should install over
-USB like any sketch — no programmer needed.
-
 `PLAN.md` holds the design and the order of work.
+
+## The table
+
+The app rewrites the whole table, so entries are packed rather than slotted:
+
+```
+ [hdr][keystroke...][0x00]      repeated, in any order
+ [0xFF]                         end of table
+```
+
+`hdr` is the code: three bits of symbol-count-minus-one, five bits of symbols,
+a dash being a 1 and the first symbol in the highest bit that count uses. No
+count above five exists, so `0xFF` ends the table and **a virgin chip reads as
+an empty one** — nothing to initialise. Two bytes of overhead per macro, and
+neither of DigiMacroCDC's limits — ten macros, thirty keystrokes each —
+survives: what is left is 497 bytes to divide up however you like.
+
+A keystroke is a HID usage rather than a character, because the app does the
+layout mapping:
+
+```
+ bit 7     needs Shift
+ bits 0-6  HID usage
+```
+
+Usages `0x01`–`0x03` are states a keyboard reports, never keys anyone presses,
+so those three values are free — and so are the same three with bit 7 set.
+Hence the escapes, and the test for one: a byte whose low seven bits are below
+four.
+
+| | |
+|---|---|
+| `0x01 nn` | pause `nn` tenths of a second |
+| `0x02 mm` | latch HID modifier mask `mm` into the next keystroke |
+| `0x03 nn` | press the previous keystroke `nn` more times |
+| `0x81 hh` | carry on with the macro whose header is `hh` — not implemented yet |
+
+No argument may be zero, since a zero byte ends the macro. `0x03` is
+run-length coding: "left arrow eleven times" costs three bytes rather than
+eleven, and repeating *whatever went before* carries the latched modifiers with
+it.
+
+This is the interface between the firmware and the app, so
+`tools/loadtable/sample_table.h` is one original that both the loader and the
+test read.
 
 ## Why a mode switch rather than one device
 
@@ -46,6 +98,35 @@ four-second hold changes it over.
 Which is the better arrangement anyway: reaching the macro table needs someone
 holding the pad, so **no web page can reconfigure the device on its own**, and
 while it is configurable it is not a keyboard, so it cannot be made to type.
+
+## Building it
+
+```
+./build.sh loadtable upload     # a sample table into EEPROM, once
+./build.sh upload               # the firmware
+```
+
+Then tap into a text editor. `.` types a banner, `-` pauses in the middle, `..`
+demonstrates the repeat escape, `.-` sends Ctrl+Left, and `---` is longer than
+any DigiMacroCDC entry could be; anything else gets three quick blinks.
+`tools/loadtable/loadtable.ino` lists them, and micronucleus never erases
+EEPROM, so the table survives the second upload.
+
+Options: `button` for a pushbutton instead of a pad, `rc` for a pad read
+through a bleed resistor, `ledecho` to make the LED follow the input while
+tapping — which is for working on the input path only, since it shows a
+bystander the code — and `isp` for a chip with no bootloader.
+
+## Testing
+
+```
+test/run.sh
+```
+
+compiles the real `DigiMacro.ino` for the host against stub hardware and
+exercises the table walk, every escape, the bounds that keep a malformed table
+from reaching the password, the morse decoding from the input pin, and the
+sample table the loader flashes. Four suites, about a second.
 
 ## Building the spike
 
@@ -67,7 +148,10 @@ device with no serial port has.
 
 | | |
 |---|---|
+| `DigiMacro.ino` | the firmware: touch, morse, the table walk, playback |
 | `DigiModeUSB/` | one V-USB stack with two personalities: HID keyboard, or vendor class for WebUSB |
+| `test/` | host build of the real sketch against stub hardware |
+| `tools/loadtable/` | writes a sample table into EEPROM, until the app can |
 | `spike/` | the derisking sketch |
 | `web/` | the WebUSB test page; the real app will live here |
 | `PLAN.md` | design, decisions and what comes next |

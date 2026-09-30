@@ -30,8 +30,8 @@
  * twice a second instead of staying quiet -- the only diagnostic channel a
  * device with no serial port has:
  *
- *      1A 18 . -       raw, running average, touched?, press open?
- *      30 18 T #
+ *      1A 18 . - 0834   raw, running average, touched?, press open?, and
+ *      30 18 T # 0821   how many times the pad was read since the last line
  *
  * Read them like this:
  *
@@ -245,11 +245,13 @@ void blink(uint8_t n, uint16_t ms)
                                                        the pad never moved */
 
 #define TOUCH_STUCK_MS  10000   /* give up on a "touch" held this long */
+#define TOUCH_BASE_MS     100   /* how often the average may move: see below */
 
 uint8_t  touch_raw;             /* last reading            */
 uint8_t  touch_state;           /* finger present          */
 uint16_t touch_base;            /* running average, x16    */
 uint16_t touch_since;           /* when touch_state went true */
+uint16_t touch_moved;           /* when the average last moved */
 
 /* One reading: TOUCH_REPS charge cycles, summed. A finger adds capacitance,
    so each cycle takes longer and the sum goes up. */
@@ -306,22 +308,51 @@ uint8_t touch_read(void)
 
 void touch_poll(void)
 {
-    uint8_t base;
+    uint8_t  base, thr;
+    uint16_t now = ticks();
 
     touch_raw = touch_read();
     base = touch_base >> 4;
 
-    /* A quarter above the running average is a finger. Relative rather than
-       an absolute count, so it survives a change of bleed resistor or pad
+    /* A quarter above the running average is a finger; once it is a finger,
+       an eighth above is enough to still be one. Relative rather than an
+       absolute count, so it survives a change of bleed resistor or pad
        without needing a new threshold; the +2 keeps a tiny baseline from
-       triggering on its own noise. */
-    touch_state = touch_raw > base + (base >> 2) + 2;
+       triggering on its own noise.
+       
+       The gap between the two thresholds is hysteresis. Without it a reading
+       sitting on the threshold chatters, and a single chattering sample ends
+       a press -- which costs a four-second hold everything and a tap almost
+       nothing. */
+    thr = touch_state ? base + (base >> 3) + 1
+                      : base + (base >> 2) + 2;
+    touch_state = touch_raw > thr;
 
     /* The average only follows the pad while it is untouched, so a finger
-       left resting on it never quietly becomes the new normal. */
+       left resting on it never quietly becomes the new normal.
+       
+       It also follows at a rate fixed in TIME rather than per poll, which is
+       the whole difference between a pad that works and one that does not.
+       The loop reads the pad thousands of times a second and the average
+       closes a sixteenth of the gap each time, so per poll it caught up
+       within milliseconds -- and a finger does not arrive in milliseconds.
+       Skin flattens onto a pad over a few hundred of them, which is why the
+       reading was seen to climb slowly on touch and drop instantly on
+       release. A quick tap outran the average and registered; a press made
+       deliberately, in order to hold it for four seconds, was tracked all
+       the way up and never registered at all.
+
+       So the average moves once every TOUCH_BASE_MS, sixteen moves to close
+       a gap: a time constant of about 1.6 seconds. Slower than any finger by
+       a wide margin, and still four orders of magnitude faster than the
+       thing it exists to track, which is a room warming up. Nothing here
+       wants to be near a finger's timescale. */
     if (!touch_state) {
-        touch_base += (int16_t)touch_raw - (int16_t)base;
-        touch_since = ticks();
+        if ((uint16_t)(now - touch_moved) >= TOUCH_BASE_MS) {
+            touch_moved = now;
+            touch_base += (int16_t)touch_raw - (int16_t)base;
+        }
+        touch_since = now;
         return;
     }
 
@@ -331,7 +362,7 @@ void touch_poll(void)
        reporting a finger that is not there, with no way back. So a touch
        that outlasts any real one is taken as drift, and the average is
        moved to meet it. */
-    if ((uint16_t)(ticks() - touch_since) > TOUCH_STUCK_MS)
+    if ((uint16_t)(now - touch_since) > TOUCH_STUCK_MS)
         touch_base = (uint16_t)touch_raw << 4;
 }
 
@@ -354,6 +385,8 @@ static void type_hex(uint8_t v)
     type_nib(v);
 }
 
+uint16_t touch_polls;           /* polls since the last reading was typed */
+
 static void type_reading(void)
 {
     extern uint8_t in_down;
@@ -365,6 +398,11 @@ static void type_reading(void)
     dusbTypeChar(touch_state ? 'T' : '.', 0);
     dusbTypeChar(' ', 0);
     dusbTypeChar(in_down ? '#' : '-', 0);
+    dusbTypeChar(' ', 0);
+    type_hex(touch_polls >> 8);         /* how many times the pad was read */
+    type_hex(touch_polls);              /* since the last line: the rate the
+                                           average has to be slower than */
+    touch_polls = 0;
     dusbTypeChar('\n', 0);
 }
 #endif
@@ -554,6 +592,9 @@ void loop(void)
     dusbPoll();
 #if HAVE_TOUCH
     touch_poll();                       /* refreshes touch_state */
+#if TOUCH_DEBUG
+    touch_polls++;
+#endif
 #endif
     handle_input();
     update_led();

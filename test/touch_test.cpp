@@ -46,6 +46,15 @@ void dusbType(const char*){} void dusbType_P(const char*){}
 static void cycles(int v){ qn = 1; qi = 0; q[0] = v; }
 /* a per-cycle cost that adds up to `want` -- `want` must divide evenly */
 static void reading(int want){ cycles(want / TOUCH_REPS); }
+/* an exact reading, spread over the cycles of a group -- so a press can be
+   ramped one count at a time, the way a finger actually arrives */
+static void level(int want)
+{
+    qn = TOUCH_REPS; qi = 0;
+    for (int i = 0; i < TOUCH_REPS; i++)
+        q[i] = want / TOUCH_REPS + (i < want % TOUCH_REPS ? 1 : 0);
+}
+
 /* per-GROUP cycle costs, so group i sums to g[i] * TOUCH_REPS */
 static void groups(int a,int b,int c,int d)
 {
@@ -65,9 +74,14 @@ static int fails;
 static void settle(int perCycle){
     cycles(perCycle);
     touch_base = G(perCycle) << 4;
-    touch_since = (uint16_t)fake_ms;
+    touch_since = touch_moved = (uint16_t)fake_ms;
     touch_state = 0;
 }
+
+/* The average moves once every TOUCH_BASE_MS, and the harness advances the
+   clock a millisecond per poll, so settling wants time rather than
+   iterations: a poll is a millisecond, and the time constant is 1.6 s. */
+static void poll_for(int n){ while (n--) touch_poll(); }
 static int base(void){ return touch_base >> 4; }
 
 int main(void)
@@ -113,17 +127,17 @@ int main(void)
        reading before the loop starts. */
     cycles(2);
     touch_base = (uint16_t)touch_read() << 4;
-    touch_state = 0; touch_since = (uint16_t)fake_ms;
-    for (int i = 0; i < 200; i++) touch_poll();
+    touch_state = 0; touch_since = touch_moved = (uint16_t)fake_ms;
+    poll_for(20000);
     CHECK(base() == G(2), "settled at %d, wanted %d", base(), G(2));
     CHECK(!touch_state, "a steady pad must not read as touched");
 
     printf("5. powering up with a finger already on the pad recovers\n");
     cycles(6);
     touch_base = (uint16_t)touch_read() << 4;   /* seeded high */
-    touch_state = 0; touch_since = (uint16_t)fake_ms;
+    touch_state = 0; touch_since = touch_moved = (uint16_t)fake_ms;
     cycles(2);                                  /* the finger lifts */
-    for (int i = 0; i < 200; i++) touch_poll();
+    poll_for(20000);
     CHECK(!touch_state, "must not report a touch once the finger is gone");
     CHECK(base() == G(2), "base should have come down to %d, got %d", G(2), base());
 
@@ -131,12 +145,14 @@ int main(void)
     /* 24 is reachable either way, and lands exactly on the boundary for a
        base of 18: 18 + 18/4 + 2 = 24. */
     reading(24);
-    touch_base = 18 << 4; touch_state = 0; touch_since = (uint16_t)fake_ms;
+    touch_base = 18 << 4; touch_state = 0;
+    touch_since = touch_moved = (uint16_t)fake_ms;
     touch_poll();
     CHECK(touch_raw == 24, "expected a reading of 24, got %d", touch_raw);
     CHECK(!touch_state, "a reading equal to the threshold must not trigger");
     reading(24);
-    touch_base = 17 << 4; touch_state = 0; touch_since = (uint16_t)fake_ms;
+    touch_base = 17 << 4; touch_state = 0;
+    touch_since = touch_moved = (uint16_t)fake_ms;
     touch_poll();
     CHECK(touch_state, "one count above the threshold must trigger");
 
@@ -148,10 +164,11 @@ int main(void)
 
     printf("8. ...but it does follow slow drift\n");
     /* Each step stays under the threshold, so it is drift, not a finger. */
-    touch_base = 100 << 4; touch_state = 0; touch_since = (uint16_t)fake_ms;
+    touch_base = 100 << 4; touch_state = 0;
+    touch_since = touch_moved = (uint16_t)fake_ms;
     for (int want = 104; want <= 128; want += 8) {
         reading(want);
-        for (int i = 0; i < 80; i++) touch_poll();
+        poll_for(20000);
     }
     CHECK(!touch_state, "a slow climb must not read as a touch");
     CHECK(base() >= 120, "base should have followed the drift, got %d", base());
@@ -179,7 +196,44 @@ int main(void)
           "TOUCH_STUCK_MS (%d) must exceed HOLD_MS (%d)",
           TOUCH_STUCK_MS, HOLD_MS);
 
-    printf("12. the pad is left idle between readings\n");
+    printf("12. a press that lands slowly still registers\n");
+    /* The bug this pair of changes fixes, and the reason to keep the test.
+       The average used to move every poll, and the loop polls the pad
+       thousands of times a second, so a finger arriving over tens of
+       milliseconds was tracked all the way up and never crossed the
+       threshold. A quick tap outran it; a press made deliberately, in order
+       to hold it for four seconds, did not. Readings here are the ones the
+       board actually reported: 8 at rest, 16 with a finger on it. */
+    touch_base = 8 << 4; touch_state = 0;
+    touch_since = touch_moved = (uint16_t)fake_ms;
+    for (int r = 8; r <= 16; r++) {             /* ~360 ms to land */
+        level(r);
+        poll_for(40);
+    }
+    CHECK(touch_state, "a press landing over 360 ms must register: raw %d "
+          "against a base of %d", touch_raw, base());
+    CHECK(base() <= 9, "the average must barely move while it lands: %d",
+          base());
+
+    printf("12b. ...and having registered, it stays registered\n");
+    /* Hysteresis: once it is a finger, a smaller margin keeps it one. The
+       four-second hold needs an unbroken press, and a single sample dipping
+       below the threshold would otherwise end it. */
+    poll_for(4000);                             /* the four-second hold, and
+                                                   no longer: a press held
+                                                   past TOUCH_STUCK_MS is
+                                                   meant to be given up on,
+                                                   which test 9 covers */
+    CHECK(touch_state, "the press must survive being held");
+    CHECK(base() == 8, "and the average must not creep: %d", base());
+    level(8 + (8 >> 2) + 2);                    /* exactly the press threshold */
+    touch_poll();
+    CHECK(touch_state, "a dip to the press threshold must not end a press");
+    level(8);                                   /* the finger really lifts */
+    touch_poll();
+    CHECK(!touch_state, "but the finger lifting must");
+
+    printf("13. the pad is left idle between readings\n");
     touch_once();
     CHECK(!(DDRB  & (1 << PIN_TOUCH)), "pad must be left an input");
     CHECK(!(PORTB & (1 << PIN_TOUCH)), "pull-up must be left off");

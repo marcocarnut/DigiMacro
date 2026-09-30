@@ -104,11 +104,15 @@ static const char *play(const char *code)
 
 /* ---- tapping, through the pin and loop() ---- */
 
+/* A level is believed only once it has held for DEBOUNCE_MS, so each edge
+   takes two passes: one that sees it and one, later, that accepts it. */
 static void tap(int ms)
 {
-    btn_held = 1; fake_ms += DEBOUNCE_MS + 1; loop();   /* press edge  */
+    btn_held = 1; loop();
+    fake_ms += DEBOUNCE_MS + 1; loop();                 /* press accepted  */
     fake_ms += ms;
-    btn_held = 0; fake_ms += DEBOUNCE_MS + 1; loop();   /* release edge */
+    btn_held = 0; loop();
+    fake_ms += DEBOUNCE_MS + 1; loop();                 /* release accepted */
 }
 #define DOT()   tap(DOT_MAX_MS - 100)
 #define DASH()  tap(DOT_MAX_MS + 100)
@@ -273,13 +277,37 @@ int main(void)
     CHECK(!strcmp(silence(), "<00/1B>"), "should type x: \"%s\"", typed);
     CHECK(code_len == 0, "and the code must be cleared afterwards");
 
+    printf("13b. one tap with a dropout in it is still one symbol\n");
+    /* What a marginal pad does: the reading dips for a moment in the middle
+       of a press. Believed at once, that is a release and a new press -- so a
+       single tap arrives as "..", which types the wrong macro rather than
+       none, and would cost a four-second hold everything. */
+    code_reset();
+    btn_held = 1; loop();
+    fake_ms += DEBOUNCE_MS + 1; loop();         /* the press is accepted */
+    fake_ms += 60;
+    btn_held = 0; loop();                       /* one poll of nothing... */
+    CHECK(in_down, "a single dropped sample must not end a press -- under the "
+                   "old rule it ended it at once, and the press that followed "
+                   "became a second symbol");
+    fake_ms += 1;
+    btn_held = 1; loop();                       /* ...and it is back */
+    fake_ms += 60;
+    btn_held = 0; loop();
+    fake_ms += DEBOUNCE_MS + 1; loop();
+    CHECK(code_len == 1, "one tap with a dropout is one symbol, got %d",
+          code_len);
+    CHECK(!(FLAGS & FLAG_CODE_OVER), "and nothing may be marked overlong");
+
     printf("14. a four-second hold changes personality, and taps nothing\n");
     code_reset();
     cur_mode = DUSB_HID;
-    btn_held = 1; fake_ms += DEBOUNCE_MS + 1; loop();
+    btn_held = 1; loop();
+    fake_ms += DEBOUNCE_MS + 1; loop();
     fake_ms += HOLD_MS + 10; loop();
     CHECK(cur_mode == DUSB_VENDOR, "should be in vendor mode now");
-    btn_held = 0; fake_ms += DEBOUNCE_MS + 1; loop();
+    btn_held = 0; loop();
+    fake_ms += DEBOUNCE_MS + 1; loop();
     CHECK(code_len == 0, "the hold must not leave a dash behind");
     typedn = 0; typed[0] = 0;
     fake_ms += END_OF_CODE_MS + 10; loop();
@@ -287,10 +315,12 @@ int main(void)
           typed);
 
     printf("14b. ...and another hold brings the keyboard back\n");
-    btn_held = 1; fake_ms += DEBOUNCE_MS + 1; loop();
+    btn_held = 1; loop();
+    fake_ms += DEBOUNCE_MS + 1; loop();
     fake_ms += HOLD_MS + 10; loop();
     CHECK(cur_mode == DUSB_HID, "should be a keyboard again");
-    btn_held = 0; fake_ms += DEBOUNCE_MS + 1; loop();
+    btn_held = 0; loop();
+    fake_ms += DEBOUNCE_MS + 1; loop();
 
     printf("15. a tap in vendor mode is not a symbol\n");
     /* While the app has the device, the pad only means "change back". */

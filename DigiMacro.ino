@@ -411,8 +411,9 @@ static void type_reading(void)
 /* Tapping                                                              */
 /* ==================================================================== */
 
-uint8_t  in_down;
-uint16_t in_changed;            /* last accepted edge, for debouncing */
+uint8_t  in_down;               /* the input, once we believe it */
+uint8_t  in_seen;               /* ...and what it has been reading lately */
+uint16_t in_since;              /* since when, which is how long we wait */
 uint16_t press_start;
 uint16_t last_release;
 
@@ -434,10 +435,23 @@ void handle_input(void)
     uint8_t  raw = BTN_PRESSED();
 #endif
 
-    if (raw != in_down) {
-        if ((uint16_t)(now - in_changed) < DEBOUNCE_MS) return;
+    /* Debouncing that filters rather than locks out. The old rule was "ignore
+       changes within DEBOUNCE_MS of the last accepted edge", which is right
+       for a switch, whose bouncing happens just after an edge. A pad is not a
+       switch: it can drop a sample at any moment, and after a press has been
+       open a while the next contrary sample was believed at once. One tap
+       became two symbols -- ".." where "." was meant, which types the wrong
+       macro rather than none, and costs a four-second hold everything.
+
+       So a new level has to hold for DEBOUNCE_MS before it is accepted. Both
+       edges are delayed equally, so a press is timed the same as before. */
+    if (raw != in_seen) {
+        in_seen = raw;
+        in_since = now;
+    }
+
+    if (raw != in_down && (uint16_t)(now - in_since) >= DEBOUNCE_MS) {
         in_down = raw;
-        in_changed = now;
 
         if (raw) {
             press_start = now;

@@ -165,6 +165,18 @@ The editor encodes as you type, so a mistake is reported beside the macro that
 has it, and the byte budget — 497 of them — is always on screen. Nothing is
 written until every macro is valid.
 
+Accented characters are the host's business, not the board's: it sends key
+presses, so what appears depends on the keyboard layout of the machine it is
+plugged into. Say which at the top of the page and `coração` is accepted and
+expanded into the accent and then the letter; leave it at plain US, where
+there is no way to type one, and the editor says so rather than typing
+something else.
+
+The app speaks English and Brazilian Portuguese, picked from the browser and
+changed at the top right. `web/i18n.js` holds both, the encoder's error
+messages included, and a test checks that neither language has a string the
+other lacks.
+
 ## Testing
 
 ```

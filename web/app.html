@@ -83,94 +83,88 @@
 <div class="bar" style="align-items:flex-start">
   <div>
     <h1>DigiMacro</h1>
-    <p>Tap a code, type a macro.</p>
+    <p data-t="tagline">Tap a code, type a macro.</p>
   </div>
   <span class="spacer"></span>
-  <label class="pick">keyboard
+  <label class="pick"><span data-t="keyboard">keyboard</span>
     <select id="layout"></select>
+  </label>
+  <label class="pick"><span data-t="language">language</span>
+    <select id="lang"></select>
   </label>
 </div>
 
 <div class="bar">
-  <button id="connect" class="primary">Connect</button>
-  <span id="who" class="dim">hold the pad four seconds, then connect</span>
+  <button id="connect" class="primary" data-t="connect">Connect</button>
+  <span id="who" class="dim"></span>
 </div>
 
-<h2>Macros</h2>
+<h2 data-t="macros">Macros</h2>
 <table>
-  <thead><tr><th style="width:7.5rem">Code</th><th>Types</th>
+  <thead><tr><th style="width:7.5rem" data-t="th-code">Code</th>
+             <th data-t="th-types">Types</th>
              <th style="width:4rem"></th><th style="width:2rem"></th></tr></thead>
   <tbody id="list"></tbody>
 </table>
 
 <div class="bar" style="margin-top:1rem">
-  <button id="add">Add a macro</button>
-  <button id="sample">Load the example</button>
+  <button id="add" data-t="add-macro">Add a macro</button>
+  <button id="sample" data-t="load-example">Load the example</button>
   <span class="spacer"></span>
   <span id="budget" class="dim">1 of 497 bytes</span>
   <span class="meter" id="meter"><i style="width:0"></i></span>
 </div>
 
-<h2>Keys</h2>
+<h2 data-t="keys">Keys</h2>
 <div class="pad" id="pad">
   <div class="row" id="mods"></div>
   <div class="row" id="keys1"></div>
   <div class="row" id="keys2"></div>
   <div class="row" id="keys3"></div>
   <div class="row">
-    <label>a key <input id="keyval" size="2" maxlength="1" spellcheck="false"></label>
-    <button data-ins="key">insert</button>
-    <label style="margin-left:.8rem">pause <input id="pauseval" size="3" value="1.0"></label>
-    <button data-ins="pause">insert</button>
-    <label style="margin-left:.8rem">repeat <input id="repval" size="3" value="4"></label>
-    <button data-ins="rep">insert</button>
+    <label><span data-t="a-key">a key</span>
+      <input id="keyval" size="2" maxlength="1" spellcheck="false"></label>
+    <button data-ins="key" data-t="insert">insert</button>
+    <label style="margin-left:.8rem"><span data-t="pause">pause</span>
+      <input id="pauseval" size="3" value="1.0"></label>
+    <button data-ins="pause" data-t="insert">insert</button>
+    <label style="margin-left:.8rem"><span data-t="repeat">repeat</span>
+      <input id="repval" size="3" value="4"></label>
+    <button data-ins="rep" data-t="insert">insert</button>
   </div>
 </div>
-<p class="hint">Inserts at the cursor in whichever macro you were last editing.
-A modifier stays pressed until the next key.</p>
+<p class="hint" data-t="pad-hint"></p>
 
 <div class="bar" style="margin-top:1.4rem">
-  <button id="read" disabled>Read from the board</button>
-  <button id="write" class="primary" disabled>Write to the board</button>
+  <button id="read" disabled data-t="read">Read from the board</button>
+  <button id="write" class="primary" disabled data-t="write">Write to the board</button>
   <span class="spacer"></span>
-  <button id="leave" disabled>Done — back to keyboard</button>
+  <button id="leave" disabled data-t="leave">Done</button>
 </div>
 
-<pre id="log" class="dim">Nothing yet. Hold the pad for four seconds to put the board in vendor mode,
-then connect — in keyboard mode it answers none of this, which is the point
-of the hold.</pre>
+<pre id="log" class="dim" data-t="log-initial"></pre>
 
 <details>
-  <summary>What can go in a macro</summary>
+  <summary data-t="ref-summary">What can go in a macro</summary>
   <table>
-    <tr><td>anything</td><td>typed as itself</td></tr>
-    <tr><td>\n \t \\</td><td>newline, tab, backslash</td></tr>
-    <tr><td>{{</td><td>a literal {</td></tr>
-    <tr><td>{Enter} {Left} {F5}</td><td>a key that is not a character</td></tr>
-    <tr><td>{Ctrl+c} {Alt+Tab}</td><td>modifiers on any key or character</td></tr>
-    <tr><td>{Ctrl+Shift+Left}</td><td>...combined, in any order</td></tr>
-    <tr><td>{pause 1.5}</td><td>wait, in seconds, 0.1 to 25.5</td></tr>
-    <tr><td>{11} or {x11}</td><td>press the previous keystroke 11 more times</td></tr>
-    <tr><td>á ç ã</td><td>on a dead-key keyboard: the accent, then the letter</td></tr>
-    <tr><td>{'}</td><td>the accent key alone, with nothing joined to it</td></tr>
+    <tr><td>anything</td><td data-t="ref-anything"></td></tr>
+    <tr><td>\n \t \\</td><td data-t="ref-escapes"></td></tr>
+    <tr><td>{{</td><td data-t="ref-brace"></td></tr>
+    <tr><td>{Enter} {Left} {F5}</td><td data-t="ref-named"></td></tr>
+    <tr><td>{Ctrl+c} {Alt+Tab}</td><td data-t="ref-mods"></td></tr>
+    <tr><td>{Ctrl+Shift+Left}</td><td data-t="ref-combined"></td></tr>
+    <tr><td>{pause 1.5}</td><td data-t="ref-pause"></td></tr>
+    <tr><td>{11} or {x11}</td><td data-t="ref-repeat"></td></tr>
+    <tr><td>á ç ã</td><td data-t="ref-accent"></td></tr>
+    <tr><td>{'}</td><td data-t="ref-bare-mark"></td></tr>
   </table>
-  <p class="dim" style="max-width:40rem">The board sends key presses, not
-  letters, so what appears is decided by the keyboard layout of the machine it
-  is plugged into — which is what the setting at the top says. On US
-  International an accented character is two presses, the accent and then the
-  letter, and a bare <code>'</code> is the key followed by a space. On a plain
-  US keyboard there is no way to type one at all, so the editor says so rather
-  than typing something else.</p>
-  <p class="dim" style="max-width:40rem">A code is one to five dots and dashes:
-  a press under a quarter of a second is a dot, longer is a dash, and 700 ms of
-  silence ends it. Sixty-two codes exist, so a table that uses many of them is
-  easier to guess — which is what the lockout, still to be built, is for.</p>
-  <p class="dim" style="max-width:40rem">Macros are packed end to end, so the
-  only limit is 497 bytes in total: two bytes of overhead each, one byte per
-  keystroke, two per pause or repeat.</p>
+  <p class="dim" style="max-width:40rem" data-t="ref-layout"></p>
+  <p class="dim" style="max-width:40rem" data-t="ref-codes"></p>
+  <p class="dim" style="max-width:40rem" data-t="ref-packed"></p>
 </details>
 </main>
 
+<script src="i18n.js"></script>
 <script src="table.js"></script>
 <script>
 const DM_FUNC_INFO  = 0x40;
@@ -185,12 +179,21 @@ let macros = [{ code: '.', text: '' }];
 
 const $ = id => document.getElementById(id);
 
-function connected(yes, what) {
-  $('who').textContent = what;
-  $('who').className = yes ? 'ok' : 'dim';
+/* The status line is written by hand rather than marked up, so it has to
+   remember what it is saying in order to say it again in another language. */
+let whoKey = 'connect-hint', whoParams = {}, whoOk = false;
+
+function connected(yes, key, params) {
+  whoKey = key; whoParams = params || {}; whoOk = yes;
+  renderWho();
   $('read').disabled = $('leave').disabled = !yes;
   $('connect').disabled = yes;
   draw();                       /* Write also wants the macros to be valid */
+}
+
+function renderWho() {
+  $('who').textContent = t(whoKey, whoParams);
+  $('who').className = whoOk ? 'ok' : 'dim';
 }
 const log = $('log');
 let lines = [];
@@ -198,6 +201,10 @@ const say = (s, cls) => {
   lines.push(cls ? `<span class="${cls}">${s}</span>` : s);
   log.innerHTML = lines.join('\n');
   log.className = '';
+  /* Once it holds a record of what happened, it is no longer the standing
+     invitation the markup put there, and changing language must not put that
+     back over it. */
+  log.removeAttribute('data-t');
 };
 const fresh = () => { lines = []; log.innerHTML = ''; };
 const hex2 = v => v.toString(16).padStart(2, '0');
@@ -234,7 +241,7 @@ function state() {
   macros.forEach((r, i) => {
     try { 
       const h = header(r.code);
-      if (seen.has(h)) { each[i].error = each[i].error || `"${r.code}" is used twice`; }
+      if (seen.has(h)) each[i].error = each[i].error || t('code-twice', { what: r.code });
       seen.add(h);
     } catch (e) { each[i].error = each[i].error || e.message; }
     if (each[i].bytes) total += each[i].bytes.length + 2;
@@ -256,7 +263,7 @@ function draw() {
            spellcheck="false" data-i="${i}" data-f="code"></td>` +
       `<td><input class="text${st.each[i].error ? ' bad' : ''}" value="${r.text.replace(/"/g,'&quot;')}"
            spellcheck="false" data-i="${i}" data-f="text"
-           placeholder="what this code types"></td>` +
+           placeholder="${t('ph-types')}"></td>` +
       `<td class="n">${st.each[i].bytes ? st.each[i].bytes.length + 2 : '—'} B</td>` +
       `<td><button data-del="${i}" title="remove">✕</button></td>`;
     tbody.appendChild(tr);
@@ -267,7 +274,7 @@ function draw() {
     }
   });
 
-  $('budget').textContent = `${st.total} of ${TABLE_TOP} bytes`;
+  $('budget').textContent = t('budget', { n: st.total, max: TABLE_TOP });
   $('budget').className = st.error ? 'bad' : 'dim';
   const m = $('meter');
   m.firstElementChild.style.width =
@@ -282,7 +289,7 @@ $('list').addEventListener('input', e => {
   macros[i][f] = e.target.value;
   /* redraw only what is cheap to redraw, so the caret stays where it is */
   const st = state();
-  $('budget').textContent = `${st.total} of ${TABLE_TOP} bytes`;
+  $('budget').textContent = t('budget', { n: st.total, max: TABLE_TOP });
   $('budget').className = st.error ? 'bad' : 'dim';
   $('meter').firstElementChild.style.width =
     Math.min(100, st.total * 100 / TABLE_TOP) + '%';
@@ -308,16 +315,14 @@ $('add').onclick = () => {
 };
 
 $('sample').onclick = () => { macros = sampleRows(); draw(); fresh();
-  say('An example of each thing a macro can do. Write it, then hold the pad '
-      + 'four seconds to become a keyboard again and tap the codes.'); };
+  say(t('sample-say')); };
 
 /* ---- connect, read, write ------------------------------------------ */
 
 $('connect').onclick = async () => {
   fresh();
   if (!navigator.usb) {
-    say('navigator.usb is missing. WebUSB needs Chrome or Edge, over https '
-        + 'or localhost.', 'bad');
+    say(t('no-webusb'), 'bad');
     return;
   }
   try {
@@ -333,20 +338,16 @@ $('connect').onclick = async () => {
       request: DM_FUNC_INFO, value: 0, index: 0 }, 6);
     const b = new Uint8Array(r.data.buffer);
     if (String.fromCharCode(b[0], b[1]) !== 'DM') {
-      say('that device did not answer "DM"', 'bad'); dev = null; return;
+      say(t('wrong-magic'), 'bad'); dev = null; return;
     }
     if (b.length >= 6) eeSize = b[4] | (b[5] << 8);
-    connected(true, `connected — firmware ${b[3]}, protocol ${b[2]}`);
-    say('Connected. Read the board to edit what is on it, or write what is '
-        + 'here over it.', 'ok');
+    connected(true, 'connected', { fw: b[3], proto: b[2] });
+    say(t('connected-say'), 'ok');
   } catch (e) {
     dev = null;
-    connected(false, 'not connected');
-    say('could not connect: ' + e.message, 'bad');
-    if (/no device selected|No device selected/i.test(e.message))
-      say('If the board is in keyboard mode it is a different device '
-          + 'altogether and will not be offered. Hold the pad four seconds '
-          + 'first.', 'dim');
+    connected(false, 'not-connected');
+    say(t('connect-failed', { msg: e.message }), 'bad');
+    if (/no device selected/i.test(e.message)) say(t('connect-hint-kbd'), 'dim');
   }
 };
 
@@ -367,15 +368,14 @@ $('leave').onclick = async () => {
       return;
     }
   }
-  say('The board is a keyboard again. Tap a code.', 'ok');
+  say(t('leave-ok'), 'ok');
 };
 
 navigator.usb?.addEventListener('disconnect', ev => {
   if (dev && ev.device !== dev) return;
   dev = null;
-  connected(false, 'the board left — it is a keyboard again');
-  say('The board is a keyboard again, so it is no longer a device this page '
-      + 'can talk to. Hold the pad four seconds to bring it back.', 'dim');
+  connected(false, 'board-left');
+  say(t('board-left-say'), 'dim');
 });
 
 /* ...and when it comes back, it is a new object: the old handle is dead, so
@@ -395,12 +395,12 @@ $('read').onclick = async () => {
       ee.set(await eeRead(a, Math.min(CHUNK, TABLE_TOP - a)), a);
     const got = decodeTable(ee);
     if (!got.length) {
-      say('The board has no macros on it yet.', 'dim');
+      say(t('read-none'), 'dim');
       return;
     }
     macros = got;
     draw();
-    say(`Read ${got.length} macro${got.length > 1 ? 's' : ''} off the board.`, 'ok');
+    say(t('read-ok', { n: got.length }), 'ok');
   } catch (e) {
     say(e.message, 'bad');
   }
@@ -418,17 +418,37 @@ $('write').onclick = async () => {
     const back = await eeRead(0, bytes.length);
     const bad = [...bytes].findIndex((v, i) => back[i] !== v);
     if (bad >= 0) {
-      say(`mismatch at ${bad}: wrote ${hex2(bytes[bad])}, read ${hex2(back[bad])}`,
-          'bad');
+      say(t('write-mismatch', { at: bad, wrote: hex2(bytes[bad]),
+                                read: hex2(back[bad]) }), 'bad');
       return;
     }
-    say(`Wrote ${bytes.length} bytes and read every one of them back.`, 'ok');
-    say('Hold the pad for four seconds to become a keyboard again, then tap '
-        + 'a code.');
+    say(t('write-ok', { n: bytes.length }), 'ok');
+    say(t('write-then-tap'));
   } catch (e) {
     say(e.message, 'bad');
   }
 };
+
+/* ---- what language to say it in ------------------------------------- */
+
+/* table.js keeps English as its default and the tests read it, so the app
+   hands it a translator rather than the strings living in two places. */
+setMessages((key, params) => t(key, params));
+
+$('lang').innerHTML = Object.keys(STRINGS)
+  .map(k => `<option value="${k}">${STRINGS[k]['lang-name']}</option>`).join('');
+
+function useLang(l) {
+  setLang(l);
+  $('lang').value = getLang();
+  try { localStorage.setItem('digimacro.lang', getLang()); } catch (e) {}
+  applyLang();
+  renderWho();
+  drawPad();                    /* its labels are built, not marked up */
+  draw();                       /* and so are the rows and the budget */
+}
+
+$('lang').onchange = () => useLang($('lang').value);
 
 /* ---- which keyboard the board will be plugged into ------------------ */
 
@@ -494,7 +514,7 @@ const GROUPS = [
 function drawPad() {
   $('mods').innerHTML = MOD_KEYS.map(m =>
     `<button class="mod${armed.includes(m) ? ' on' : ''}" data-mod="${m}">${m}</button>`
-  ).join('') + '<span class="hint" style="margin-left:.6rem">held for the next key</span>';
+  ).join('') + `<span class="hint" style="margin-left:.6rem">${t('mods-hint')}</span>`;
 
   for (const [id, keys] of GROUPS)
     $(id).innerHTML = keys.map(k => k === null ? '<span style="width:.6rem"></span>' :
@@ -536,6 +556,8 @@ $('pad').addEventListener('click', e => {
   }
 });
 
-drawPad();
-draw();
+let savedLang = null;
+try { savedLang = localStorage.getItem('digimacro.lang'); } catch (e) {}
+useLang(savedLang || preferredLang());
+connected(false, 'connect-hint');
 </script>

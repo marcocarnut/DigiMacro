@@ -300,6 +300,31 @@ testable, which is why they are in this order rather than firmware-then-app.
 
    The loop check this step was meant to include has nothing to check yet, as
    `\j` does not exist. It belongs with step 5.
+
+   Three things were added on top after using it:
+
+   **The app can hand the keyboard back** (`DM_FUNC_LEAVE`, 0x62). Holding the
+   pad to leave vendor mode took the device off the bus without the page being
+   told, so it sat holding a dead handle and reconnecting failed. The page now
+   listens for connect and disconnect — a returning board is a new object,
+   not the old one — and the asymmetry turned out to be unnecessary: physical
+   presence guards getting *in*, because that is what makes the table
+   reachable, while asking to stop being reachable can only take capability
+   away.
+
+   **Accents are a statement about the host**, not about the text. The board
+   sends scan codes, so an accented character is two presses on a dead-key
+   layout and impossible on a plain US one. The app says which keyboard the
+   board will meet, and refuses what that keyboard cannot type rather than
+   typing something else. A bare accent mark is the key and a space; a mark
+   with nothing joined to it is `{'}`; and pasted text is composed to NFC
+   first, since a combining mark looks identical and is not.
+
+   **English and Brazilian Portuguese**, in `web/i18n.js`, the encoder's error
+   messages included — `table.js` keeps English as its default so the tests
+   can read it, and takes a translator from the app. `test/i18n.js` checks the
+   dictionaries hold the same keys, because a missing translation is invisible
+   in use: it falls back to English and reads as if nobody noticed.
 4. **`STATUS` and `UNLOCK`**, the password and the lockout — including
    counting failed password attempts, which the CDC version does not do and
    which matters far more over USB. `autoexec` belongs here too, beside the

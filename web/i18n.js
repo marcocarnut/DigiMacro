@@ -1,0 +1,265 @@
+/* i18n.js -- what the app says, in each language it says it.
+ *
+ * One entry per string, so a missing translation is a missing key rather than
+ * a sentence half in the wrong language; test/i18n.js checks that the two
+ * dictionaries hold exactly the same keys. A string may be a template, where
+ * {name} is filled from the parameters, or a function where a language needs
+ * to decide something for itself -- plurals, mostly.
+ *
+ * The encoder's messages are here too. They reach the person editing a macro,
+ * so they are part of the interface, not diagnostics: web/table.js keeps the
+ * English as its default and takes a translator through setMessages().
+ */
+
+const STRINGS = {
+
+en: {
+  'lang-name':      'English',
+  tagline:          'Tap a code, type a macro.',
+  keyboard:         'keyboard',
+  language:         'language',
+  connect:          'Connect',
+  'connect-hint':   'hold the pad four seconds, then connect',
+  macros:           'Macros',
+  'th-code':        'Code',
+  'th-types':       'Types',
+  'ph-types':       'what this code types',
+  'add-macro':      'Add a macro',
+  'load-example':   'Load the example',
+  budget:           '{n} of {max} bytes',
+  keys:             'Keys',
+  'mods-hint':      'held for the next key',
+  'a-key':          'a key',
+  insert:           'insert',
+  pause:            'pause',
+  repeat:           'repeat',
+  'pad-hint':       'Inserts at the cursor in whichever macro you were last '
+                  + 'editing. A modifier stays pressed until the next key.',
+  read:             'Read from the board',
+  write:            'Write to the board',
+  leave:            'Done — back to keyboard',
+  'log-initial':    'Nothing yet. Hold the pad for four seconds to put the '
+                  + 'board in vendor mode, then connect — in keyboard mode it '
+                  + 'answers none of this, which is the point of the hold.',
+
+  'ref-summary':    'What can go in a macro',
+  'ref-anything':   'typed as itself',
+  'ref-escapes':    'newline, tab, backslash',
+  'ref-brace':      'a literal {',
+  'ref-named':      'a key that is not a character',
+  'ref-mods':       'modifiers on any key or character',
+  'ref-combined':   '...combined, in any order',
+  'ref-pause':      'wait, in seconds, 0.1 to 25.5',
+  'ref-repeat':     'press the previous keystroke 11 more times',
+  'ref-accent':     'on a dead-key keyboard: the accent, then the letter',
+  'ref-bare-mark':  'the accent key alone, with nothing joined to it',
+  'ref-codes':      'A code is one to five dots and dashes: a press under a '
+                  + 'quarter of a second is a dot, longer is a dash, and '
+                  + '700 ms of silence ends it. Sixty-two codes exist, so a '
+                  + 'table that uses many of them is easier to guess — which '
+                  + 'is what the lockout, still to be built, is for.',
+  'ref-packed':     'Macros are packed end to end, so the only limit is 497 '
+                  + 'bytes in total: two bytes of overhead each, one byte per '
+                  + 'keystroke, two per pause or repeat.',
+  'ref-layout':     'The board sends key presses, not letters, so what appears '
+                  + 'is decided by the keyboard layout of the machine it is '
+                  + 'plugged into — which is what the setting at the top says. '
+                  + 'On US International an accented character is two presses, '
+                  + 'the accent and then the letter, and a bare accent mark is '
+                  + 'that key followed by a space. On a plain US keyboard there is '
+                  + 'no way to type one at all, so the editor says so rather '
+                  + 'than typing something else.',
+
+  'no-webusb':      'navigator.usb is missing. WebUSB needs Chrome or Edge, '
+                  + 'over https or localhost.',
+  'connect-failed': 'could not connect: {msg}',
+  'connect-hint-kbd': 'If the board is in keyboard mode it is a different '
+                  + 'device altogether and will not be offered. Hold the pad '
+                  + 'four seconds first.',
+  connected:        'connected — firmware {fw}, protocol {proto}',
+  'connected-say':  'Connected. Read the board to edit what is on it, or write '
+                  + 'what is here over it.',
+  'not-connected':  'not connected',
+  'board-left':     'the board left — it is a keyboard again',
+  'board-left-say': 'The board is a keyboard again, so it is no longer a device '
+                  + 'this page can talk to. Hold the pad four seconds to bring '
+                  + 'it back.',
+  'wrong-magic':    'that device did not answer "DM"',
+  'read-none':      'The board has no macros on it yet.',
+  'read-ok':        p => `Read ${p.n} macro${p.n > 1 ? 's' : ''} off the board.`,
+  'write-ok':       'Wrote {n} bytes and read every one of them back.',
+  'write-mismatch': 'mismatch at {at}: wrote {wrote}, read {read}',
+  'write-then-tap': 'Hold the pad for four seconds to become a keyboard again, '
+                  + 'then tap a code.',
+  'leave-ok':       'The board is a keyboard again. Tap a code.',
+  'sample-say':     'An example of each thing a macro can do. Write it, then '
+                  + 'hold the pad four seconds to become a keyboard again and '
+                  + 'tap the codes.',
+
+  'lone-backslash': 'a lone \\ at the end',
+  'bad-escape':     '\\{what} means nothing',
+  unclosed:         'a { with no }',
+  'empty-braces':   '{} is empty',
+  'pause-range':    '{{what}}: a pause runs from 0.1 to 25.5 seconds',
+  'repeat-range':   '{{what}}: repeat runs from 1 to 255',
+  'nothing-to-rep': '{{what}}: nothing to repeat yet',
+  'no-key-after':   '{{what}}: no key after the +',
+  'not-a-modifier': '"{what}" is not a modifier',
+  'not-a-key':      '"{what}" is not a key',
+  'no-key-for':     'no key for "{what}"',
+  'needs-dead-keys':'"{what}" needs a keyboard with dead keys — see the '
+                  + 'keyboard setting above',
+  'not-a-code':     'not a code: "{what}"',
+  'code-twice':     '"{what}" is used twice',
+  'not-a-byte':     '"{what}" has a byte that is not a byte',
+  'has-a-zero':     '"{what}" contains a zero, which would end it early',
+  'too-big':        '{n} bytes of table, and only {fits} fit',
+},
+
+pt: {
+  'lang-name':      'Português',
+  tagline:          'Toque um código, digite uma macro.',
+  keyboard:         'teclado',
+  language:         'idioma',
+  connect:          'Conectar',
+  'connect-hint':   'segure o sensor por quatro segundos e conecte',
+  macros:           'Macros',
+  'th-code':        'Código',
+  'th-types':       'Digita',
+  'ph-types':       'o que este código digita',
+  'add-macro':      'Adicionar macro',
+  'load-example':   'Carregar o exemplo',
+  budget:           '{n} de {max} bytes',
+  keys:             'Teclas',
+  'mods-hint':      'fica pressionado até a próxima tecla',
+  'a-key':          'uma tecla',
+  insert:           'inserir',
+  pause:            'pausa',
+  repeat:           'repetir',
+  'pad-hint':       'Insere no cursor da macro que você estava editando. Um '
+                  + 'modificador fica pressionado até a próxima tecla.',
+  read:             'Ler da placa',
+  write:            'Gravar na placa',
+  leave:            'Pronto — voltar a ser teclado',
+  'log-initial':    'Nada ainda. Segure o sensor por quatro segundos para pôr '
+                  + 'a placa em modo vendor e conecte — em modo teclado ela '
+                  + 'não responde a nada disto, que é justamente a razão de ter '
+                  + 'de segurar.',
+
+  'ref-summary':    'O que pode entrar numa macro',
+  'ref-anything':   'digitado como está',
+  'ref-escapes':    'nova linha, tabulação, barra invertida',
+  'ref-brace':      'uma chave { literal',
+  'ref-named':      'uma tecla que não é um caractere',
+  'ref-mods':       'modificadores em qualquer tecla ou caractere',
+  'ref-combined':   '...combinados, em qualquer ordem',
+  'ref-pause':      'espera, em segundos, de 0,1 a 25,5',
+  'ref-repeat':     'pressiona a tecla anterior mais 11 vezes',
+  'ref-accent':     'num teclado com acentos mortos: o acento e depois a letra',
+  'ref-bare-mark':  'a tecla de acento sozinha, sem nada ligado a ela',
+  'ref-codes':      'Um código são de um a cinco pontos e traços: um toque de '
+                  + 'menos de um quarto de segundo é ponto, mais longo é '
+                  + 'traço, e 700 ms de silêncio encerram o código. Existem '
+                  + 'sessenta e dois códigos, então uma tabela que use muitos '
+                  + 'deles é mais fácil de adivinhar — que é para isso que '
+                  + 'serve o bloqueio, ainda por construir.',
+  'ref-packed':     'As macros ficam empacotadas uma após a outra, então o '
+                  + 'único limite são 497 bytes no total: dois bytes de '
+                  + 'cabeçalho cada, um byte por tecla, dois por pausa ou '
+                  + 'repetição.',
+  'ref-layout':     'A placa envia pressionamentos de tecla, não letras, então '
+                  + 'o que aparece é decidido pelo layout de teclado da '
+                  + 'máquina em que ela está ligada — que é o que a opção lá '
+                  + 'em cima informa. No US International um caractere '
+                  + 'acentuado são dois pressionamentos, o acento e depois a '
+                  + 'letra, e um acento sozinho é a tecla dele seguida de espaço. '
+                  + 'Num teclado US puro não há como digitar um acento, então '
+                  + 'o editor avisa em vez de digitar outra coisa.',
+
+  'no-webusb':      'navigator.usb não existe. WebUSB precisa do Chrome ou do '
+                  + 'Edge, por https ou localhost.',
+  'connect-failed': 'não foi possível conectar: {msg}',
+  'connect-hint-kbd': 'Se a placa estiver em modo teclado, ela é outro '
+                  + 'dispositivo e não aparece na lista. Segure o sensor por '
+                  + 'quatro segundos primeiro.',
+  connected:        'conectada — firmware {fw}, protocolo {proto}',
+  'connected-say':  'Conectada. Leia a placa para editar o que está nela, ou '
+                  + 'grave por cima o que está aqui.',
+  'not-connected':  'não conectada',
+  'board-left':     'a placa saiu — voltou a ser teclado',
+  'board-left-say': 'A placa voltou a ser teclado, então não é mais um '
+                  + 'dispositivo com que esta página possa falar. Segure o '
+                  + 'sensor por quatro segundos para trazê-la de volta.',
+  'wrong-magic':    'esse dispositivo não respondeu "DM"',
+  'read-none':      'A placa ainda não tem macros.',
+  'read-ok':        p => p.n > 1 ? `Lidas ${p.n} macros da placa.`
+                                 : 'Lida 1 macro da placa.',
+  'write-ok':       'Gravados {n} bytes, e todos lidos de volta.',
+  'write-mismatch': 'divergência em {at}: gravado {wrote}, lido {read}',
+  'write-then-tap': 'Segure o sensor por quatro segundos para voltar a ser '
+                  + 'teclado e toque um código.',
+  'leave-ok':       'A placa voltou a ser teclado. Toque um código.',
+  'sample-say':     'Um exemplo de cada coisa que uma macro pode fazer. Grave, '
+                  + 'depois segure o sensor por quatro segundos para voltar a '
+                  + 'ser teclado e toque os códigos.',
+
+  'lone-backslash': 'uma \\ sozinha no fim',
+  'bad-escape':     '\\{what} não significa nada',
+  unclosed:         'um { sem }',
+  'empty-braces':   '{} está vazio',
+  'pause-range':    '{{what}}: uma pausa vai de 0,1 a 25,5 segundos',
+  'repeat-range':   '{{what}}: a repetição vai de 1 a 255',
+  'nothing-to-rep': '{{what}}: não há nada para repetir ainda',
+  'no-key-after':   '{{what}}: falta a tecla depois do +',
+  'not-a-modifier': '"{what}" não é um modificador',
+  'not-a-key':      '"{what}" não é uma tecla',
+  'no-key-for':     'não há tecla para "{what}"',
+  'needs-dead-keys':'"{what}" precisa de um teclado com acentos mortos — veja '
+                  + 'a opção de teclado acima',
+  'not-a-code':     'não é um código: "{what}"',
+  'code-twice':     '"{what}" está sendo usado duas vezes',
+  'not-a-byte':     '"{what}" tem um byte que não é um byte',
+  'has-a-zero':     '"{what}" contém um zero, que a encerraria antes da hora',
+  'too-big':        '{n} bytes de tabela, e só cabem {fits}',
+},
+
+};
+
+let lang = 'en';
+
+function setLang(l) { lang = STRINGS[l] ? l : 'en'; }
+function getLang() { return lang; }
+
+/* {name} is filled from the parameters. A language that has to decide
+   something for itself -- a plural, usually -- gets a function instead. */
+function t(key, p = {}) {
+  const s = STRINGS[lang][key] ?? STRINGS.en[key];
+  if (s === undefined) return key;
+  if (typeof s === 'function') return s(p);
+  return s.replace(/\{(\w+)\}/g, (m, k) => (k in p ? p[k] : m));
+}
+
+/* Everything with data-t in the markup, so the page can change language
+   without being rebuilt. */
+function applyLang(root) {
+  (root || document).querySelectorAll('[data-t]').forEach(el => {
+    el.textContent = t(el.dataset.t);
+  });
+  (root || document).querySelectorAll('[data-ph]').forEach(el => {
+    el.placeholder = t(el.dataset.ph);
+  });
+  if (typeof document !== 'undefined')
+    document.documentElement.lang = lang === 'pt' ? 'pt-BR' : 'en';
+}
+
+/* What the browser asks for, if we speak it. */
+function preferredLang() {
+  for (const l of (typeof navigator !== 'undefined' ? navigator.languages || [] : [])) {
+    const short = l.toLowerCase().split('-')[0];
+    if (STRINGS[short]) return short;
+  }
+  return 'en';
+}
+
+if (typeof module !== 'undefined')
+  module.exports = { STRINGS, setLang, getLang, t, applyLang, preferredLang };

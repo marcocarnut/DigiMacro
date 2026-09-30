@@ -68,6 +68,42 @@ for (let i = 0; i < 9; i++)  UNPLAIN[0x1E + i] = String(i + 1);
 UNPLAIN[0x27] = '0';
 
 /* ==================================================================== */
+/* What it says when something is wrong                                 */
+/* ==================================================================== */
+
+/* These reach the person editing the macro, so the app translates them. The
+   default is English and the tests read it, which is why the text lives here
+   rather than in the app: a message with no default would be a message no
+   test could assert on. */
+const MSG = {
+  'lone-backslash':  () => 'a lone \\ at the end',
+  'bad-escape':      p => `\\${p.what} means nothing`,
+  'unclosed':        () => 'a { with no }',
+  'empty-braces':    () => '{} is empty',
+  'pause-range':     p => `{${p.what}}: a pause runs from 0.1 to 25.5 seconds`,
+  'repeat-range':    p => `{${p.what}}: repeat runs from 1 to 255`,
+  'nothing-to-rep':  p => `{${p.what}}: nothing to repeat yet`,
+  'no-key-after':    p => `{${p.what}}: no key after the +`,
+  'not-a-modifier':  p => `"${p.what}" is not a modifier`,
+  'not-a-key':       p => `"${p.what}" is not a key`,
+  'no-key-for':      p => `no key for "${p.what}"`,
+  'needs-dead-keys': p => `"${p.what}" needs a layout with dead keys -- see ` +
+                          `the keyboard setting, or type it as ' and the letter`,
+  'not-a-code':      p => `not a code: "${p.what}"`,
+  'code-twice':      p => `"${p.what}" is used twice`,
+  'not-a-byte':      p => `"${p.what}" has a byte that is not a byte`,
+  'has-a-zero':      p => `"${p.what}" contains a zero, which would end it early`,
+  'too-big':         p => `${p.n} bytes of table, and only ${p.fits} fit`,
+};
+
+let translate = null;
+function setMessages(fn) { translate = fn; }
+function fail(key, params = {}) {
+  const s = translate && translate(key, params);
+  throw new Error(s || MSG[key](params));
+}
+
+/* ==================================================================== */
 /* Dead keys                                                            */
 /* ==================================================================== */
 
@@ -112,7 +148,7 @@ function charUsage(ch) {
   if (ch === '0')             return [0x27, false];
   if (ch in PLAIN)            return [PLAIN[ch], false];
   if (ch in SHIFTED)          return [SHIFTED[ch], true];
-  throw new Error(`no key for "${ch}"`);
+  fail('no-key-for', { what: ch });
 }
 
 const keystroke = ch => { const [u, sh] = charUsage(ch); return sh ? u | SHIFT : u; };
@@ -137,8 +173,7 @@ function usages(text) {
       if (ch in DEAD) { out.push(keystroke(ch), keystroke(' ')); continue; }
     }
     if (ch in COMPOSE)
-      throw new Error(`"${ch}" needs a layout with dead keys -- see the ` +
-                      `keyboard setting, or type it as ' and the letter`);
+      fail('needs-dead-keys', { what: ch });
     out.push(keystroke(ch));
   }
   return out;
@@ -175,9 +210,9 @@ function encodeMacro(text) {
 
     if (ch === '\\') {                          /* the two-character escapes */
       const n = text[++i];
-      if (n === undefined) throw new Error('a lone \\ at the end');
+      if (n === undefined) fail('lone-backslash');
       const lit = { n: '\n', t: '\t', b: '\b', '\\': '\\' }[n];
-      if (lit === undefined) throw new Error(`\\${n} means nothing`);
+      if (lit === undefined) fail('bad-escape', { what: n });
       push(...usages(lit));
       wrote = true;
       i++;
@@ -188,7 +223,7 @@ function encodeMacro(text) {
 
     if (ch === '{') {
       const end = text.indexOf('}', i);
-      if (end < 0) throw new Error('a { with no }');
+      if (end < 0) fail('unclosed');
       const body = text.slice(i + 1, end).trim();
       i = end + 1;
 
@@ -196,7 +231,7 @@ function encodeMacro(text) {
       if (pause) {
         const tenths = Math.round(parseFloat(pause[1]) * 10);
         if (tenths < 1 || tenths > 255)
-          throw new Error(`{${body}}: a pause runs from 0.1 to 25.5 seconds`);
+          fail('pause-range', { what: body });
         push(ESC_PAUSE, tenths);
         continue;                               /* a pause is not a keystroke */
       }
@@ -208,27 +243,27 @@ function encodeMacro(text) {
       if (rep) {
         const n = parseInt(rep[1], 10);
         if (n < 1 || n > 255)
-          throw new Error(`{${body}}: repeat runs from 1 to 255`);
-        if (!wrote) throw new Error(`{${body}}: nothing to repeat yet`);
+          fail('repeat-range', { what: body });
+        if (!wrote) fail('nothing-to-rep', { what: body });
         push(ESC_REPEAT, n);
         continue;
       }
 
       /* the rest is [mod+]...key */
       const parts = body.split('+').map(p => p.trim()).filter(p => p !== '');
-      if (parts.length === 0 && body !== '+') throw new Error('{} is empty');
+      if (parts.length === 0 && body !== '+') fail('empty-braces');
 
       /* "+" is both the separator and a key, so it has to be said twice to
          mean itself: {Ctrl++} is Ctrl and plus, while {Ctrl+} is a modifier
          with nothing to modify, which is a typo rather than a shortcut. */
       let keyName;
       if (body === '+' || body.endsWith('++')) keyName = '+';
-      else if (body.endsWith('+')) throw new Error(`{${body}}: no key after the +`);
+      else if (body.endsWith('+')) fail('no-key-after', { what: body });
       else keyName = parts.pop();
       let mask = 0;
       for (const m of parts) {
         const name = MOD_ALIAS[m.toLowerCase()] || m.toLowerCase();
-        if (!(name in MODS)) throw new Error(`"${m}" is not a modifier`);
+        if (!(name in MODS)) fail('not-a-modifier', { what: m });
         mask |= MODS[name];
       }
 
@@ -242,7 +277,7 @@ function encodeMacro(text) {
         usage = u;
         if (sh) mask |= MODS.shift;
       } else {
-        throw new Error(`"${keyName}" is not a key`);
+        fail('not-a-key', { what: keyName });
       }
 
       if (mask) push(ESC_MOD, mask);
@@ -352,7 +387,7 @@ function decodeMacro(bytes) {
    a dash being a 1 and the first symbol in the highest bit the count uses. */
 function header(code) {
   if (!new RegExp(`^[.-]{1,${MAX_SYM}}$`).test(code))
-    throw new Error(`not a code: "${code}"`);
+    fail('not-a-code', { what: code });
   let bits = 0;
   for (const c of code) bits = (bits << 1) | (c === '-' ? 1 : 0);
   return (bits << 3) | (code.length - 1);
@@ -372,17 +407,17 @@ function packTable(entries) {
   const seen = new Set();
   for (const [code, body] of entries) {
     const h = header(code);
-    if (seen.has(h)) throw new Error(`"${code}" appears twice`);
+    if (seen.has(h)) fail('code-twice', { what: code });
     seen.add(h);
     if (body.some(b => !(b >= 0 && b <= 255)))
-      throw new Error(`"${code}" has a byte that is not a byte`);
+      fail('not-a-byte', { what: code });
     if (body.includes(0))
-      throw new Error(`"${code}" contains a zero, which would end it early`);
+      fail('has-a-zero', { what: code });
     out.push(h, ...body, 0);
   }
   out.push(0xFF);
   if (out.length > TABLE_TOP)
-    throw new Error(`${out.length} bytes of table, and only ${TABLE_TOP} fit`);
+    fail('too-big', { n: out.length, fits: TABLE_TOP });
   return Uint8Array.from(out);
 }
 
@@ -426,6 +461,6 @@ function sampleRows() {
 
 if (typeof module !== 'undefined') module.exports = {
   ESC_PAUSE, ESC_MOD, ESC_REPEAT, ESC_JUMP, SHIFT, TABLE_TOP, MAX_SYM,
-  LAYOUTS, setLayout, getLayout,
+  LAYOUTS, setLayout, getLayout, setMessages, MSG,
   usages, header, codeOf, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows };

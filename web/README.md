@@ -20,6 +20,10 @@ so a board's table can be edited rather than retyped. It is shared with
 against the real firmware — so the app's encoder and the firmware's decoder are
 checked against each other rather than each being trusted alone.
 
+`i18n.js` holds every string the app says, in English and Brazilian
+Portuguese, and `test/i18n.js` checks that the two agree on which strings
+exist. The other two pages are developer tools and stay in English.
+
 **`python3 -m http.server` sends no cache headers**, so Chrome applies its own
 heuristic freshness and will happily keep running an old `table.js` after you
 edit it. If a change seems to have no effect, hard-reload with

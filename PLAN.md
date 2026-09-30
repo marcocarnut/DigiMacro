@@ -287,10 +287,25 @@ Proven: the two personalities, the re-enumeration, `bcdUSB 2.10` bringing on a
 BOS request, the BOS itself, a vendor interface with no endpoints, and control
 transfers in both directions through `usbFunctionSetup`.
 
-Still unproven:
+Tested on:
 
-- **Windows.** The MS OS 2.0 set is verified on paper only. Worth trying while
-  the spike is still small, since that descriptor is the whole of the
-  no-driver-install claim.
-- The landing-page URL, which is only advisory and needs the site to exist.
-- Everything downstream: the packed table, the EEPROM requests, the app.
+| | |
+|---|---|
+| Linux, Chrome | works |
+| Windows 10, Chrome and Edge | works, with nothing to install |
+
+So the MS OS 2.0 set does its job and WinUSB binds itself, which was the whole
+of the no-driver-install claim.
+
+**One caveat to close before release.** The spike shares `16c0:05dc` *and*
+DigiISP's `DeviceInterfaceGUID`, so a machine that has already met DigiISP may
+have had WinUSB bound and cached for that pair — in which case the Windows pass
+was inherited rather than earned. Giving DigiMacro its own GUID is on the list
+anyway, and doing so invalidates any cached binding, so the re-test comes free
+at that point. Note that Windows caches a *failed* MS OS 2.0 read too, under
+`HKLM\SYSTEM\CurrentControlSet\Control\usbflags\`, and will not retry until
+the entry is deleted.
+
+Still unproven: the landing-page URL, which is advisory and needs the site to
+exist, and everything downstream — the packed table, the EEPROM requests, the
+app.

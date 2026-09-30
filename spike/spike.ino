@@ -12,8 +12,8 @@
  *        on         keyboard mode, pad touched
  *        blinking   vendor mode, ready for WebUSB
  *
- * With TOUCH_DEBUG the board types its own pad readings instead of the
- * banner, twice a second, into whatever window has focus:
+ * Set TOUCH_DEBUG to 1 and the board types its own pad readings instead of
+ * the banner, twice a second, into whatever window has focus:
  *
  *      1A 18 .       raw, running average, and . or T
  *      30 18 T
@@ -38,7 +38,8 @@
 #define PIN_TOUCH   PIN_BUTTON      /* the same pin; a pad rather than a switch */
 #define PIN_LED     1
 
-#define TOUCH_DEBUG 1           /* 0 types the banner instead */
+#define TOUCH_DEBUG 0           /* 1 types the pad readings instead of
+                                   the banner -- see the notes above */
 #define DEBUG_MS    500         /* a line takes ~160 ms to type */
 
 #define HOLD_MS     4000
@@ -181,6 +182,7 @@ void touch_poll(void)
 /* Typing the readings out                                              */
 /* ==================================================================== */
 
+#if TOUCH_DEBUG
 static void type_nib(uint8_t n)
 {
     n &= 0x0F;
@@ -202,6 +204,7 @@ static void type_reading(void)
     dusbTypeChar(touch_state ? 'T' : '.', 0);
     dusbTypeChar('\n', 0);
 }
+#endif
 
 /* ==================================================================== */
 /* Input                                                                */
@@ -257,7 +260,9 @@ void setup(void)
 
 void loop(void)
 {
+#if TOUCH_DEBUG
     static uint16_t last;
+#endif
 
     dusbPoll();
     touch_poll();

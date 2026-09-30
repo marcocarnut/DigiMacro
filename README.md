@@ -119,6 +119,11 @@ Which is the better arrangement anyway: reaching the macro table needs someone
 holding the pad, so **no web page can reconfigure the device on its own**, and
 while it is configurable it is not a keyboard, so it cannot be made to type.
 
+Entering vendor mode makes Chrome offer to go to `digimacro.postcogito.org`,
+the URL in the WebUSB descriptor. That is expected, and eventually it is the
+whole install story: plug in, hold the pad, click the notification, configure.
+The address does not serve anything yet.
+
 ## Building it
 
 ```

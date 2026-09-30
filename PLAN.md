@@ -361,6 +361,18 @@ at that point. Note that Windows caches a *failed* MS OS 2.0 read too, under
 `HKLM\SYSTEM\CurrentControlSet\Control\usbflags\`, and will not retry until
 the entry is deleted.
 
-Still unproven: the landing-page URL, which is advisory and needs the site to
-exist, and everything downstream — the packed table, the EEPROM requests, the
-app.
+**The landing page works too.** Holding the pad four seconds now makes Chrome
+offer "go to digimacro.postcogito.org", which is the URL in the WebUSB
+capability being served and honoured. The prompt appears every time the device
+enters vendor mode, which is the point of it: once that address serves the app,
+the install story is plug in, hold the pad, click the notification, configure.
+Nothing to download and nothing to find.
+
+That makes the domain a real dependency rather than a placeholder. `postcogito.org`
+is the author's, as DigiISP's `digiisp.postcogito.org` shows, but the subdomain
+has to exist and serve the app over https or the notification leads nowhere.
+obdev's terms for `16c0:05dc` want the vendor string to contain a domain the
+author owns, so the same name does both jobs.
+
+Everything the spike left downstream — the packed table, the EEPROM requests —
+has since been built and run on hardware. What is left is the app itself.

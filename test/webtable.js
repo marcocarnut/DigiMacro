@@ -22,7 +22,12 @@ const ROWS = [
   { code: '.-',  text: '{Ctrl+Left}z' },
   { code: '-.',  text: '{Ctrl+Shift+Left}{Shift+Left}{Alt+Tab}{F5}' },
   { code: '--',  text: 'A!Z {{x}} \\t' },
+  { code: '...', text: 'coração{Enter}' },      /* needs the dead keys below */
 ];
+
+/* The rows include accented text, so the layout has to be the one that can
+   type it -- and saying so here keeps --emit deterministic. */
+t.setLayout('us-intl');
 
 if (process.argv.includes('--emit')) {
   process.stdout.write([...t.encodeTable(ROWS)]
@@ -73,6 +78,7 @@ check(t.decodeTable(new Uint8Array(4).fill(0xFF)).length === 0,
       'a virgin chip is an empty table');
 
 console.log('4. a mistake is refused, with a reason');
+t.setLayout('us-intl');
 for (const [text, want] of [
   ['{',              /no \}/],
   ['{Ctrl+}',        /no key after/],
@@ -85,7 +91,7 @@ for (const [text, want] of [
   ['a{x300}',        /1 to 255/],
   ['{x3}',           /nothing to repeat/],
   ['\\q',            /means nothing/],
-  ['é',         /no key for/],
+  ['λ',         /no key for/],      /* no layout here can type a lambda */
 ]) {
   let msg = null;
   try { t.encodeMacro(text); } catch (e) { msg = e.message; }
@@ -110,6 +116,47 @@ msg = null;
 try { t.encodeTable([{ code: '......', text: 'a' }]); }
 catch (e) { msg = e.message; }
 check(msg !== null && /not a code/.test(msg), `six symbols: ${msg}`);
+
+console.log('6. accents, on a layout that can type them');
+/* The board sends scan codes, so an accent is the host's business: two
+   keystrokes on a dead-key layout, and impossible on a plain US one. Getting
+   that wrong silently types something else, so it is refused rather than
+   guessed at. */
+t.setLayout('us');
+msg = null;
+try { t.encodeMacro('ó'); } catch (e) { msg = e.message; }
+check(msg !== null && /dead keys/.test(msg), `accent on plain US: ${msg}`);
+check(t.getLayout() === 'us', 'the layout is where it was put');
+
+t.setLayout('us-intl');
+const APOS = String.fromCharCode(39);
+check(JSON.stringify(t.encodeMacro('ó')) === JSON.stringify([0x34, 0x12]),
+      'ó is the acute key and then o');
+check(JSON.stringify(t.encodeMacro('ç')) === JSON.stringify([0x34, 0x06]),
+      'ç is the acute key and then c');
+check(JSON.stringify(t.encodeMacro('ã')) === JSON.stringify([0xB5, 0x04]),
+      'ã is the tilde and then a');
+/* A bare mark is the mark and a space, which is how a dead-key layout is
+   asked for the mark alone. */
+check(JSON.stringify(t.encodeMacro(APOS)) === JSON.stringify([0x34, 0x2C]),
+      'a literal apostrophe is the key and a space');
+/* ...and the mark with nothing that combines after it has its own form, the
+   only one that survives being encoded again. */
+check(t.decodeMacro([0x34, 0x17]) === '{' + APOS + '}t',
+      `apostrophe then t reads back as {${APOS}}t, got ` +
+      JSON.stringify(t.decodeMacro([0x34, 0x17])));
+/* Pasted text may carry its accents as separate combining marks, which look
+   identical and are not. */
+check(JSON.stringify(t.encodeMacro('e\u0301')) === JSON.stringify(t.encodeMacro('é')),
+      'a decomposed accent must encode as the composed one does');
+
+for (const text of ['coração', 'Olá, você!', 'não{Enter}', '{Ctrl+c}á',
+                    APOS, '{' + APOS + '}t', 'Ação', 'até logo']) {
+  const bytes = t.encodeMacro(text);
+  const again = t.encodeMacro(t.decodeMacro(bytes));
+  check(JSON.stringify(bytes) === JSON.stringify(again),
+        `${JSON.stringify(text)} drifts: ${JSON.stringify(t.decodeMacro(bytes))}`);
+}
 
 console.log(fails ? '\nSOME CHECKS FAILED' : '\nall checks passed');
 process.exit(fails ? 1 : 0);

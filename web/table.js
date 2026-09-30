@@ -67,6 +67,43 @@ for (let i = 0; i < 26; i++) UNSHIFTED[0x04 + i] = String.fromCharCode(65 + i);
 for (let i = 0; i < 9; i++)  UNPLAIN[0x1E + i] = String(i + 1);
 UNPLAIN[0x27] = '0';
 
+/* ==================================================================== */
+/* Dead keys                                                            */
+/* ==================================================================== */
+
+/* The board sends scan codes, so what appears on screen is the host's
+ * business, not ours. "o" is the key next to "i" whatever language anyone is
+ * writing; "o-with-an-acute" is not a key at all. On a layout with dead keys
+ * it is two presses -- the accent, then the letter -- and on a plain US
+ * layout it cannot be typed at all.
+ *
+ * So the accent handling is a statement about the machine the board will be
+ * plugged into, not about the text. Set the layout and accented characters
+ * are accepted and expanded; leave it at plain US and they are refused, which
+ * is better than silently typing something else.
+ */
+const DEAD = {
+  "'": { base: 'aeiouycnszAEIOUYCNSZ', out: 'áéíóúýçńśźÁÉÍÓÚÝÇŃŚŹ' },
+  '`': { base: 'aeiouAEIOU',           out: 'àèìòùÀÈÌÒÙ' },
+  '^': { base: 'aeiouAEIOU',           out: 'âêîôûÂÊÎÔÛ' },
+  '~': { base: 'anoANO',               out: 'ãñõÃÑÕ' },
+  '"': { base: 'aeiouyAEIOUY',         out: 'äëïöüÿÄËÏÖÜŸ' },
+};
+
+/* composed character -> [the dead key, the letter under it] */
+const COMPOSE = {};
+for (const [mark, m] of Object.entries(DEAD))
+  [...m.out].forEach((ch, i) => { COMPOSE[ch] = [mark, [...m.base][i]]; });
+
+const LAYOUTS = {
+  'us':      { label: 'US', dead: false },
+  'us-intl': { label: 'US International', dead: true },
+};
+let layout = 'us';
+function setLayout(name) { layout = name in LAYOUTS ? name : 'us'; }
+function getLayout() { return layout; }
+const deadKeys = () => LAYOUTS[layout].dead;
+
 /* one character -> [usage, needsShift] */
 function charUsage(ch) {
   if (ch >= 'a' && ch <= 'z') return [ch.charCodeAt(0) - 97 + 0x04, false];
@@ -78,13 +115,33 @@ function charUsage(ch) {
   throw new Error(`no key for "${ch}"`);
 }
 
+const keystroke = ch => { const [u, sh] = charUsage(ch); return sh ? u | SHIFT : u; };
+
 /* Plain text, nothing else. Bit 7 carries Shift, so one byte covers every
-   character on the keyboard and the firmware needs no ASCII table. */
+   character on the keyboard and the firmware needs no ASCII table.
+   
+   With dead keys, two things change. An accented character becomes the accent
+   followed by the letter; and a bare accent mark becomes itself followed by a
+   space, because that is how a dead-key layout is asked for the mark alone.
+   To send one of those keys with nothing after it -- which is what a host does
+   when the next character does not combine -- write it in braces: {'}. */
 function usages(text) {
-  return [...text].map(ch => {
-    const [u, sh] = charUsage(ch);
-    return sh ? u | SHIFT : u;
-  });
+  const out = [];
+  for (const ch of text) {
+    if (deadKeys()) {
+      if (ch in COMPOSE) {
+        const [mark, base] = COMPOSE[ch];
+        out.push(keystroke(mark), keystroke(base));
+        continue;
+      }
+      if (ch in DEAD) { out.push(keystroke(ch), keystroke(' ')); continue; }
+    }
+    if (ch in COMPOSE)
+      throw new Error(`"${ch}" needs a layout with dead keys -- see the ` +
+                      `keyboard setting, or type it as ' and the letter`);
+    out.push(keystroke(ch));
+  }
+  return out;
 }
 
 /* ==================================================================== */
@@ -104,6 +161,12 @@ function usages(text) {
 function encodeMacro(text) {
   const out = [];
   let i = 0, wrote = false;
+
+  /* Text pasted from elsewhere may carry its accents as separate combining
+     marks -- "e" followed by U+0301 rather than a single "é" -- which looks
+     identical and is not. Compose it first, so that what is looked up is what
+     is on screen. */
+  text = text.normalize('NFC');
 
   const push = (...b) => { for (const v of b) out.push(v); };
 
@@ -221,11 +284,35 @@ function literal(ch) {
   return ch;
 }
 
+/* The character a plain keystroke types, or undefined if it types none */
+function plainChar(b) {
+  if ((b & 0x7F) < 0x04) return undefined;
+  return (b & SHIFT) ? UNSHIFTED[b & 0x7F] : UNPLAIN[b & 0x7F];
+}
+
 function decodeMacro(bytes) {
   let out = '', mod = 0;
 
   for (let i = 0; i < bytes.length; i++) {
     const b = bytes[i];
+
+    /* On a dead-key layout, what the host shows for two keystrokes is not
+       what either of them shows alone, and the editor should say what will
+       appear. A mark with nothing that combines after it is written {'}, the
+       one form that survives being encoded again. */
+    if (deadKeys() && !mod) {
+      const mark = plainChar(b);
+      if (mark !== undefined && mark in DEAD) {
+        const next = i + 1 < bytes.length ? plainChar(bytes[i + 1]) : undefined;
+        if (next === ' ') { out += literal(mark); i++; continue; }
+        const joined = next !== undefined && DEAD[mark].base.includes(next)
+                     ? [...DEAD[mark].out][[...DEAD[mark].base].indexOf(next)]
+                     : undefined;
+        if (joined !== undefined) { out += joined; i++; continue; }
+        out += `{${mark}}`;
+        continue;
+      }
+    }
 
     if ((b & 0x7F) < 0x04) {                    /* an escape */
       const arg = bytes[++i];
@@ -339,5 +426,6 @@ function sampleRows() {
 
 if (typeof module !== 'undefined') module.exports = {
   ESC_PAUSE, ESC_MOD, ESC_REPEAT, ESC_JUMP, SHIFT, TABLE_TOP, MAX_SYM,
+  LAYOUTS, setLayout, getLayout,
   usages, header, codeOf, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows };

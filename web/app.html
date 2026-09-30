@@ -65,6 +65,11 @@
                align-items: center; gap: .3rem; margin-right: .6rem; }
   .pad label input { padding: .2rem .35rem; font: 12px ui-monospace, monospace; }
   .hint { color: var(--dim); font-size: .8rem; margin: .5rem 0 0; }
+  .pick { font-size: .8rem; color: var(--dim); display: flex; gap: .4rem;
+          align-items: center; }
+  .pick select { font: inherit; padding: .2rem .3rem; border-radius: .35rem;
+                 border: 1px solid var(--line); background: var(--field);
+                 color: var(--fg); }
   details { margin-top: 2.5rem; }
   summary { cursor: pointer; color: var(--dim); }
   details table { margin-top: .8rem; max-width: 40rem; }
@@ -75,8 +80,16 @@
 </style>
 
 <main>
-<h1>DigiMacro</h1>
-<p>Tap a code, type a macro.</p>
+<div class="bar" style="align-items:flex-start">
+  <div>
+    <h1>DigiMacro</h1>
+    <p>Tap a code, type a macro.</p>
+  </div>
+  <span class="spacer"></span>
+  <label class="pick">keyboard
+    <select id="layout"></select>
+  </label>
+</div>
 
 <div class="bar">
   <button id="connect" class="primary">Connect</button>
@@ -138,7 +151,16 @@ of the hold.</pre>
     <tr><td>{Ctrl+Shift+Left}</td><td>...combined, in any order</td></tr>
     <tr><td>{pause 1.5}</td><td>wait, in seconds, 0.1 to 25.5</td></tr>
     <tr><td>{11} or {x11}</td><td>press the previous keystroke 11 more times</td></tr>
+    <tr><td>á ç ã</td><td>on a dead-key keyboard: the accent, then the letter</td></tr>
+    <tr><td>{'}</td><td>the accent key alone, with nothing joined to it</td></tr>
   </table>
+  <p class="dim" style="max-width:40rem">The board sends key presses, not
+  letters, so what appears is decided by the keyboard layout of the machine it
+  is plugged into — which is what the setting at the top says. On US
+  International an accented character is two presses, the accent and then the
+  letter, and a bare <code>'</code> is the key followed by a space. On a plain
+  US keyboard there is no way to type one at all, so the editor says so rather
+  than typing something else.</p>
   <p class="dim" style="max-width:40rem">A code is one to five dots and dashes:
   a press under a quarter of a second is a dot, longer is a dash, and 700 ms of
   silence ends it. Sixty-two codes exist, so a table that uses many of them is
@@ -406,6 +428,26 @@ $('write').onclick = async () => {
   } catch (e) {
     say(e.message, 'bad');
   }
+};
+
+/* ---- which keyboard the board will be plugged into ------------------ */
+
+/* The board sends scan codes, so an accent is the host's business, not ours.
+   On a layout with dead keys it is the accent and then the letter; on a plain
+   US one it cannot be typed at all. Saying which is here rather than guessed,
+   because guessing wrong types something else without saying so. */
+$('layout').innerHTML = Object.entries(LAYOUTS)
+  .map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+
+try {
+  const saved = localStorage.getItem('digimacro.layout');
+  if (saved) { setLayout(saved); $('layout').value = getLayout(); }
+} catch (e) { /* private windows have no localStorage; the default will do */ }
+
+$('layout').onchange = () => {
+  setLayout($('layout').value);
+  try { localStorage.setItem('digimacro.layout', getLayout()); } catch (e) {}
+  draw();                       /* what was invalid may now be valid */
 };
 
 /* ---- the key palette ----------------------------------------------- */

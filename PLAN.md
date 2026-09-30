@@ -281,6 +281,48 @@ The password and lockout carry over, but the threat model shifts:
      V-USB has EP3 available if turned back on. That is the thing the original
      survey said was exhausted, and it is not, quite.
 
+7. **Then does the mode switch survive at all?** Marco's follow-up, and the
+   answer is probably not. If a vendor collection can carry bytes, it can
+   carry these bytes: a feature report is a control transfer, so `READ` and
+   `WRITE` move across nearly verbatim — the chunking, the bounds, the latched
+   stall and the app's whole encoder are about EEPROM, not about which
+   request carried it.
+
+   What that deletes is substantial: the second device and configuration
+   descriptors, the BOS, the MS OS 2.0 set, the re-enumeration, and the
+   disconnect handling the app needed because of it. Several hundred bytes
+   back, and the Windows caveat about a cached `DeviceInterfaceGUID` goes with
+   them, since HIDClass needs no binding and no driver.
+
+   What it costs:
+
+   - **Physical presence**, which is the whole security property today.
+   - **The landing page.** Chrome offers one for a WebUSB device and not for a
+     HID device, so "plug in, click the notification, configure" disappears.
+     That is a real loss and the only one I would argue about.
+
+   **The eight-byte trap.** Two collections on one interface need report IDs,
+   and a report ID is a byte in front of the report: a boot keyboard's eight
+   becomes nine, and `usbSetInterrupt()` cannot send more than eight. So the
+   key array has to shrink — ID, modifier, reserved and three keys is six, and
+   we only ever send one key at a time — or the vendor collection goes on a
+   second interface with EP3, which keeps boot protocol at the price of an
+   endpoint. Worth knowing before this looks free.
+
+   **And physical presence need not die with the mode switch.** It was only
+   ever bound to re-enumeration by accident. A write could instead require the
+   pad to have been touched in the last few seconds: the app says "touch the
+   pad", the person does, the write goes through. Same property, no
+   re-enumeration, and a better gesture than a four-second hold — which
+   suggests the mode switch was the wrong shape for the requirement all along,
+   and the requirement is the part worth keeping.
+
+   Sequencing, since this is a rewrite of the transport and the transport
+   currently works on two platforms: build the vendor collection as a spike
+   beside what exists, the way the first one was built, and keep WebUSB until
+   the HID channel is proven on Linux and Windows both. Nothing here is urgent
+   enough to break a working device for.
+
 ## What to reuse
 
 | from | what |

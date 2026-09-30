@@ -57,7 +57,9 @@ a dash being a 1 and the first symbol in the highest bit that count uses. No
 count above five exists, so `0xFF` ends the table and **a virgin chip reads as
 an empty one** — nothing to initialise. Two bytes of overhead per macro, and
 neither of DigiMacroCDC's limits — ten macros, thirty keystrokes each —
-survives: what is left is 497 bytes to divide up however you like.
+survives: what is left is 480 bytes to divide up however you like, the last
+32 being kept back for the password, the lockout and whatever this turns out
+to want next.
 
 A keystroke is a HID usage rather than a character, because the app does the
 layout mapping:
@@ -76,13 +78,20 @@ four.
 |---|---|
 | `0x01 nn` | pause `nn` tenths of a second |
 | `0x02 mm` | latch HID modifier mask `mm` into the next keystroke |
-| `0x03 nn` | press the previous keystroke `nn` more times |
+| `0x03 nn` | do the previous keystroke `nn` more times |
+| `0x82` | mark: what follows repeats as a group, not as one keystroke |
 | `0x81 hh` | carry on with the macro whose header is `hh` — not implemented yet |
 
 No argument may be zero, since a zero byte ends the macro. `0x03` is
 run-length coding: "left arrow eleven times" costs three bytes rather than
 eleven, and repeating *whatever went before* carries the latched modifiers with
 it.
+
+`0x82` is what keeps that working once a keystroke stops being a character. On
+a dead-key keyboard `ç` is two presses, the accent and then the letter, so
+repeating "the previous keystroke" repeats the letter and types `çcccc`. A mark
+says where the repeated thing began. It takes no argument — its position is its
+argument — and marks do not nest.
 
 This is the interface between the firmware and the app, so neither end is
 trusted on its own: `tools/loadtable/sample_table.h` is one original shared by
@@ -153,13 +162,16 @@ back. A macro is text, with braces for what text cannot say:
  \n  \t  \\  {{               newline, tab, backslash, a literal {
  {Ctrl+c}  {Alt+Tab}  {F5}    modifiers, and keys that are not characters
  {pause 1.5}                  wait, in seconds
- {11}                         press the previous keystroke 11 more times
+ x{11}                        eleven of them, as in a regular expression
+ (ab){3}                      ...of a whole group rather than one thing
 ```
 
 A key palette inserts any of it at the cursor — arrows, function keys, the
-editing keys, and modifiers that stay held for the next key — so nothing has to
-be spelled from memory. `{11}` borrows the look of a regular expression's
-quantifier, which is what it is; `{x11}` also works and normalises to it.
+editing keys, modifiers that stay held for the next key, and brackets that wrap
+whatever is selected — so nothing has to be spelled from memory. `{11}` means
+eleven in all, as a quantifier does in a regular expression, and a count counts
+whatever precedes it: one keystroke, one accented letter, or a bracketed group.
+A parenthesis is only a parenthesis unless a count follows the closing one.
 
 The editor encodes as you type, so a mistake is reported beside the macro that
 has it, and the byte budget — 497 of them — is always on screen. Nothing is
@@ -214,7 +226,7 @@ device with no serial port has.
 | `test/` | host build of the real sketch against stub hardware |
 | `tools/loadtable/` | writes a sample table into EEPROM, until the app can |
 | `spike/` | the derisking sketch |
-| `web/` | `app.html` is the editor, `eeprom.html` the raw-byte tool, `table.js` the encoder both share |
+| `web/` | `app.html` is the editor, `eeprom.html` the raw-byte tool, `table.js` and `i18n.js` what they share |
 | `PLAN.md` | design, decisions and what comes next |
 
 Descriptors for the WebUSB side are lifted from [DigiISP](../DigiISP), which

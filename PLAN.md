@@ -84,8 +84,11 @@ bits of code — and a length field above 4 is not one the app can write, so
 trick that made "vacant" free.
 
 Overhead drops from "32 bytes however few you used" to two bytes per macro,
-and *both* limits go: no fixed number of macros and no 30-byte ceiling. About
-496 bytes of table, so twenty ten-key macros or four long ones, as you like.
+and *both* limits go: no fixed number of macros and no 30-byte ceiling.
+**480 bytes of table**, so twenty ten-key macros or four long ones, as you
+like; the last 32 are kept back for the password, the lockout and whatever
+comes after, since it is far cheaper to leave room now than to move a board's
+table later.
 
 Five things follow from it:
 
@@ -276,14 +279,28 @@ testable, which is why they are in this order rather than firmware-then-app.
     \n \t \\ {{        newline, tab, backslash, a literal {
     {Ctrl+c} {F5}     modifiers, and keys that are not characters
     {pause 1.5}       wait, in seconds
-    {11}              press the previous keystroke 11 more times
+    x{11}             eleven in all, as a quantifier reads
+    (ab){3}           ...of a group rather than one thing
    ```
 
    `{11}` rather than `{x11}` was Marco's: it borrows the look of a regular
-   expression's quantifier, which is exactly what it is. Nothing collides with
-   a bare number, since a digit is typed as itself. A key palette inserts any
-   of the above at the cursor, with modifiers that stay held for the next key,
-   so none of the names have to be known.
+   expression's quantifier. Which then settled what it means — `ç{5}` was
+   expected to type five, so the count is the total and the firmware's
+   "n more" is reconciled in the encoder, not in the notation.
+
+   That expectation also found a real hole. `ç` is two keystrokes on a
+   dead-key keyboard, so a repeat of "the previous keystroke" typed `çcccc`.
+   The fix is a **mark** in the firmware, `0x82`, saying where the repeated
+   thing began: 42 bytes, no argument, and no nesting. The encoder puts one in
+   whenever the count is counting more than one byte, so `ç{5}` works without
+   anyone writing a group — and `(ab){3}` is there for when the repeated thing
+   really is several characters. A count *inside* a group is refused, because
+   there is one mark and the inner count would take the outer one over.
+
+   A parenthesis stays a parenthesis unless a count follows the closing one,
+   which keeps `f(x)` meaning what it looks like; `\(` says so explicitly. A
+   key palette inserts all of it at the cursor, brackets wrapping whatever is
+   selected.
 
    It decodes as well as encodes, so a table is edited rather than retyped,
    and `test/webtable.js` checks that encoding what was decoded gives the

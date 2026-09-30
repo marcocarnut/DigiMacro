@@ -331,11 +331,38 @@ int main(void)
           code_len);
     cur_mode = DUSB_HID;
 
-    printf("16. the reserved bytes are where the map says\n");
-    /* The table stops one byte below the lockout state; the app is told the
-       same number, so if this changes both must. */
-    CHECK((size_t)TABLE_TOP == 0x1F1, "TABLE_TOP is %02X", (int)(size_t)TABLE_TOP);
-    CHECK((size_t)TABLE_TOP - (size_t)TABLE_BASE == 497, "497 bytes of table");
+    printf("16. a marked group repeats whole\n");
+    /* Once a keystroke stops being a character, "repeat the previous
+       keystroke" repeats the wrong thing: an accented letter is the accent
+       and then the letter, so a plain repeat repeats the letter alone. The
+       mark says where the repeated thing began. */
+    table_reset();
+    add(".",  { K('a'), K('b'), ESC_REPEAT, 2 });          /* b three times */
+    add("..", { ESC_MARK, K('a'), K('b'), ESC_REPEAT, 2 });/* ab three times */
+    CHECK(!strcmp(play("."), "<00/04><00/05><00/05><00/05>"),
+          "without a mark, only the last keystroke repeats: \"%s\"", typed);
+    CHECK(!strcmp(play(".."),
+          "<00/04><00/05><00/04><00/05><00/04><00/05>"),
+          "with one, the whole group does: \"%s\"", typed);
+
+    printf("16b. ...and the macro carries on after it\n");
+    table_reset();
+    add(".", { ESC_MARK, K('a'), ESC_REPEAT, 1, K('z') });
+    CHECK(!strcmp(play("."), "<00/04><00/04><00/1D>"),
+          "a group must not swallow what follows it: \"%s\"", typed);
+
+    printf("16c. a mark with no repeat is harmless\n");
+    table_reset();
+    add(".", { ESC_MARK, K('a'), K('b') });
+    CHECK(!strcmp(play("."), "<00/04><00/05>"),
+          "a mark on its own must change nothing: \"%s\"", typed);
+
+    printf("17. the reserved bytes are where the map says\n");
+    /* The table stops 32 bytes below the end; the app is told the same
+       number, so if this changes both must. */
+    CHECK((size_t)TABLE_TOP == 0x1E0, "TABLE_TOP is %03X", (int)(size_t)TABLE_TOP);
+    CHECK((size_t)TABLE_TOP - (size_t)TABLE_BASE == 480, "480 bytes of table");
+    CHECK(512 - (size_t)TABLE_TOP == 32, "and 32 bytes kept back");
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "all checks passed");
     return fails != 0;

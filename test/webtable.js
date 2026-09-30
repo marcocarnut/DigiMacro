@@ -18,7 +18,7 @@ const check = (ok, what) => { if (!ok) { console.log('  FAIL: ' + what); fails++
 const ROWS = [
   { code: '.',   text: 'hello from WebUSB\\n' },
   { code: '-',   text: 'wait{pause 1.0} ok' },
-  { code: '..',  text: 'ab{4}' },
+  { code: '..',  text: 'ab{4}' },      /* four b in all, not five */
   { code: '.-',  text: '{Ctrl+Left}z' },
   { code: '-.',  text: '{Ctrl+Shift+Left}{Shift+Left}{Alt+Tab}{F5}' },
   { code: '--',  text: 'A!Z {{x}} \\t' },
@@ -86,9 +86,10 @@ for (const [text, want] of [
   ['{Blah}',         /not a key/],
   ['{pause 0}',      /0\.1 to 25\.5/],
   ['{pause 30}',     /0\.1 to 25\.5/],
-  ['a{0}',           /1 to 255/],
-  ['a{x0}',          /1 to 255/],
-  ['a{x300}',        /1 to 255/],
+  ['a{0}',           /1 to 256/],
+  ['a{x0}',          /1 to 256/],
+  ['a{x300}',        /1 to 256/],
+  ['a{257}',         /1 to 256/],
   ['{x3}',           /nothing to repeat/],
   ['\\q',            /means nothing/],
   ['λ',         /no key for/],      /* no layout here can type a lambda */
@@ -116,6 +117,41 @@ msg = null;
 try { t.encodeTable([{ code: '......', text: 'a' }]); }
 catch (e) { msg = e.message; }
 check(msg !== null && /not a code/.test(msg), `six symbols: ${msg}`);
+
+console.log('5b. a count counts, and a group says what it counts');
+/* {n} reads as a quantifier does in a regular expression: n in all. The
+   firmware counts the EXTRA ones, so the two differ by one and the encoder
+   is where that is reconciled. */
+check(JSON.stringify(t.encodeMacro('a{3}')) === JSON.stringify([0x04, 0x03, 0x02]),
+      'a{3} is "a" and two more');
+check(JSON.stringify(t.encodeMacro('x{1}')) === JSON.stringify([0x1B]),
+      'one of something is just the something');
+/* The reason the group exists: an accented letter is two keystrokes, so
+   repeating "the previous keystroke" repeats the letter alone. */
+check(JSON.stringify(t.encodeMacro('ç{5}')) ===
+      JSON.stringify([t.ESC_MARK, 0x34, 0x06, 0x03, 0x04]),
+      'ç{5} marks the pair, so the accent repeats with the letter');
+check(JSON.stringify(t.encodeMacro('(ab){3}')) ===
+      JSON.stringify([t.ESC_MARK, 0x04, 0x05, 0x03, 0x02]), '(ab){3} is a group');
+/* A parenthesis is a parenthesis unless a count follows the closing one. */
+check(!t.encodeMacro('f(x)').includes(t.ESC_MARK), 'f(x) has no group in it');
+check(t.encodeMacro('f(x){2}').includes(t.ESC_MARK), 'f(x){2} does');
+msg = null;
+try { t.encodeMacro('(a{2}b){3}'); } catch (e) { msg = e.message; }
+check(msg !== null && /one mark/.test(msg),
+      `a count inside a group must be refused, got ${JSON.stringify(msg)}`);
+msg = null;
+try { t.encodeMacro('(){2}'); } catch (e) { msg = e.message; }
+check(msg !== null && /nothing in it/.test(msg), `an empty group: ${msg}`);
+
+for (const text of ['a{3}', 'ç{5}', '(ab){3}', 'f(x)', 'f(x){2}', 'x{1}',
+                    '{Ctrl+c}{3}', '(oi){2}!', '(\\n){3}', 'coração{2}',
+                    'a(b){2}c', 'x{256}', '((a){2}){3}', 'f\\(x\\){2}']) {
+  const bytes = t.encodeMacro(text);
+  const again = t.encodeMacro(t.decodeMacro(bytes));
+  check(JSON.stringify(bytes) === JSON.stringify(again),
+        `${JSON.stringify(text)} drifts: ${JSON.stringify(t.decodeMacro(bytes))}`);
+}
 
 console.log('6. accents, on a layout that can type them');
 /* The board sends scan codes, so an accent is the host's business: two

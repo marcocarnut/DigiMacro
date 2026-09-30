@@ -16,9 +16,12 @@ const ESC_PAUSE  = 0x01;    /* nn tenths of a second */
 const ESC_MOD    = 0x02;    /* a HID modifier mask, for the next keystroke */
 const ESC_REPEAT = 0x03;    /* press the previous keystroke nn more times */
 const ESC_JUMP   = 0x81;    /* not implemented in the firmware yet */
+const ESC_MARK   = 0x82;    /* the repeat after this goes back to here */
 const SHIFT      = 0x80;    /* in a stored keystroke */
 
-const TABLE_TOP  = 0x1F1;   /* the firmware stops walking here */
+const TABLE_TOP  = 0x1E0;   /* the firmware stops walking here: 480,
+                               leaving 32 for the password and what
+                               has not been thought of yet */
 const MAX_SYM    = 5;
 
 /* ==================================================================== */
@@ -81,8 +84,11 @@ const MSG = {
   'unclosed':        () => 'a { with no }',
   'empty-braces':    () => '{} is empty',
   'pause-range':     p => `{${p.what}}: a pause runs from 0.1 to 25.5 seconds`,
-  'repeat-range':    p => `{${p.what}}: repeat runs from 1 to 255`,
+  'repeat-range':    p => `{${p.what}}: a repeat runs from 1 to 256`,
   'nothing-to-rep':  p => `{${p.what}}: nothing to repeat yet`,
+  'group-empty':     () => '() has nothing in it',
+  'nested-repeat':   () => 'a count inside a group: the firmware has one mark, '
+                         + 'so the inner count would take the outer one over',
   'no-key-after':    p => `{${p.what}}: no key after the +`,
   'not-a-modifier':  p => `"${p.what}" is not a modifier`,
   'not-a-key':       p => `"${p.what}" is not a key`,
@@ -191,11 +197,37 @@ function usages(text) {
  *    {Enter} {Left} {F5} a key that is not a character
  *    {Ctrl+c} {Alt+Tab}  modifiers on any key or character
  *    {pause 1.5}         wait, in seconds, 0.1 to 25.5
- *    {11}  {x11}         press the previous keystroke 11 more times
+ *    x{11}               eleven of them, as a quantifier reads in a regular
+ *                        expression -- eleven in all, not eleven more
+ *    (ab){3}             ...of a whole group, rather than one thing
+ *    \(  \)              a parenthesis that is only a parenthesis
+ *
+ * The group exists because a keystroke stopped being a character. "ç" on a
+ * dead-key keyboard is the accent and then the letter, so "ç{5}" asked to
+ * repeat the letter and typed çcccc. The encoder now looks at what the count
+ * is counting: one keystroke repeats as one keystroke, and anything longer
+ * gets a mark in front of it so the firmware knows where to go back to. That
+ * makes "ç{5}" work without anyone writing a group at all, and parentheses
+ * are for when the repeated thing is more than one character.
  */
+/* The first unescaped ")" after `from`, or -1. */
+function closeParen(text, from) {
+  for (let i = from; i < text.length; i++) {
+    if (text[i] === '\\') { i++; continue; }
+    if (text[i] === ')') return i;
+  }
+  return -1;
+}
+const REPEAT_NEXT = /^\{\s*x?\s*\d+\s*\}/;
+
 function encodeMacro(text) {
   const out = [];
-  let i = 0, wrote = false;
+  let i = 0;
+
+  /* Where in `out` the last thing that a count could count began, or -1.
+     One byte repeats as one byte; anything longer needs a mark in front of
+     it, which is inserted here once we know a count follows. */
+  let unitAt = -1;
 
   /* Text pasted from elsewhere may carry its accents as separate combining
      marks -- "e" followed by U+0301 rather than a single "é" -- which looks
@@ -211,15 +243,40 @@ function encodeMacro(text) {
     if (ch === '\\') {                          /* the two-character escapes */
       const n = text[++i];
       if (n === undefined) fail('lone-backslash');
-      const lit = { n: '\n', t: '\t', b: '\b', '\\': '\\' }[n];
+      const lit = { n: '\n', t: '\t', b: '\b', '\\': '\\',
+                    '(': '(', ')': ')' }[n];
       if (lit === undefined) fail('bad-escape', { what: n });
+      unitAt = out.length;
       push(...usages(lit));
-      wrote = true;
       i++;
       continue;
     }
 
-    if (ch === '{' && text[i + 1] === '{') { push(...usages('{')); wrote = true; i += 2; continue; }
+    if (ch === '{' && text[i + 1] === '{') {
+      unitAt = out.length; push(...usages('{')); i += 2; continue;
+    }
+
+    /* "(" opens a group only when a count follows the matching ")". Anywhere
+       else it is a parenthesis, which is what it is nine times in ten. */
+    if (ch === '(') {
+      const close = closeParen(text, i + 1);
+      if (close >= 0 && REPEAT_NEXT.test(text.slice(close + 1))) {
+        const inner = text.slice(i + 1, close);
+        if (inner === '') fail('group-empty');
+        const body = encodeMacro(inner);
+        /* The firmware keeps one mark, so a count inside a group would send
+           the group's own repeat back to the wrong place. Refusing says so;
+           emitting it would type something nobody asked for. */
+        if (body.includes(ESC_REPEAT) || body.includes(ESC_MARK))
+          fail('nested-repeat');
+        unitAt = out.length;
+        push(ESC_MARK);             /* explicit groups always get one, so that
+                                       what comes back reads the same way */
+        push(...body);
+        i = close + 1;              /* the count is handled next time round */
+        continue;
+      }
+    }
 
     if (ch === '{') {
       const end = text.indexOf('}', i);
@@ -232,8 +289,9 @@ function encodeMacro(text) {
         const tenths = Math.round(parseFloat(pause[1]) * 10);
         if (tenths < 1 || tenths > 255)
           fail('pause-range', { what: body });
+        unitAt = out.length;
         push(ESC_PAUSE, tenths);
-        continue;                               /* a pause is not a keystroke */
+        continue;
       }
 
       /* {11} as well as {x11}: a bare count reads as a quantifier does in a
@@ -241,11 +299,17 @@ function encodeMacro(text) {
          a digit is typed as itself -- so there is nothing to collide with. */
       const rep = /^x?\s*(\d+)$/i.exec(body);
       if (rep) {
-        const n = parseInt(rep[1], 10);
-        if (n < 1 || n > 255)
-          fail('repeat-range', { what: body });
-        if (!wrote) fail('nothing-to-rep', { what: body });
-        push(ESC_REPEAT, n);
+        const n = parseInt(rep[1], 10);         /* how many in all */
+        if (n < 1 || n > 256) fail('repeat-range', { what: body });
+        if (unitAt < 0) fail('nothing-to-rep', { what: body });
+        if (n > 1) {
+          /* One byte is repeated as itself; anything longer needs the
+             firmware told where it began. A group put its own mark in. */
+          if (out.length - unitAt > 1 && out[unitAt] !== ESC_MARK)
+            out.splice(unitAt, 0, ESC_MARK);
+          push(ESC_REPEAT, n - 1);              /* the firmware counts MORE */
+        }
+        unitAt = -1;                            /* a count cannot count a count */
         continue;
       }
 
@@ -280,14 +344,14 @@ function encodeMacro(text) {
         fail('not-a-key', { what: keyName });
       }
 
+      unitAt = out.length;
       if (mask) push(ESC_MOD, mask);
       push(usage);
-      wrote = true;
       continue;
     }
 
+    unitAt = out.length;
     push(...usages(ch));
-    wrote = true;
     i++;
   }
   return out;
@@ -325,11 +389,23 @@ function plainChar(b) {
   return (b & SHIFT) ? UNSHIFTED[b & 0x7F] : UNPLAIN[b & 0x7F];
 }
 
+/* Text that a count can follow without parentheses: one character, or one
+   brace form. "ç" is one thing to a reader even though it is two keystrokes,
+   and that is the whole point of the group. */
+const oneUnit = s => [...s].length === 1 || /^\{[^}]*\}$/.test(s);
+
 function decodeMacro(bytes) {
   let out = '', mod = 0;
+  let groupAt = -1, groupByte = 0;      /* where a marked group began */
 
   for (let i = 0; i < bytes.length; i++) {
     const b = bytes[i];
+
+    if (b === ESC_MARK) {               /* no argument, so not below */
+      groupAt = out.length;
+      groupByte = i + 1;
+      continue;
+    }
 
     /* On a dead-key layout, what the host shows for two keystrokes is not
        what either of them shows alone, and the editor should say what will
@@ -352,7 +428,26 @@ function decodeMacro(bytes) {
     if ((b & 0x7F) < 0x04) {                    /* an escape */
       const arg = bytes[++i];
       if (b === ESC_PAUSE)  { out += `{pause ${(arg / 10).toFixed(1)}}`; continue; }
-      if (b === ESC_REPEAT) { out += `{${arg}}`; continue; }
+      if (b === ESC_REPEAT) {
+        const n = arg + 1;              /* the firmware counts the extra ones */
+        if (groupAt < 0) {
+          /* A ")" just before a count would read as a group closing, so it
+             has to say that it is only a parenthesis. */
+          if (out.endsWith(')') && !out.endsWith('\\)'))
+            out = out.slice(0, -1) + '\\)';
+          out += `{${n}}`;
+          continue;
+        }
+        const inner = out.slice(groupAt);
+        const span = (i - 1) - groupByte;   /* bytes between mark and repeat */
+        /* One byte under a mark has to keep its parentheses: written without
+           them it would encode as a bare repeat, mark and all dropped. */
+        out = out.slice(0, groupAt)
+            + (span > 1 && oneUnit(inner) ? inner : `(${inner})`)
+            + `{${n}}`;
+        groupAt = -1;
+        continue;
+      }
       if (b === ESC_MOD)    { mod = arg; continue; }
       out += `{?${b.toString(16)}}`;            /* a jump, once there are any */
       continue;
@@ -461,6 +556,6 @@ function sampleRows() {
 
 if (typeof module !== 'undefined') module.exports = {
   ESC_PAUSE, ESC_MOD, ESC_REPEAT, ESC_JUMP, SHIFT, TABLE_TOP, MAX_SYM,
-  LAYOUTS, setLayout, getLayout, setMessages, MSG,
+  ESC_MARK, LAYOUTS, setLayout, getLayout, setMessages, MSG,
   usages, header, codeOf, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows };

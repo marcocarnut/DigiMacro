@@ -131,6 +131,8 @@
     <label style="margin-left:.8rem"><span data-t="repeat">repeat</span>
       <input id="repval" size="3" value="4"></label>
     <button data-ins="rep" data-t="insert">insert</button>
+    <button data-ins="group" style="margin-left:.8rem"
+            title="( )">( )</button>
   </div>
 </div>
 <p class="hint" data-t="pad-hint"></p>
@@ -154,7 +156,9 @@
     <tr><td>{Ctrl+c} {Alt+Tab}</td><td data-t="ref-mods"></td></tr>
     <tr><td>{Ctrl+Shift+Left}</td><td data-t="ref-combined"></td></tr>
     <tr><td>{pause 1.5}</td><td data-t="ref-pause"></td></tr>
-    <tr><td>{11} or {x11}</td><td data-t="ref-repeat"></td></tr>
+    <tr><td>x{11}</td><td data-t="ref-repeat"></td></tr>
+    <tr><td>(ab){3}</td><td data-t="ref-group"></td></tr>
+    <tr><td>\( \)</td><td data-t="ref-paren"></td></tr>
     <tr><td>á ç ã</td><td data-t="ref-accent"></td></tr>
     <tr><td>{'}</td><td data-t="ref-bare-mark"></td></tr>
   </table>
@@ -552,7 +556,28 @@ $('pad').addEventListener('click', e => {
   }
   if (t.dataset.ins === 'rep') {
     const v = parseInt($('repval').value, 10);
-    if (v >= 1 && v <= 255) insert(`{${v}}`);
+    if (v >= 1 && v <= 256) insert(`{${v}}`);
+    return;
+  }
+
+  /* A count counts the thing before it, and that thing is one keystroke
+     unless something says otherwise. Parentheses are how you say otherwise:
+     around a selection if there is one, ready to type into if there is not. */
+  if (t.dataset.ins === 'group') {
+    const el = lastField && lastField.isConnected
+             ? lastField : document.querySelector('#list input.text');
+    if (!el) return;
+    el.focus();
+    const a = el.selectionStart, b = el.selectionEnd;
+    el.value = el.value.slice(0, a) + '(' + el.value.slice(a, b) + ')'
+             + el.value.slice(b);
+    /* With something selected the caret goes after the closing bracket, which
+       is where the count goes next; with nothing selected it goes inside,
+       which is where the thing being grouped goes. */
+    const at = a === b ? a + 1 : b + 2;
+    el.setSelectionRange(at, at);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    lastField = el;
   }
 });
 

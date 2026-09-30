@@ -122,8 +122,16 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *
  *      0x01 nn   pause nn tenths of a second
  *      0x02 mm   latch modifier mask mm into the next keystroke
- *      0x03 nn   press the previous keystroke nn more times
+ *      0x03 nn   do the previous keystroke nn more times
+ *      0x82      mark: the rest repeats as a group, not one keystroke
  *      0x81 hh   carry on with the macro whose header is hh    (not yet)
+ *
+ * 0x82 is what makes the repeat useful once a keystroke stops being a
+ * character. On a dead-key keyboard "c-cedilla" is two presses, the accent
+ * and then the letter, so repeating "the previous keystroke" repeats the
+ * letter alone and types c-cedilla-c-c-c. A mark says where the thing being
+ * repeated began, and the repeat goes back to it. It takes no argument, since
+ * its position IS its argument, and marks do not nest: the last one wins.
  *
  * mm is a HID modifier mask -- 0x01 LeftCtrl, 0x02 LeftShift, 0x04 LeftAlt,
  * 0x08 LeftGUI, and the four right-hand ones above them -- so the app builds
@@ -145,8 +153,8 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  */
 
 #define TABLE_BASE      ((uint8_t *)0x000)
-#define TABLE_TOP       ((uint8_t *)0x1F1)  /* one past the last table byte;
-                                               the config lives above it */
+#define TABLE_TOP       ((uint8_t *)0x1E0)  /* one past the last table byte:
+                                               480, leaving 32 above it */
 #define MACRO_MAX_SYM   5
 
 #define HDR_END(h)      (((h) & 0x07) >= MACRO_MAX_SYM)
@@ -156,14 +164,17 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define ESC_MOD         0x02
 #define ESC_REPEAT      0x03
 #define ESC_JUMP        0x81
+#define ESC_MARK        0x82
 #define IS_ESC(c)       (((c) & 0x7F) < 0x04)
 
 #define KEY_SHIFT       0x80        /* in a stored keystroke */
 #define MOD_SHIFT       0x02        /* in a HID report       */
 
-/* The rest of the EEPROM, reserved here so that a table can never grow into
- * it. All of it belongs to steps still to come:
+/* The last 32 bytes, reserved here so that a table can never grow into them.
+ * All of it belongs to steps still to come, and the gap is deliberate: it is
+ * cheaper to leave room now than to move a board's table later.
  *
+ *   0x1E0   free, for whatever this turns out to want
  *   0x1F1   lockout allowance
  *   0x1F2   tries left of it
  *   0x1F3   the code to type at power-on, if any
@@ -513,9 +524,11 @@ uint8_t *find_code(uint8_t nsym, uint8_t bits)
 /* Type one macro, given where its keystrokes start. */
 void macro_play(uint8_t *a)
 {
-    uint8_t mod = 0;            /* latched by ESC_MOD for the next keystroke */
-    uint8_t lastkey = 0;        /* what ESC_REPEAT repeats... */
-    uint8_t lastmod = 0;        /* ...modifiers and all */
+    uint8_t  mod = 0;           /* latched by ESC_MOD for the next keystroke */
+    uint8_t  lastkey = 0;       /* what a bare ESC_REPEAT repeats... */
+    uint8_t  lastmod = 0;       /* ...modifiers and all */
+    uint8_t *mark = 0;          /* ...and where a marked group began */
+    uint8_t  reps = 0;          /* times round that group still to go */
 
     LED_SET(1);
 
@@ -524,6 +537,11 @@ void macro_play(uint8_t *a)
         if (!c) break;
 
         if (IS_ESC(c)) {
+            if (c == ESC_MARK) {        /* no argument: where it sits is the
+                                           argument */
+                mark = a;
+                continue;
+            }
             if (a >= TABLE_TOP) break;  /* an escape in the last table byte
                                            would take its argument from the
                                            lockout state, and a repeat count
@@ -537,7 +555,20 @@ void macro_play(uint8_t *a)
             } else if (c == ESC_MOD) {
                 mod = arg;
             } else if (c == ESC_REPEAT) {
-                while (arg--) dusbKey(lastmod, lastkey);
+                /* Without a mark this repeats one keystroke, which is the
+                   cheap and common case. With one it goes back to the mark,
+                   so whatever the group was -- an accent and its letter, a
+                   word, a pause -- repeats whole. */
+                if (!mark) {
+                    while (arg--) dusbKey(lastmod, lastkey);
+                } else if (!reps) {
+                    reps = arg;         /* the group has played once already */
+                    a = mark;
+                } else if (--reps) {
+                    a = mark;
+                } else {
+                    mark = 0;           /* done; carry on past the repeat */
+                }
             } else {
                 break;                  /* ESC_JUMP, which this build does
                                            not have: stop rather than guess */

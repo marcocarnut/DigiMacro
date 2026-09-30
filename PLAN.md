@@ -265,8 +265,35 @@ testable, which is why they are in this order rather than firmware-then-app.
 
    `tools/loadtable` stays useful as a way to get a board going without a
    browser.
-3. **The app.** Table editor, ASCII to usages, and the loop check before it
-   writes.
+3. ~~**The app.**~~ **Done.** `web/app.html`: read a board's table, edit it,
+   write it back verified, with the byte budget on screen and every mistake
+   reported beside the macro that has it.
+
+   The work was not the UI but the macro language, since a macro is mostly
+   text and occasionally something text cannot say:
+
+   ```
+    \n \t \\ {{        newline, tab, backslash, a literal {
+    {Ctrl+c} {F5}     modifiers, and keys that are not characters
+    {pause 1.5}       wait, in seconds
+    {x11}             press the previous keystroke 11 more times
+   ```
+
+   It decodes as well as encodes, so a table is edited rather than retyped,
+   and `test/webtable.js` checks that encoding what was decoded gives the
+   same bytes back — not that the text is identical, because it is not:
+   `{Enter}` reads back as `\n`, and `{Ctrl++}` as `{Ctrl+Shift+=}`, since
+   `+` is shift and equals. What must never drift is the bytes.
+
+   Three parser bugs came out of writing those tests rather than out of use:
+   `{Del}` was not a spelling of Delete, `{Ctrl+}` was read as Ctrl-and-plus
+   instead of a missing key, and an out-of-range `{x300}` blamed whatever
+   preceded it. A fourth came out of driving the page: the editor's model was
+   called `rows` while the table body had `id="rows"`, and the DOM wins that
+   argument.
+
+   The loop check this step was meant to include has nothing to check yet, as
+   `\j` does not exist. It belongs with step 5.
 4. **`STATUS` and `UNLOCK`**, the password and the lockout — including
    counting failed password attempts, which the CDC version does not do and
    which matters far more over USB. `autoexec` belongs here too, beside the

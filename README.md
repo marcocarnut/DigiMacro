@@ -12,12 +12,13 @@ its own EEPROM.
 Sibling of [DigiMacroCDC](../DigiMacroCDC), which keeps an on-device CDC command
 line instead. That one is finished and in use; this one is early.
 
-## Status: it types, and a web page can write the table
+## Status: working, less the password
 
-The firmware plays macros out of a packed EEPROM table, and `READ` and `WRITE`
-vendor requests put one there — so `web/eeprom.html` already dumps, writes and
-verifies a board's table. What is missing is the app proper, and the password
-and lockout that gate all of this.
+The firmware plays macros out of a packed EEPROM table; `READ` and `WRITE`
+vendor requests put one there; and `web/app.html` is an editor for it that
+reads a board's table, checks what you type, and writes it back verified.
+What is left is the password and lockout that should gate all of this, and
+`\j`.
 
 **4058 bytes of the 6650** the stock bootloader leaves, and 106 of RAM — so it
 installs over USB like any sketch, with about 2.5 KB still to spend on the
@@ -142,6 +143,23 @@ through a bleed resistor, `ledecho` to make the LED follow the input while
 tapping — which is for working on the input path only, since it shows a
 bystander the code — and `isp` for a chip with no bootloader.
 
+## Writing macros
+
+`web/app.html` edits the table: read what a board holds, change it, write it
+back. A macro is text, with braces for what text cannot say:
+
+```
+ hello{Enter}                 anything is typed as itself
+ \n  \t  \\  {{               newline, tab, backslash, a literal {
+ {Ctrl+c}  {Alt+Tab}  {F5}    modifiers, and keys that are not characters
+ {pause 1.5}                  wait, in seconds
+ {x11}                        press the previous keystroke 11 more times
+```
+
+The editor encodes as you type, so a mistake is reported beside the macro that
+has it, and the byte budget — 497 of them — is always on screen. Nothing is
+written until every macro is valid.
+
 ## Testing
 
 ```
@@ -179,7 +197,7 @@ device with no serial port has.
 | `test/` | host build of the real sketch against stub hardware |
 | `tools/loadtable/` | writes a sample table into EEPROM, until the app can |
 | `spike/` | the derisking sketch |
-| `web/` | `eeprom.html` reads and writes a board's table; `table.js` encodes one |
+| `web/` | `app.html` is the editor, `eeprom.html` the raw-byte tool, `table.js` the encoder both share |
 | `PLAN.md` | design, decisions and what comes next |
 
 Descriptors for the WebUSB side are lifted from [DigiISP](../DigiISP), which

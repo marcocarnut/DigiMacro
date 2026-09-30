@@ -1,0 +1,329 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DigiMacro</title>
+<style>
+  :root {
+    --bg: #fbfbfd; --fg: #16161a; --dim: #6b6b76; --line: #0002;
+    --field: #fff; --ok: #0a7d32; --bad: #c02a2a; --accent: #2c5fd8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16161a; --fg: #e8e8ea; --dim: #9a9aa4; --line: #fff3;
+            --field: #202027; --ok: #58d68d; --bad: #ff7b72; --accent: #7aa2f7; }
+  }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.55 system-ui, sans-serif; color: var(--fg);
+         background: var(--bg); margin: 0; padding: 2.5rem 1rem 4rem; }
+  main { max-width: 56rem; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .2rem; letter-spacing: -.01em; }
+  h1 + p { margin: 0 0 1.6rem; color: var(--dim); }
+  h2 { font-size: .95rem; text-transform: uppercase; letter-spacing: .06em;
+       color: var(--dim); margin: 2.2rem 0 .7rem; font-weight: 600; }
+  button { font: inherit; padding: .4rem .85rem; border-radius: .45rem;
+           border: 1px solid var(--line); background: var(--field);
+           color: inherit; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .bar { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  .bar .spacer { flex: 1 }
+  input { font: inherit; padding: .35rem .5rem; border-radius: .4rem;
+          border: 1px solid var(--line); background: var(--field); color: inherit; }
+  input.code { width: 6.5rem; font-family: ui-monospace, monospace;
+               letter-spacing: .12em; text-align: center; }
+  input.text { width: 100%; font-family: ui-monospace, monospace; font-size: 13px; }
+  input.bad { border-color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: .75rem; text-transform: uppercase;
+       letter-spacing: .06em; color: var(--dim); font-weight: 600;
+       padding: 0 .4rem .35rem; }
+  td { padding: .2rem .4rem; vertical-align: top; }
+  td.n { color: var(--dim); font-variant-numeric: tabular-nums;
+         font-size: .8rem; text-align: right; white-space: nowrap;
+         padding-top: .75rem; }
+  .err { color: var(--bad); font-size: .8rem; padding: .1rem .4rem .4rem; }
+  .meter { height: 5px; border-radius: 3px; background: var(--line);
+           overflow: hidden; width: 11rem; }
+  .meter i { display: block; height: 100%; background: var(--accent);
+             transition: width .2s; }
+  .meter.full i { background: var(--bad); }
+  pre { padding: .75rem .9rem; border-radius: .45rem; background: var(--field);
+        border: 1px solid var(--line); overflow-x: auto; margin: 1.2rem 0 0;
+        font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .dim { color: var(--dim); }
+  details { margin-top: 2.5rem; }
+  summary { cursor: pointer; color: var(--dim); }
+  details table { margin-top: .8rem; max-width: 40rem; }
+  details td { padding: .15rem .8rem .15rem 0; }
+  details td:first-child { font-family: ui-monospace, monospace; white-space: nowrap; }
+  kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line);
+        border-bottom-width: 2px; border-radius: .25rem; padding: 0 .3rem; }
+</style>
+
+<main>
+<h1>DigiMacro</h1>
+<p>Tap a code, type a macro.</p>
+
+<div class="bar">
+  <button id="connect" class="primary">Connect</button>
+  <span id="who" class="dim">hold the pad four seconds, then connect</span>
+</div>
+
+<h2>Macros</h2>
+<table>
+  <thead><tr><th style="width:7.5rem">Code</th><th>Types</th>
+             <th style="width:4rem"></th><th style="width:2rem"></th></tr></thead>
+  <tbody id="list"></tbody>
+</table>
+
+<div class="bar" style="margin-top:1rem">
+  <button id="add">Add a macro</button>
+  <button id="sample">Load the example</button>
+  <span class="spacer"></span>
+  <span id="budget" class="dim">1 of 497 bytes</span>
+  <span class="meter" id="meter"><i style="width:0"></i></span>
+</div>
+
+<div class="bar" style="margin-top:1.4rem">
+  <button id="read" disabled>Read from the board</button>
+  <button id="write" class="primary" disabled>Write to the board</button>
+</div>
+
+<pre id="log" class="dim">Nothing yet. Hold the pad for four seconds to put the board in vendor mode,
+then connect — in keyboard mode it answers none of this, which is the point
+of the hold.</pre>
+
+<details>
+  <summary>What can go in a macro</summary>
+  <table>
+    <tr><td>anything</td><td>typed as itself</td></tr>
+    <tr><td>\n \t \\</td><td>newline, tab, backslash</td></tr>
+    <tr><td>{{</td><td>a literal {</td></tr>
+    <tr><td>{Enter} {Left} {F5}</td><td>a key that is not a character</td></tr>
+    <tr><td>{Ctrl+c} {Alt+Tab}</td><td>modifiers on any key or character</td></tr>
+    <tr><td>{Ctrl+Shift+Left}</td><td>...combined, in any order</td></tr>
+    <tr><td>{pause 1.5}</td><td>wait, in seconds, 0.1 to 25.5</td></tr>
+    <tr><td>{x11}</td><td>press the previous keystroke 11 more times</td></tr>
+  </table>
+  <p class="dim" style="max-width:40rem">A code is one to five dots and dashes:
+  a press under a quarter of a second is a dot, longer is a dash, and 700 ms of
+  silence ends it. Sixty-two codes exist, so a table that uses many of them is
+  easier to guess — which is what the lockout, still to be built, is for.</p>
+  <p class="dim" style="max-width:40rem">Macros are packed end to end, so the
+  only limit is 497 bytes in total: two bytes of overhead each, one byte per
+  keystroke, two per pause or repeat.</p>
+</details>
+</main>
+
+<script src="table.js"></script>
+<script>
+const DM_FUNC_INFO  = 0x40;
+const DM_FUNC_READ  = 0x60;
+const DM_FUNC_WRITE = 0x61;
+const CHUNK = 32;       /* bytes per transfer: a byte takes 3.4 ms to write,
+                           and the device answers nothing while it writes */
+
+let dev = null, eeSize = 512;
+let macros = [{ code: '.', text: '' }];
+
+const $ = id => document.getElementById(id);
+const log = $('log');
+let lines = [];
+const say = (s, cls) => {
+  lines.push(cls ? `<span class="${cls}">${s}</span>` : s);
+  log.innerHTML = lines.join('\n');
+  log.className = '';
+};
+const fresh = () => { lines = []; log.innerHTML = ''; };
+const hex2 = v => v.toString(16).padStart(2, '0');
+
+/* ---- the device ---------------------------------------------------- */
+
+async function eeRead(addr, len) {
+  const r = await dev.controlTransferIn({
+    requestType: 'vendor', recipient: 'device',
+    request: DM_FUNC_READ, value: addr, index: 0 }, len);
+  if (r.status !== 'ok') throw new Error(`read at ${addr}: ${r.status}`);
+  return new Uint8Array(r.data.buffer);
+}
+
+async function eeWrite(addr, bytes) {
+  const r = await dev.controlTransferOut({
+    requestType: 'vendor', recipient: 'device',
+    request: DM_FUNC_WRITE, value: addr, index: 0 }, bytes);
+  if (r.status !== 'ok') throw new Error(`write at ${addr}: ${r.status}`);
+}
+
+/* ---- the editor ---------------------------------------------------- */
+
+/* Encode every row, so that a mistake is reported next to the row that has
+   it rather than when the table is written. */
+function state() {
+  const each = macros.map(r => {
+    try { return { bytes: encodeMacro(r.text), error: null }; }
+    catch (e) { return { bytes: null, error: e.message }; }
+  });
+
+  let error = null, total = 1;              /* the terminator */
+  const seen = new Set();
+  macros.forEach((r, i) => {
+    try { 
+      const h = header(r.code);
+      if (seen.has(h)) { each[i].error = each[i].error || `"${r.code}" is used twice`; }
+      seen.add(h);
+    } catch (e) { each[i].error = each[i].error || e.message; }
+    if (each[i].bytes) total += each[i].bytes.length + 2;
+  });
+  if (total > TABLE_TOP) error = `${total} bytes of table, and only ${TABLE_TOP} fit`;
+  const ok = !error && each.every(e => !e.error);
+  return { each, total, error, ok };
+}
+
+function draw() {
+  const st = state();
+  const tbody = $('list');
+  tbody.innerHTML = '';
+
+  macros.forEach((r, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td><input class="code${st.each[i].error ? '' : ''}" value="${r.code.replace(/"/g,'')}"
+           spellcheck="false" data-i="${i}" data-f="code"></td>` +
+      `<td><input class="text${st.each[i].error ? ' bad' : ''}" value="${r.text.replace(/"/g,'&quot;')}"
+           spellcheck="false" data-i="${i}" data-f="text"
+           placeholder="what this code types"></td>` +
+      `<td class="n">${st.each[i].bytes ? st.each[i].bytes.length + 2 : '—'} B</td>` +
+      `<td><button data-del="${i}" title="remove">✕</button></td>`;
+    tbody.appendChild(tr);
+    if (st.each[i].error) {
+      const e = document.createElement('tr');
+      e.innerHTML = `<td></td><td colspan="3" class="err">${st.each[i].error}</td>`;
+      tbody.appendChild(e);
+    }
+  });
+
+  $('budget').textContent = `${st.total} of ${TABLE_TOP} bytes`;
+  $('budget').className = st.error ? 'bad' : 'dim';
+  const m = $('meter');
+  m.firstElementChild.style.width =
+    Math.min(100, st.total * 100 / TABLE_TOP) + '%';
+  m.className = 'meter' + (st.error ? ' full' : '');
+  $('write').disabled = !dev || !st.ok;
+}
+
+$('list').addEventListener('input', e => {
+  const i = +e.target.dataset.i, f = e.target.dataset.f;
+  if (f === undefined) return;
+  macros[i][f] = e.target.value;
+  /* redraw only what is cheap to redraw, so the caret stays where it is */
+  const st = state();
+  $('budget').textContent = `${st.total} of ${TABLE_TOP} bytes`;
+  $('budget').className = st.error ? 'bad' : 'dim';
+  $('meter').firstElementChild.style.width =
+    Math.min(100, st.total * 100 / TABLE_TOP) + '%';
+  $('meter').className = 'meter' + (st.error ? ' full' : '');
+  e.target.classList.toggle('bad', !!st.each[i].error && f === 'text');
+  $('write').disabled = !dev || !st.ok;
+});
+$('list').addEventListener('change', draw);
+$('list').addEventListener('click', e => {
+  const d = e.target.dataset.del;
+  if (d === undefined) return;
+  macros.splice(+d, 1);
+  if (!macros.length) macros = [{ code: '.', text: '' }];
+  draw();
+});
+
+$('add').onclick = () => {
+  const used = new Set(macros.map(r => r.code));
+  const next = ['.', '-', '..', '.-', '-.', '--', '...', '..-', '.-.', '.--',
+                '-..', '-.-', '--.', '---'].find(c => !used.has(c)) || '';
+  macros.push({ code: next, text: '' });
+  draw();
+};
+
+$('sample').onclick = () => { macros = sampleRows(); draw(); fresh();
+  say('An example of each thing a macro can do. Write it, then hold the pad '
+      + 'four seconds to become a keyboard again and tap the codes.'); };
+
+/* ---- connect, read, write ------------------------------------------ */
+
+$('connect').onclick = async () => {
+  fresh();
+  if (!navigator.usb) {
+    say('navigator.usb is missing. WebUSB needs Chrome or Edge, over https '
+        + 'or localhost.', 'bad');
+    return;
+  }
+  try {
+    const known = await navigator.usb.getDevices();
+    dev = known.find(d => d.vendorId === 0x16c0 && d.productId === 0x05dc)
+       || await navigator.usb.requestDevice(
+            { filters: [{ vendorId: 0x16c0, productId: 0x05dc }] });
+    await dev.open();
+    if (dev.configuration === null) await dev.selectConfiguration(1);
+    await dev.claimInterface(0);
+    const r = await dev.controlTransferIn({
+      requestType: 'vendor', recipient: 'device',
+      request: DM_FUNC_INFO, value: 0, index: 0 }, 6);
+    const b = new Uint8Array(r.data.buffer);
+    if (String.fromCharCode(b[0], b[1]) !== 'DM') {
+      say('that device did not answer "DM"', 'bad'); dev = null; return;
+    }
+    if (b.length >= 6) eeSize = b[4] | (b[5] << 8);
+    $('who').textContent = `connected — firmware ${b[3]}, protocol ${b[2]}`;
+    $('who').className = 'ok';
+    $('read').disabled = false;
+    draw();
+    say('Connected. Read the board to edit what is on it, or write what is '
+        + 'here over it.', 'ok');
+  } catch (e) {
+    dev = null;
+    say('could not connect: ' + e.message, 'bad');
+  }
+};
+
+$('read').onclick = async () => {
+  fresh();
+  try {
+    const ee = new Uint8Array(TABLE_TOP);
+    for (let a = 0; a < TABLE_TOP; a += CHUNK)
+      ee.set(await eeRead(a, Math.min(CHUNK, TABLE_TOP - a)), a);
+    const got = decodeTable(ee);
+    if (!got.length) {
+      say('The board has no macros on it yet.', 'dim');
+      return;
+    }
+    macros = got;
+    draw();
+    say(`Read ${got.length} macro${got.length > 1 ? 's' : ''} off the board.`, 'ok');
+  } catch (e) {
+    say(e.message, 'bad');
+  }
+};
+
+$('write').onclick = async () => {
+  fresh();
+  let bytes;
+  try { bytes = encodeTable(macros); }
+  catch (e) { say(e.message, 'bad'); return; }
+
+  try {
+    for (let i = 0; i < bytes.length; i += CHUNK)
+      await eeWrite(i, bytes.slice(i, i + CHUNK));
+    const back = await eeRead(0, bytes.length);
+    const bad = [...bytes].findIndex((v, i) => back[i] !== v);
+    if (bad >= 0) {
+      say(`mismatch at ${bad}: wrote ${hex2(bytes[bad])}, read ${hex2(back[bad])}`,
+          'bad');
+      return;
+    }
+    say(`Wrote ${bytes.length} bytes and read every one of them back.`, 'ok');
+    say('Hold the pad for four seconds to become a keyboard again, then tap '
+        + 'a code.');
+  } catch (e) {
+    say(e.message, 'bad');
+  }
+};
+
+draw();
+</script>

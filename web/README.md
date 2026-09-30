@@ -10,13 +10,21 @@ then, in Chrome or Edge:
 
 | | |
 |---|---|
-| <http://localhost:8000/eeprom.html> | read, write and verify the macro table |
+| <http://localhost:8000/app.html> | **the app**: edit the macros and write them |
+| <http://localhost:8000/eeprom.html> | the low-level tool: dump, write and verify raw bytes |
 | <http://localhost:8000/spike.html> | the original derisking page: connect and ask INFO |
 
-`table.js` turns text and codes into a packed table and is shared with
-`test/run.sh`, which plays what it encodes against the real firmware — so the
-app's encoder and the firmware's decoder are checked against each other rather
-than each being trusted alone.
+`table.js` turns macro text into the bytes the firmware plays, and back again
+so a board's table can be edited rather than retyped. It is shared with
+`test/run.sh`, which checks the round trip and then plays what it encodes
+against the real firmware — so the app's encoder and the firmware's decoder are
+checked against each other rather than each being trusted alone.
+
+**`python3 -m http.server` sends no cache headers**, so Chrome applies its own
+heuristic freshness and will happily keep running an old `table.js` after you
+edit it. If a change seems to have no effect, hard-reload with
+<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>. It cost me twenty minutes of
+looking for a bug that was not there.
 
 `eeprom.html` also has a bounds test: a read that runs off the end should come
 back short, and a write that would cross the end should be refused. Both are

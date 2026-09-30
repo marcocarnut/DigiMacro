@@ -35,13 +35,19 @@ g++ -w -I. -I.. -DTOUCH_PULLUP=0 -o "$OUT"_touch_rc touch_test.cpp
 "$OUT"_touch_rc
 
 echo
-echo "== the app's encoder against the firmware's decoder =="
+echo "== the app's macro language, on its own =="
+if command -v node >/dev/null 2>&1; then
+    node webtable.js
+else
+    echo "node not found, skipped"
+fi
+
+echo
+echo "== ...and against the firmware's decoder =="
 if command -v node >/dev/null 2>&1; then
     g++ -w -I. -I.. -o "$OUT"_hexplay hexplay.cpp
-    node -e 'const t = require("../web/table.js");
-             process.stdout.write([...t.sampleTable()]
-               .map(v => v.toString(16)).join(" "));' \
-      | "$OUT"_hexplay . - .. .- -- 2>/dev/null > "$OUT"_played
+    node webtable.js --emit \
+      | "$OUT"_hexplay . - .. .- -. -- ... 2>/dev/null > "$OUT"_played
     if diff -u webtable.expected "$OUT"_played; then
         echo "web/table.js and DigiMacro.ino agree"
     else

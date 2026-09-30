@@ -248,6 +248,18 @@ vendor-class interface and zero endpoints, and the landing-page URL.
   spike; a released DigiMacro wants its own, or Windows will file the two
   devices under one interface class.
 
+### The first version of the spike had no touch sensing at all
+
+Written for a pushbutton — `!(PINB & bit)` with the internal pull-up on — so a
+pad on the same pin did nothing, since the pull-up holds the pin high and
+nothing ever charges it. The tested touch code was carried over from
+DigiMacroCDC verbatim rather than rewritten.
+
+It also now **types its own pad readings**, twice a second, which is the same
+diagnostic DigiMacroCDC's `touch` command gave over the terminal — by the only
+channel a device with no serial port has. `raw base .` or `raw base T`, in hex.
+3606 bytes.
+
 ### What the test decides
 
 Serve `web/` over localhost, hold the pad four seconds, connect. The page

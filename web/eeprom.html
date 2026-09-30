@@ -119,8 +119,13 @@ $('connect').onclick = async () => {
     return;
   }
   try {
-    dev = await navigator.usb.requestDevice(
-      { filters: [{ vendorId: 0x16c0, productId: 0x05dc }] });
+    /* A device already granted to this origin comes back without the picker,
+       so reconnecting after a reload -- or after the board has been to
+       keyboard mode and back -- is one click. */
+    const known = await navigator.usb.getDevices();
+    dev = known.find(d => d.vendorId === 0x16c0 && d.productId === 0x05dc)
+       || await navigator.usb.requestDevice(
+            { filters: [{ vendorId: 0x16c0, productId: 0x05dc }] });
     await dev.open();
     if (dev.configuration === null) await dev.selectConfiguration(1);
     await dev.claimInterface(0);
@@ -225,16 +230,26 @@ $('edges').onclick = async () => {
   } catch (e) {
     say('short read failed: ' + e.message, 'bad');
   }
-  /* A write that would cross the end must be refused. The first bytes land --
-     the device writes as it goes -- so this reads the last ones back to show
-     that nothing beyond the end was touched. */
+  /* A write that would cross the end must be refused. The bytes before the
+     end still land, because the device writes as it goes rather than
+     checking first, so whatever was there is read beforehand and put back
+     afterwards -- on both paths. Leaving the restore only on the path where
+     the write was NOT refused, which is the path that never runs, quietly
+     littered the last four bytes of EEPROM. That is where the password will
+     live. */
+  const before = await eeRead(eeSize - 4, 4);
+  let refused = false;
   try {
-    const before = await eeRead(eeSize - 4, 4);
     await eeWrite(eeSize - 4, Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8]));
-    say('a write crossing the end was NOT refused', 'bad');
-    await eeWrite(eeSize - 4, before);
   } catch (e) {
+    refused = true;
     say('a write crossing the end was refused: ' + e.message, 'ok');
   }
+  if (!refused) say('a write crossing the end was NOT refused', 'bad');
+  await eeWrite(eeSize - 4, before);
+  const back = await eeRead(eeSize - 4, 4);
+  const same = [...back].every((v, i) => v === before[i]);
+  say(same ? 'and the four bytes it did reach have been put back'
+           : 'the bytes below the end could not be restored', same ? 'ok' : 'bad');
 };
 </script>

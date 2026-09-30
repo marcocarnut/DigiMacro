@@ -18,11 +18,15 @@ finished and working; this one starts from it and removes more than it adds.
 | added | estimated flash |
 |---|---|
 | vendor requests: EEPROM read/write, unlock, status | ~250 |
-| BOS + MS OS 2.0 descriptors (lifted from DigiISP) | ~150 |
+| BOS + MS OS 2.0 descriptors (lifted from DigiISP) | **289, measured** |
 
-`isp default lockout` is 6994 today, so the guess is **~4.4 KB** — which would
-fit the stock micronucleus with room to spare, not just a bootloaderless
-chip. Worth confirming early, because it changes who can install this.
+`isp default lockout` is 6994 today, so the guess is **~4.6 KB** — which would
+fit the stock micronucleus with room to spare, not just a bootloaderless chip.
+That changes who can install this, so it mattered to check early. The spike
+says the guess is about right: both personalities, HID typing, the keymap and
+every WebUSB descriptor come to **3372 bytes of 6650**, with 93 of RAM. What
+is left to add is the table walk, morse decoding, playback and the EEPROM
+requests.
 
 ## Architecture: decided — mode switch
 
@@ -207,3 +211,49 @@ The password and lockout carry over, but the threat model shifts:
    keyboard coming back.
 4. One request answered — `INFO` — to a WebUSB page. That is the spike.
 5. Then `READ`/`WRITE`, then `STATUS`/`UNLOCK`, then the app.
+
+## Spike: built, verified on paper, untested on hardware
+
+`spike/spike.ino` with the `DigiModeUSB` library: HID keyboard, a four-second
+hold to vendor class and back, and one vendor request. **3372 bytes (50%),
+93 RAM.**
+
+Mechanisms confirmed by reading DigiISP and reproducing them:
+
+- `USB_CFG_DESCR_PROPS_UNKNOWN = USB_PROP_IS_DYNAMIC` is what gets
+  `usbFunctionDescriptor()` called for descriptor type `0x0F`, the BOS. Nothing
+  else would serve it.
+- `bcdUSB` must read 2.10 in the vendor personality or the host never asks for
+  the BOS at all — and then Windows will not bind WinUSB and Chrome will not
+  see a WebUSB device. The HID personality stays at 1.10.
+- A pointer returned from `usbFunctionSetup()` is read out of **RAM** unless
+  `usbMsgFlags = USB_FLG_MSGPTR_IS_ROM` is set explicitly, because
+  `usbProcessRx()` zeroes the flags first. The opposite of
+  `usbFunctionDescriptor()`, where ROM is the default and the driver
+  overwrites whatever you set.
+- A vendor interface needs no endpoints, so V-USB's exhausted endpoint budget
+  never comes into it.
+
+Decoded out of the built ELF and checked: `bcdUSB 2.10`, a 64-byte BOS with
+three capabilities and both platform GUIDs recognised, the 162-byte MS OS 2.0
+set with a `WINUSB` compatible ID, an 18-byte configuration with one
+vendor-class interface and zero endpoints, and the landing-page URL.
+
+### Two placeholders to confirm
+
+- The manufacturer string is now `digimacro.postcogito.org`, inferred from
+  DigiISP's `digiisp.postcogito.org`. obdev's terms for `16c0:05dc` require a
+  domain or e-mail the author owns, so this needs to be right.
+- The `DeviceInterfaceGUID` in the MS OS 2.0 set is DigiISP's. Fine for a
+  spike; a released DigiMacro wants its own, or Windows will file the two
+  devices under one interface class.
+
+### What the test decides
+
+Serve `web/` over localhost, hold the pad four seconds, connect. The page
+reports each step, and the interesting one is `claimInterface(0)`: a
+vendor-class interface allows it where a HID interface would refuse, which is
+the whole reason for the mode switch.
+
+If it works, tasks 1-2 (strip and repack) are ordinary work. If it fails, the
+fallbacks are recorded above as options A and C.

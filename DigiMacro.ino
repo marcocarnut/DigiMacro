@@ -25,8 +25,25 @@
  *        3 quick      the code matched nothing
  *        blinking     vendor mode, ready for the app
  *
- * The pad wants no external parts; if it misbehaves, spike/spike.ino types
- * its own readings out and is the tool for that job.
+ * The pad wants no external parts. When it misbehaves, build with
+ * TOUCH_DEBUG=1 (./build.sh touchdebug) and the board types its own readings
+ * twice a second instead of staying quiet -- the only diagnostic channel a
+ * device with no serial port has:
+ *
+ *      1A 18 . -       raw, running average, touched?, press open?
+ *      30 18 T #
+ *
+ * Read them like this:
+ *
+ *   raw sits at F8    the pad never crosses: nothing is charging it
+ *   raw sits at 00    it crosses within one loop pass: lower TOUCH_REPS
+ *   raw == base, flat a pad that is connected but not moving
+ *   raw rises on touch working; a quarter above base trips it
+ *
+ * and for a hold that will not take, watch the last two columns while you
+ * hold: the four seconds only accumulate while both stay "T #". A single
+ * line of ". -" in the middle means the press ended and started again, which
+ * is what a marginal pad does to a long press long before it spoils a tap.
  */
 
 #define VERSION "0.1"
@@ -48,6 +65,12 @@
                                optical equivalent of a loud keyboard, and
                                shows a bystander the code. */
 #endif
+
+#ifndef TOUCH_DEBUG
+#define TOUCH_DEBUG 0       /* 1 = type the pad readings twice a second, into
+                               whatever window has focus. See below. */
+#endif
+#define DEBUG_MS    500
 
 /* ---- pins and timing ------------------------------------------------ */
 
@@ -315,6 +338,38 @@ void touch_poll(void)
 #endif /* HAVE_TOUCH */
 
 /* ==================================================================== */
+/* Typing the readings out                                              */
+/* ==================================================================== */
+
+#if TOUCH_DEBUG
+static void type_nib(uint8_t n)
+{
+    n &= 0x0F;
+    dusbTypeChar(n < 10 ? '0' + n : 'A' + n - 10, 0);
+}
+
+static void type_hex(uint8_t v)
+{
+    type_nib(v >> 4);
+    type_nib(v);
+}
+
+static void type_reading(void)
+{
+    extern uint8_t in_down;
+
+    type_hex(touch_raw);
+    dusbTypeChar(' ', 0);
+    type_hex((uint8_t)(touch_base >> 4));
+    dusbTypeChar(' ', 0);
+    dusbTypeChar(touch_state ? 'T' : '.', 0);
+    dusbTypeChar(' ', 0);
+    dusbTypeChar(in_down ? '#' : '-', 0);
+    dusbTypeChar('\n', 0);
+}
+#endif
+
+/* ==================================================================== */
 /* Tapping                                                              */
 /* ==================================================================== */
 
@@ -504,6 +559,16 @@ void loop(void)
     update_led();
 
     if (dusbMode() != DUSB_HID) return; /* the app's turn; nothing to type */
+
+#if TOUCH_DEBUG
+    {
+        static uint16_t last;
+        if (dusbReady() && (uint16_t)(ticks() - last) >= DEBUG_MS) {
+            last = ticks();
+            type_reading();
+        }
+    }
+#endif
 
     /* Silence long enough after the last symbol means the code is done. */
     if ((FLAGS & FLAG_CODE_OPEN) && !in_down &&

@@ -11,6 +11,8 @@
 #   rc          read the pad with a bleed resistor rather than the pull-up
 #   ledecho     LED follows the input while tapping -- for working on the
 #               input path only, since it shows a bystander the code
+#   touchdebug  type the pad readings twice a second, to see what the input
+#               is actually doing: raw, average, touched?, press open?
 #   isp         build for a chip with no bootloader: all 8192 bytes, and a
 #               .hex to feed to a programmer
 #
@@ -31,6 +33,7 @@ DO_UPLOAD=0
 BUTTON=0
 RC=0
 LEDECHO=0
+TOUCHDEBUG=0
 for a in "$@"; do
     case "$a" in
         spike)     SKETCH=spike ;;
@@ -38,6 +41,7 @@ for a in "$@"; do
         button)    BUTTON=1 ;;
         rc)        RC=1 ;;
         ledecho)   LEDECHO=1 ;;
+        touchdebug) TOUCHDEBUG=1 ;;
         isp)       ISP=1 ;;
         upload)    DO_UPLOAD=1 ;;
         *)         echo "unknown argument: $a" >&2; exit 1 ;;
@@ -55,6 +59,7 @@ FLAGS=""
 [ "$BUTTON" = 1 ]  && FLAGS="$FLAGS -DHAVE_TOUCH=0"
 [ "$RC" = 1 ]      && FLAGS="$FLAGS -DTOUCH_PULLUP=0"
 [ "$LEDECHO" = 1 ] && FLAGS="$FLAGS -DLED_ECHO=1"
+[ "$TOUCHDEBUG" = 1 ] && FLAGS="$FLAGS -DTOUCH_DEBUG=1"
 
 EXTRA=()
 [ -n "$FLAGS" ] && EXTRA=(--build-property "build.extra_flags=${FLAGS# }")

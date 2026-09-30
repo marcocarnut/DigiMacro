@@ -209,7 +209,77 @@ The password and lockout carry over, but the threat model shifts:
    edit one macro without reading the table first, so a locked board can only
    be overwritten wholesale. Resolution: no password means read freely, a
    password means unlock first — which is what the lockout is for.
-4. Repeat count range: one byte gives 1-255 more presses. Enough?
+4. ~~Repeat count range~~ — settled: one byte of extra presses, 256 in all,
+   and the app writes it as a quantifier.
+
+5. **Store the password, or encrypt the table with it?** Raised by Marco, and
+   worth settling before step 4 rather than after.
+
+   The case for encrypting is stronger than it first looks, and it is not
+   about the cipher. Today the password is protected by the lock bits, and
+   **the lock bits need a programmer and exclude the bootloader**. So a board
+   installed the way we tell people to install it — over USB, micronucleus
+   intact — has no protection at all: anyone can upload a sketch that dumps
+   the EEPROM. Encrypting the table is the only thing that protects the
+   mainstream case, and it costs no hardware.
+
+   What decides the design is **when the key is available**, not which cipher:
+
+   - The device must type a macro with nobody's help, so if the key lives in
+     EEPROM the encryption is decoration. It has to be derived at unlock and
+     kept in RAM, which means **a protected macro does not work until the
+     board has been unlocked since it was last plugged in**.
+   - That is intolerable for everyday macros and exactly right for the ones
+     holding secrets, so protection should be **per entry**: a bit in the
+     header, clear macros playing always, protected ones only after an unlock.
+   - A wrong key must never result in typing. Decrypting with the wrong
+     password and playing the result sends random keystrokes into whatever has
+     focus — often a password field. A verifier over the plaintext, checked
+     before the first keystroke, is not optional.
+   - The work factor lives in the **key derivation**, not the cipher. An
+     attacker with a dumped EEPROM attacks offline at billions of guesses a
+     second; a device that can afford two seconds of stretching per unlock
+     buys far more than any choice between Speck, XTEA and ChaCha.
+   - **Nonce reuse is the trap.** The app rewrites the whole table on every
+     save, so a stream cipher at a fixed counter would encrypt different
+     plaintexts under the same keystream, and the XOR of two dumps would give
+     away the difference. The nonce has to change per save; the app has a real
+     random source and the device does not, so the app should supply it.
+   - On Speck specifically: it fits, and it is fine engineering, but ISO
+     rejected it and its provenance is a live argument. For a project that may
+     be published, XTEA or ChaCha20 avoid the conversation entirely at a
+     similar or slightly larger size.
+
+6. **Host authentication, and what falls out of it.** Also Marco's. A USB
+   device has no idea which host it is plugged into, so a board that types
+   passwords will type them for whoever holds it, guarded only by 62 possible
+   codes. The lockout blunts a brute-force but not a shoulder-surfed code.
+
+   A second password that unlocks the *input* — the host proving itself before
+   the pad means anything — fixes that for anyone who controls the host
+   software, which is the case worth fixing. It also composes with the point
+   above: the host is a natural place for the key to come from, and then the
+   device never stores it at all.
+
+   That needs the host to talk to the device **while it is a keyboard**, which
+   is option A from the top of this file: a second top-level collection on a
+   vendor usage page (0xFF00). Chrome's WebHID blocks protected usage pages,
+   not vendor ones — it is how Vial talks to a keyboard that stays a keyboard
+   — and a native helper reaches the same reports through hidraw without them
+   reaching the focused window. The mode switch could then be asked for rather
+   than held for, which is the thing Marco wanted from the LED knock and
+   cannot get, since no web API sets Caps Lock.
+
+   Two obstacles to price before committing, neither fatal and neither free:
+
+   - **Report IDs against boot protocol.** Two collections on one interface
+     are told apart by report ID, and a boot keyboard's report must have none.
+     The usual answers are to keep the boot interface clean and put the vendor
+     collection on a second interface, or to drop boot support, which costs
+     the BIOS and little else.
+   - **The endpoint budget.** A second HID interface wants an IN endpoint, and
+     V-USB has EP3 available if turned back on. That is the thing the original
+     survey said was exhausted, and it is not, quite.
 
 ## What to reuse
 

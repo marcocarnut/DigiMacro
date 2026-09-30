@@ -29,10 +29,21 @@
 
 /* Vendor requests. 0x4D and 0x57 keep DigiISP's numbers because they are
    named inside the BOS descriptor, and there is no reason for them to differ
-   between two devices that share a web toolchain. */
-#define DM_FUNC_INFO        0x40    /* IN: magic, versions, table size */
+   between two devices that share a web toolchain. The EEPROM pair sits in its
+   own block above everything DigiISP uses, so a tool that meets the wrong
+   device gets a stall rather than an action.
+
+   Both are answered in vendor mode only. That is what makes the four-second
+   hold a physical-presence check rather than a convenience: in keyboard mode
+   the device answers nothing but HID class requests, so a program on the host
+   cannot read the table out of a board nobody is touching. */
+#define DM_FUNC_INFO        0x40    /* IN:  magic, versions, EEPROM size */
 #define DM_FUNC_MS_OS_20    0x4D    /* IN, wIndex 7: the MS OS 2.0 set */
 #define DM_FUNC_WEBUSB      0x57    /* IN, wIndex 2: the landing page URL */
+#define DM_FUNC_READ        0x60    /* IN:  wValue = address, wLength = count */
+#define DM_FUNC_WRITE       0x61    /* OUT: wValue = address, payload = bytes */
+
+#define DM_INFO_LEN         6
 
 #define DM_MAGIC0           'D'
 #define DM_MAGIC1           'M'

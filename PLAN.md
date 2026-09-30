@@ -160,8 +160,8 @@ Numbered above DigiISP's range so a shared tool can tell the devices apart.
 | | |
 |---|---|
 | `INFO` | magic, protocol version, firmware version, slot count, EEPROM size |
-| `READ` | wValue = address, wLength = count. Refused while locked |
-| `WRITE` | wValue = address, data in the payload. Refused while locked |
+| `READ` | 0x60. wValue = address, wLength = count. To be refused while locked |
+| `WRITE` | 0x61. wValue = address, data in the payload. To be refused while locked |
 | `STATUS` | password set? lockout armed? tries left? unlocked this session? |
 | `UNLOCK` | password in the payload; on success clears the lockout count |
 
@@ -172,10 +172,14 @@ about *what* the password is.
 with USB unpolled, because `eeprom_update_byte` blocks. Take 8–32 bytes per
 control transfer so each one completes promptly; DigiISP already writes its
 target's EEPROM this way. Use `update` rather than `write` so unchanged bytes
-cost no wear when the app saves a table it mostly did not touch.
+cost no wear when the app saves a table it mostly did not touch. **Settled at
+32 bytes, chosen by the app**, the firmware imposing no chunk size of its own
+beyond V-USB's 254-byte control payload.
 
 A checksum over the table would let the firmware notice a write interrupted
-half way, which is otherwise silent. Cheap, optional, worth pricing.
+half way, which is otherwise silent. Cheap, optional, worth pricing — though
+the app reading the table back and comparing, which `eeprom.html` already does,
+covers the same ground for nothing.
 
 ## Security, including one new hole
 
@@ -237,9 +241,30 @@ testable, which is why they are in this order rather than firmware-then-app.
    beside it; and a pause is not interruptible, which is `\j`'s problem to
    solve in step 5, since without jumps a macro cannot run for ever.
 
-2. **`READ` and `WRITE`** vendor requests, chunked. At that point the app can
-   replace the hand-written table. `tools/loadtable` stays useful afterwards as
-   a way to get a board going without a browser.
+2. ~~**`READ` and `WRITE`** vendor requests, chunked.~~ **Done: 4058 bytes of
+   6650, 106 RAM.** 0x60 and 0x61, in their own block above everything DigiISP
+   uses, answered in vendor mode only — which is what turns the four-second
+   hold into a physical-presence check rather than a convenience, since in
+   keyboard mode the device answers nothing but HID class requests. INFO grew
+   two bytes to report the EEPROM size.
+
+   `usbFunctionWrite` writes straight to EEPROM rather than buffering, so the
+   RAM cost is four bytes of state: a byte takes 3.4 ms and holds the driver up
+   for 27 ms a packet, but the USB interrupt keeps running and the host retries
+   whatever arrives while we are busy. A HID LED report reaches the same
+   callback, so a flag says which of the two is being served. A read past the
+   last byte comes back short; a write that would cross it stalls, and the
+   stall has to be latched, because the driver keeps calling after one.
+
+   `web/eeprom.html` dumps, writes and verifies a board's table, with a button
+   for the bounds. Its encoder is `web/table.js`, and `test/run.sh` now loads
+   that same module in node and plays what it produces through the real
+   firmware: five suites. That check earned its keep at once — put the repeat
+   escape back to 0x04 and the diff shows "ab" followed by two literal a's,
+   which is the collision that moved it.
+
+   `tools/loadtable` stays useful as a way to get a board going without a
+   browser.
 3. **The app.** Table editor, ASCII to usages, and the loop check before it
    writes.
 4. **`STATUS` and `UNLOCK`**, the password and the lockout — including

@@ -1,4 +1,4 @@
-# Spike test page
+# Test pages
 
 WebUSB needs a secure context, and `localhost` counts as one:
 
@@ -6,7 +6,21 @@ WebUSB needs a secure context, and `localhost` counts as one:
 cd web && python3 -m http.server 8000
 ```
 
-then open <http://localhost:8000/spike.html> in Chrome or Edge.
+then, in Chrome or Edge:
+
+| | |
+|---|---|
+| <http://localhost:8000/eeprom.html> | read, write and verify the macro table |
+| <http://localhost:8000/spike.html> | the original derisking page: connect and ask INFO |
+
+`table.js` turns text and codes into a packed table and is shared with
+`test/run.sh`, which plays what it encodes against the real firmware — so the
+app's encoder and the firmware's decoder are checked against each other rather
+than each being trusted alone.
+
+`eeprom.html` also has a bounds test: a read that runs off the end should come
+back short, and a write that would cross the end should be refused. Both are
+about what sits above the table, which is the password.
 
 The board types its pad readings twice a second in keyboard mode (`TOUCH_DEBUG`
 in `spike/spike.ino`), so open a text editor first and check the numbers move

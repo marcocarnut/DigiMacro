@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <avr/eeprom.h>
 #include <avr/pgmspace.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
@@ -137,6 +138,15 @@ static uint8_t hidIdleRate;
 static uint8_t hidProtocol = 1;
 static uint8_t replyBuffer[8];
 
+/* EEPROM access over USB. eeWriting tells usbFunctionWrite() which of the two
+   requests that reach it is being served, since a HID LED report arrives the
+   same way. */
+#define EE_REFUSED  2
+
+static uint16_t eeAddr;         /* the next byte to read or write */
+static uint8_t  eeLeft;         /* payload bytes still expected */
+static uint8_t  eeWriting;
+
 static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 
 /* ===================================================================== */
@@ -197,8 +207,21 @@ extern "C" usbMsgLen_t usbFunctionSetup(uchar data[8])
             replyBuffer[1] = DM_MAGIC1;
             replyBuffer[2] = DM_PROTOCOL_VERSION;
             replyBuffer[3] = DM_FW_VERSION;
+            replyBuffer[4] = (uint8_t)(E2END + 1);       /* EEPROM size, so */
+            replyBuffer[5] = (uint8_t)((E2END + 1) >> 8);/* the app need not
+                                                            assume the part */
             usbMsgPtr = (usbMsgPtr_t)replyBuffer;
-            return 4;
+            return DM_INFO_LEN;
+
+        case DM_FUNC_READ:
+            eeAddr = rq->wValue.word;
+            return USB_NO_MSG;              /* usbFunctionRead() serves it */
+
+        case DM_FUNC_WRITE:
+            eeAddr = rq->wValue.word;
+            eeLeft = rq->wLength.bytes[1] ? 0xFF : rq->wLength.bytes[0];
+            eeWriting = 1;
+            return USB_NO_MSG;              /* usbFunctionWrite() takes it */
 
         case DM_FUNC_WEBUSB:
             if (rq->wIndex.word != 2 || rq->wValue.bytes[0] != 1) return 0;
@@ -222,6 +245,8 @@ extern "C" usbMsgLen_t usbFunctionSetup(uchar data[8])
         usbMsgPtr = (usbMsgPtr_t)hidReport;
         return sizeof(hidReport);
     case USBRQ_HID_SET_REPORT:
+        eeWriting = 0;                      /* both arrive through
+                                               usbFunctionWrite() */
         return USB_NO_MSG;                  /* the LED report; discarded */
     case USBRQ_HID_GET_IDLE:
         usbMsgPtr = (usbMsgPtr_t)&hidIdleRate;
@@ -239,16 +264,41 @@ extern "C" usbMsgLen_t usbFunctionSetup(uchar data[8])
     return 0;
 }
 
+/* The payload of a DM_FUNC_WRITE, in up to eight-byte packets. Writing here
+   rather than buffering it is what keeps the RAM cost at nothing: an EEPROM
+   byte takes 3.4 ms, so a packet holds the driver up for 27 ms, but the USB
+   interrupt keeps running throughout and the host simply retries a packet that
+   arrives while we are busy. */
 extern "C" uchar usbFunctionWrite(uchar *data, uchar len)
 {
-    (void)data; (void)len;
-    return 1;                               /* accept and drop, for now */
+    if (!eeWriting) return 1;               /* the HID LED report; dropped */
+    if (eeWriting == EE_REFUSED) return 0xFF;   /* the driver keeps calling
+                                                   after a stall, and must
+                                                   keep being told */
+
+    while (len--) {
+        if (eeAddr > E2END) {               /* off the end: stall rather than
+                                               wrap onto something else */
+            eeWriting = EE_REFUSED;
+            return 0xFF;
+        }
+        eeprom_update_byte((uint8_t *)eeAddr++, *data++);
+        if (eeLeft) eeLeft--;               /* update, not write, so a table
+                                               saved unchanged costs no wear */
+    }
+    return eeLeft == 0;                     /* 1 ends the transfer */
 }
 
+/* The answer to a DM_FUNC_READ. A request that runs off the end returns what
+   there was and stops, which the host sees as a short transfer -- an honest
+   answer, and cheaper than arranging a stall. */
 extern "C" uchar usbFunctionRead(uchar *data, uchar len)
 {
-    (void)data;
-    return len;                             /* nothing streams out yet */
+    uchar n = 0;
+
+    while (n < len && eeAddr <= E2END)
+        data[n++] = eeprom_read_byte((uint8_t *)eeAddr++);
+    return n;
 }
 
 /* ===================================================================== */

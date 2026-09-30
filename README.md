@@ -12,17 +12,16 @@ its own EEPROM.
 Sibling of [DigiMacroCDC](../DigiMacroCDC), which keeps an on-device CDC command
 line instead. That one is finished and in use; this one is early.
 
-## Status: it types
+## Status: it types, and a web page can write the table
 
-The firmware plays macros out of a packed EEPROM table, which is the first half
-of the job. What is missing is the way the table gets there: the `READ` and
-`WRITE` vendor requests, and the app that drives them. Until then
-`tools/loadtable` writes a sample table with a programmer-free upload, and
-`test/` plays that same table against the same code the board runs.
+The firmware plays macros out of a packed EEPROM table, and `READ` and `WRITE`
+vendor requests put one there — so `web/eeprom.html` already dumps, writes and
+verifies a board's table. What is missing is the app proper, and the password
+and lockout that gate all of this.
 
-**3804 bytes of the 6650** the stock bootloader leaves, and 102 of RAM — so it
-installs over USB like any sketch, with about 2.8 KB still to spend on the
-EEPROM requests, the password and the lockout.
+**4058 bytes of the 6650** the stock bootloader leaves, and 106 of RAM — so it
+installs over USB like any sketch, with about 2.5 KB still to spend on the
+password, the lockout and `\j`.
 
 `spike/` answered the one question everything rested on — whether a keyboard can
 become something WebUSB will talk to — and **it does**:
@@ -84,9 +83,30 @@ run-length coding: "left arrow eleven times" costs three bytes rather than
 eleven, and repeating *whatever went before* carries the latched modifiers with
 it.
 
-This is the interface between the firmware and the app, so
-`tools/loadtable/sample_table.h` is one original that both the loader and the
-test read.
+This is the interface between the firmware and the app, so neither end is
+trusted on its own: `tools/loadtable/sample_table.h` is one original shared by
+the loader and a test, and `web/table.js` is one original shared by the web
+page and a test that plays what it encodes against the real firmware.
+
+## Reading and writing it over USB
+
+Two vendor requests, answered **in vendor mode only** — which is what makes the
+four-second hold a physical-presence check rather than a convenience. In
+keyboard mode the device answers nothing but HID class requests, so a program on
+the host cannot read the table out of a board nobody is touching.
+
+| | |
+|---|---|
+| `0x60` READ | IN, `wValue` = address, `wLength` = count |
+| `0x61` WRITE | OUT, `wValue` = address, payload = the bytes |
+| `0x40` INFO | IN, 6 bytes: `DM`, protocol, firmware, EEPROM size |
+
+Writes are chunked, 32 bytes at a time: an EEPROM byte takes 3.4 ms and the
+device can answer nothing else while it writes, so the whole table in one
+transfer would be nearly two seconds of silence. `eeprom_update_byte`, so a
+table saved unchanged costs no wear. A read past the last byte comes back
+short and a write that would cross it is refused, because what sits above the
+table is the password.
 
 ## Why a mode switch rather than one device
 
@@ -125,8 +145,9 @@ test/run.sh
 
 compiles the real `DigiMacro.ino` for the host against stub hardware and
 exercises the table walk, every escape, the bounds that keep a malformed table
-from reaching the password, the morse decoding from the input pin, and the
-sample table the loader flashes. Four suites, about a second.
+from reaching the password, the morse decoding from the input pin, the sample
+table the loader flashes, and — across the language boundary — a table encoded
+by `web/table.js` played through the firmware. Five suites, about a second.
 
 ## Building the spike
 
@@ -153,7 +174,7 @@ device with no serial port has.
 | `test/` | host build of the real sketch against stub hardware |
 | `tools/loadtable/` | writes a sample table into EEPROM, until the app can |
 | `spike/` | the derisking sketch |
-| `web/` | the WebUSB test page; the real app will live here |
+| `web/` | `eeprom.html` reads and writes a board's table; `table.js` encodes one |
 | `PLAN.md` | design, decisions and what comes next |
 
 Descriptors for the WebUSB side are lifted from [DigiISP](../DigiISP), which

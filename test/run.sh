@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # Compile DigiMacro.ino for the host, against stub hardware, and exercise it.
 #
-# It builds the *real* sketch -- the table walk, playback with its escapes,
-# the morse decoding -- not a copy. Anything that does not need a USB bus or a
-# timer can be tested here in a second, which beats reflashing a board to find
-# out that an escape argument was read one byte early.
+# It builds the *real* sketch -- the table walk, playback with its escapes, the
+# morse decoding -- not a copy. Anything that does not need a USB bus or a timer
+# can be tested here in a second, which beats reflashing a board to find out
+# that an escape argument was read one byte early.
+#
+# The last suite crosses the language boundary: web/table.js encodes a table,
+# the firmware plays it, and the result is compared with webtable.expected. The
+# table is the interface between the two halves of the project, and a wrong
+# header byte in the app looks exactly like a firmware bug from the outside.
 set -euo pipefail
 cd "$(dirname "$0")"
 OUT="${TMPDIR:-/tmp}/digimacro"
@@ -27,4 +32,22 @@ g++ -w -I. -I.. -o "$OUT"_touch touch_test.cpp
 echo
 echo "== touch pad, bleed-resistor method =="
 g++ -w -I. -I.. -DTOUCH_PULLUP=0 -o "$OUT"_touch_rc touch_test.cpp
-exec "$OUT"_touch_rc
+"$OUT"_touch_rc
+
+echo
+echo "== the app's encoder against the firmware's decoder =="
+if command -v node >/dev/null 2>&1; then
+    g++ -w -I. -I.. -o "$OUT"_hexplay hexplay.cpp
+    node -e 'const t = require("../web/table.js");
+             process.stdout.write([...t.sampleTable()]
+               .map(v => v.toString(16)).join(" "));' \
+      | "$OUT"_hexplay . - .. .- -- 2>/dev/null > "$OUT"_played
+    if diff -u webtable.expected "$OUT"_played; then
+        echo "web/table.js and DigiMacro.ino agree"
+    else
+        echo "the app encodes something the firmware plays differently"
+        exit 1
+    fi
+else
+    echo "node not found, skipped"
+fi

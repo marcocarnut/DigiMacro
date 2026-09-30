@@ -50,6 +50,21 @@
         border: 1px solid var(--line); overflow-x: auto; margin: 1.2rem 0 0;
         font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
   .ok { color: var(--ok); } .bad { color: var(--bad); } .dim { color: var(--dim); }
+  .pad { border: 1px solid var(--line); border-radius: .5rem; padding: .7rem;
+         background: var(--field); }
+  .pad .row { display: flex; gap: .3rem; flex-wrap: wrap; align-items: center;
+              margin-bottom: .35rem; }
+  .pad .row:last-child { margin-bottom: 0; }
+  .pad button { padding: .25rem .5rem; font: 12px ui-monospace, monospace;
+                background: var(--bg); min-width: 2.1rem; }
+  .pad button.mod { min-width: 3.4rem; }
+  .pad button.mod.on { background: var(--accent); color: #fff;
+                       border-color: var(--accent); }
+  .pad .sep { width: 100%; height: 0; }
+  .pad label { font-size: .8rem; color: var(--dim); display: flex;
+               align-items: center; gap: .3rem; margin-right: .6rem; }
+  .pad label input { padding: .2rem .35rem; font: 12px ui-monospace, monospace; }
+  .hint { color: var(--dim); font-size: .8rem; margin: .5rem 0 0; }
   details { margin-top: 2.5rem; }
   summary { cursor: pointer; color: var(--dim); }
   details table { margin-top: .8rem; max-width: 40rem; }
@@ -83,6 +98,24 @@
   <span class="meter" id="meter"><i style="width:0"></i></span>
 </div>
 
+<h2>Keys</h2>
+<div class="pad" id="pad">
+  <div class="row" id="mods"></div>
+  <div class="row" id="keys1"></div>
+  <div class="row" id="keys2"></div>
+  <div class="row" id="keys3"></div>
+  <div class="row">
+    <label>a key <input id="keyval" size="2" maxlength="1" spellcheck="false"></label>
+    <button data-ins="key">insert</button>
+    <label style="margin-left:.8rem">pause <input id="pauseval" size="3" value="1.0"></label>
+    <button data-ins="pause">insert</button>
+    <label style="margin-left:.8rem">repeat <input id="repval" size="3" value="4"></label>
+    <button data-ins="rep">insert</button>
+  </div>
+</div>
+<p class="hint">Inserts at the cursor in whichever macro you were last editing.
+A modifier stays pressed until the next key.</p>
+
 <div class="bar" style="margin-top:1.4rem">
   <button id="read" disabled>Read from the board</button>
   <button id="write" class="primary" disabled>Write to the board</button>
@@ -102,7 +135,7 @@ of the hold.</pre>
     <tr><td>{Ctrl+c} {Alt+Tab}</td><td>modifiers on any key or character</td></tr>
     <tr><td>{Ctrl+Shift+Left}</td><td>...combined, in any order</td></tr>
     <tr><td>{pause 1.5}</td><td>wait, in seconds, 0.1 to 25.5</td></tr>
-    <tr><td>{x11}</td><td>press the previous keystroke 11 more times</td></tr>
+    <tr><td>{11} or {x11}</td><td>press the previous keystroke 11 more times</td></tr>
   </table>
   <p class="dim" style="max-width:40rem">A code is one to five dots and dashes:
   a press under a quarter of a second is a dot, longer is a dash, and 700 ms of
@@ -325,5 +358,92 @@ $('write').onclick = async () => {
   }
 };
 
+/* ---- the key palette ----------------------------------------------- */
+
+/* Which macro was last being edited, so a key lands where the cursor was.
+   The palette's buttons cancel their own mousedown, so the field never loses
+   focus and the cursor never moves. */
+let lastField = null;
+$('list').addEventListener('focusin', e => {
+  if (e.target.dataset.f === 'text') lastField = e.target;
+});
+
+function insert(text) {
+  const el = lastField && lastField.isConnected
+           ? lastField : document.querySelector('#list input.text');
+  if (!el) return;
+  el.focus();
+  const a = el.selectionStart, b = el.selectionEnd;
+  el.value = el.value.slice(0, a) + text + el.value.slice(b);
+  el.setSelectionRange(a + text.length, a + text.length);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  lastField = el;
+}
+
+let armed = [];                         /* modifiers waiting for a key */
+
+function insertKey(name) {
+  insert(armed.length ? `{${armed.join('+')}+${name}}` : `{${name}}`);
+  armed = [];
+  drawPad();
+}
+
+const MOD_KEYS = ['Ctrl', 'Shift', 'Alt', 'Gui'];
+const GROUPS = [
+  ['keys1', [['Left', '←'], ['Down', '↓'], ['Up', '↑'], ['Right', '→'], null,
+             ['Home'], ['End'], ['PgUp'], ['PgDn'], null,
+             ['Insert'], ['Delete'], ['Backspace']]],
+  ['keys2', [['Enter'], ['Tab'], ['Esc'], ['Space'], ['Menu'],
+             ['PrintScreen'], ['CapsLock']]],
+  ['keys3', [['F1'], ['F2'], ['F3'], ['F4'], ['F5'], ['F6'],
+             ['F7'], ['F8'], ['F9'], ['F10'], ['F11'], ['F12']]],
+];
+
+function drawPad() {
+  $('mods').innerHTML = MOD_KEYS.map(m =>
+    `<button class="mod${armed.includes(m) ? ' on' : ''}" data-mod="${m}">${m}</button>`
+  ).join('') + '<span class="hint" style="margin-left:.6rem">held for the next key</span>';
+
+  for (const [id, keys] of GROUPS)
+    $(id).innerHTML = keys.map(k => k === null ? '<span style="width:.6rem"></span>' :
+      `<button data-key="${k[0]}" title="{${k[0]}}">${k[1] || k[0]}</button>`).join('');
+}
+
+$('pad').addEventListener('mousedown', e => {
+  if (e.target.tagName === 'BUTTON') e.preventDefault();   /* keep the caret */
+});
+
+$('pad').addEventListener('click', e => {
+  const t = e.target;
+  if (t.dataset.mod) {
+    armed = armed.includes(t.dataset.mod)
+          ? armed.filter(m => m !== t.dataset.mod)
+          : [...armed, t.dataset.mod];
+    drawPad();
+    return;
+  }
+  if (t.dataset.key) { insertKey(t.dataset.key); return; }
+
+  if (t.dataset.ins === 'key') {
+    const c = $('keyval').value;
+    if (!c) return;
+    /* with no modifier a character is just itself, so say it plainly */
+    insert(armed.length ? `{${armed.join('+')}+${c}}` : c);
+    armed = []; drawPad();
+    $('keyval').value = '';
+    return;
+  }
+  if (t.dataset.ins === 'pause') {
+    const v = parseFloat($('pauseval').value);
+    if (v >= 0.1 && v <= 25.5) insert(`{pause ${v.toFixed(1)}}`);
+    return;
+  }
+  if (t.dataset.ins === 'rep') {
+    const v = parseInt($('repval').value, 10);
+    if (v >= 1 && v <= 255) insert(`{${v}}`);
+  }
+});
+
+drawPad();
 draw();
 </script>

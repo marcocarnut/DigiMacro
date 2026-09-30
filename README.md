@@ -153,8 +153,13 @@ back. A macro is text, with braces for what text cannot say:
  \n  \t  \\  {{               newline, tab, backslash, a literal {
  {Ctrl+c}  {Alt+Tab}  {F5}    modifiers, and keys that are not characters
  {pause 1.5}                  wait, in seconds
- {x11}                        press the previous keystroke 11 more times
+ {11}                         press the previous keystroke 11 more times
 ```
+
+A key palette inserts any of it at the cursor — arrows, function keys, the
+editing keys, and modifiers that stay held for the next key — so nothing has to
+be spelled from memory. `{11}` borrows the look of a regular expression's
+quantifier, which is what it is; `{x11}` also works and normalises to it.
 
 The editor encodes as you type, so a mistake is reported beside the macro that
 has it, and the byte budget — 497 of them — is always on screen. Nothing is

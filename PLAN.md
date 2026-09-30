@@ -276,8 +276,14 @@ testable, which is why they are in this order rather than firmware-then-app.
     \n \t \\ {{        newline, tab, backslash, a literal {
     {Ctrl+c} {F5}     modifiers, and keys that are not characters
     {pause 1.5}       wait, in seconds
-    {x11}             press the previous keystroke 11 more times
+    {11}              press the previous keystroke 11 more times
    ```
+
+   `{11}` rather than `{x11}` was Marco's: it borrows the look of a regular
+   expression's quantifier, which is exactly what it is. Nothing collides with
+   a bare number, since a digit is typed as itself. A key palette inserts any
+   of the above at the cursor, with modifiers that stay held for the next key,
+   so none of the names have to be known.
 
    It decodes as well as encodes, so a table is edited rather than retyped,
    and `test/webtable.js` checks that encoding what was decoded gives the

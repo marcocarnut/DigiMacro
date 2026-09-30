@@ -99,7 +99,7 @@ function usages(text) {
  *    {Enter} {Left} {F5} a key that is not a character
  *    {Ctrl+c} {Alt+Tab}  modifiers on any key or character
  *    {pause 1.5}         wait, in seconds, 0.1 to 25.5
- *    {x11}               press the previous keystroke 11 more times
+ *    {11}  {x11}         press the previous keystroke 11 more times
  */
 function encodeMacro(text) {
   const out = [];
@@ -138,7 +138,10 @@ function encodeMacro(text) {
         continue;                               /* a pause is not a keystroke */
       }
 
-      const rep = /^x\s*(\d+)$/i.exec(body);
+      /* {11} as well as {x11}: a bare count reads as a quantifier does in a
+         regular expression, which is what it is. No key is a bare number --
+         a digit is typed as itself -- so there is nothing to collide with. */
+      const rep = /^x?\s*(\d+)$/i.exec(body);
       if (rep) {
         const n = parseInt(rep[1], 10);
         if (n < 1 || n > 255)
@@ -227,7 +230,7 @@ function decodeMacro(bytes) {
     if ((b & 0x7F) < 0x04) {                    /* an escape */
       const arg = bytes[++i];
       if (b === ESC_PAUSE)  { out += `{pause ${(arg / 10).toFixed(1)}}`; continue; }
-      if (b === ESC_REPEAT) { out += `{x${arg}}`; continue; }
+      if (b === ESC_REPEAT) { out += `{${arg}}`; continue; }
       if (b === ESC_MOD)    { mod = arg; continue; }
       out += `{?${b.toString(16)}}`;            /* a jump, once there are any */
       continue;
@@ -329,7 +332,7 @@ function sampleRows() {
   return [
     { code: '.',  text: 'hello from WebUSB\\n' },
     { code: '-',  text: 'wait{pause 1.0} ok' },
-    { code: '..', text: 'ab{x4}' },
+    { code: '..', text: 'ab{4}' },
     { code: '.-', text: '{Ctrl+Left}z' },
   ];
 }

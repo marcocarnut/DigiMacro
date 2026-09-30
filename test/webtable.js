@@ -18,7 +18,7 @@ const check = (ok, what) => { if (!ok) { console.log('  FAIL: ' + what); fails++
 const ROWS = [
   { code: '.',   text: 'hello from WebUSB\\n' },
   { code: '-',   text: 'wait{pause 1.0} ok' },
-  { code: '..',  text: 'ab{x4}' },
+  { code: '..',  text: 'ab{4}' },
   { code: '.-',  text: '{Ctrl+Left}z' },
   { code: '-.',  text: '{Ctrl+Shift+Left}{Shift+Left}{Alt+Tab}{F5}' },
   { code: '--',  text: 'A!Z {{x}} \\t' },
@@ -36,7 +36,7 @@ console.log('1. text survives being encoded and decoded');
    is that encoding the decoded form gives the same bytes: a table read off a
    board and written back unchanged must not drift. */
 for (const text of [...ROWS.map(r => r.text),
-     '{Enter}{Tab}{Space}{Backspace}', '{Ctrl++}', '{Gui+r}', 'a{x255}',
+     '{Enter}{Tab}{Space}{Backspace}', '{Ctrl++}', '{Gui+r}', 'a{x255}', 'a{255}',
      'x{pause 25.5}y', '{Esc}{Home}{PgDn}{Del}{Menu}', 'a\\\\b\\nc',
      '{{', '{Shift+F12}', '{Win+d}', '{Control+Alt+Delete}']) {
   let bytes, back, again;
@@ -80,6 +80,7 @@ for (const [text, want] of [
   ['{Blah}',         /not a key/],
   ['{pause 0}',      /0\.1 to 25\.5/],
   ['{pause 30}',     /0\.1 to 25\.5/],
+  ['a{0}',           /1 to 255/],
   ['a{x0}',          /1 to 255/],
   ['a{x300}',        /1 to 255/],
   ['{x3}',           /nothing to repeat/],

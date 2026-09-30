@@ -42,6 +42,14 @@
 #define DM_FUNC_WEBUSB      0x57    /* IN, wIndex 2: the landing page URL */
 #define DM_FUNC_READ        0x60    /* IN:  wValue = address, wLength = count */
 #define DM_FUNC_WRITE       0x61    /* OUT: wValue = address, payload = bytes */
+#define DM_FUNC_LEAVE       0x62    /* IN:  no data. Go back to being a keyboard */
+
+/* DM_FUNC_LEAVE needs no physical presence, and that is not an oversight.
+   Holding the pad is what lets a page reach the table at all; asking to stop
+   being reachable can only take capability away, never add it. The worst a
+   hostile page could do with it is end a session someone had deliberately
+   started, which they can also do by holding the pad. So the app gets a
+   "done" button and the device is symmetric: in by hand, out either way. */
 
 #define DM_INFO_LEN         6
 

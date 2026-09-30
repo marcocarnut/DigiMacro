@@ -119,6 +119,8 @@ A modifier stays pressed until the next key.</p>
 <div class="bar" style="margin-top:1.4rem">
   <button id="read" disabled>Read from the board</button>
   <button id="write" class="primary" disabled>Write to the board</button>
+  <span class="spacer"></span>
+  <button id="leave" disabled>Done — back to keyboard</button>
 </div>
 
 <pre id="log" class="dim">Nothing yet. Hold the pad for four seconds to put the board in vendor mode,
@@ -152,6 +154,7 @@ of the hold.</pre>
 const DM_FUNC_INFO  = 0x40;
 const DM_FUNC_READ  = 0x60;
 const DM_FUNC_WRITE = 0x61;
+const DM_FUNC_LEAVE = 0x62;
 const CHUNK = 32;       /* bytes per transfer: a byte takes 3.4 ms to write,
                            and the device answers nothing while it writes */
 
@@ -159,6 +162,14 @@ let dev = null, eeSize = 512;
 let macros = [{ code: '.', text: '' }];
 
 const $ = id => document.getElementById(id);
+
+function connected(yes, what) {
+  $('who').textContent = what;
+  $('who').className = yes ? 'ok' : 'dim';
+  $('read').disabled = $('leave').disabled = !yes;
+  $('connect').disabled = yes;
+  draw();                       /* Write also wants the macros to be valid */
+}
 const log = $('log');
 let lines = [];
 const say = (s, cls) => {
@@ -303,17 +314,56 @@ $('connect').onclick = async () => {
       say('that device did not answer "DM"', 'bad'); dev = null; return;
     }
     if (b.length >= 6) eeSize = b[4] | (b[5] << 8);
-    $('who').textContent = `connected — firmware ${b[3]}, protocol ${b[2]}`;
-    $('who').className = 'ok';
-    $('read').disabled = false;
-    draw();
+    connected(true, `connected — firmware ${b[3]}, protocol ${b[2]}`);
     say('Connected. Read the board to edit what is on it, or write what is '
         + 'here over it.', 'ok');
   } catch (e) {
     dev = null;
+    connected(false, 'not connected');
     say('could not connect: ' + e.message, 'bad');
+    if (/no device selected|No device selected/i.test(e.message))
+      say('If the board is in keyboard mode it is a different device '
+          + 'altogether and will not be offered. Hold the pad four seconds '
+          + 'first.', 'dim');
   }
 };
+
+/* Going back to being a keyboard takes the device off the bus, so the page
+   has to be told rather than left holding a handle to something that is no
+   longer there -- which is what made connecting again fail. */
+$('leave').onclick = async () => {
+  fresh();
+  try {
+    await dev.controlTransferIn({
+      requestType: 'vendor', recipient: 'device',
+      request: DM_FUNC_LEAVE, value: 0, index: 0 }, 1);
+  } catch (e) {
+    /* The device may go before the answer arrives; that is success, not
+       failure, so only a genuine refusal is worth reporting. */
+    if (!/transfer|disconnect|device/i.test(e.message)) {
+      say(e.message, 'bad');
+      return;
+    }
+  }
+  say('The board is a keyboard again. Tap a code.', 'ok');
+};
+
+navigator.usb?.addEventListener('disconnect', ev => {
+  if (dev && ev.device !== dev) return;
+  dev = null;
+  connected(false, 'the board left — it is a keyboard again');
+  say('The board is a keyboard again, so it is no longer a device this page '
+      + 'can talk to. Hold the pad four seconds to bring it back.', 'dim');
+});
+
+/* ...and when it comes back, it is a new object: the old handle is dead, so
+   reconnecting means asking for the device afresh rather than reusing it. */
+navigator.usb?.addEventListener('connect', ev => {
+  if (dev) return;
+  if (ev.device.vendorId !== 0x16c0 || ev.device.productId !== 0x05dc) return;
+  $('connect').disabled = false;
+  $('connect').click();
+});
 
 $('read').onclick = async () => {
   fresh();

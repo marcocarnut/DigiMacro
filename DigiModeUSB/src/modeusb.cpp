@@ -147,6 +147,9 @@ static uint16_t eeAddr;         /* the next byte to read or write */
 static uint8_t  eeLeft;         /* payload bytes still expected */
 static uint8_t  eeWriting;
 
+static uint8_t  leaving;        /* DM_FUNC_LEAVE asked for the keyboard back */
+static uint16_t leaveAt;
+
 static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 
 /* ===================================================================== */
@@ -222,6 +225,15 @@ extern "C" usbMsgLen_t usbFunctionSetup(uchar data[8])
             eeLeft = rq->wLength.bytes[1] ? 0xFF : rq->wLength.bytes[0];
             eeWriting = 1;
             return USB_NO_MSG;              /* usbFunctionWrite() takes it */
+
+        case DM_FUNC_LEAVE:
+            /* Not here: re-enumerating from inside the driver would take the
+               bus down before this request has been answered, and the host
+               would call it a failure. dusbPoll() does it once the answer has
+               had time to land. */
+            leaving = 1;
+            leaveAt = ticks();
+            return 0;
 
         case DM_FUNC_WEBUSB:
             if (rq->wIndex.word != 2 || rq->wValue.bytes[0] != 1) return 0;
@@ -337,7 +349,17 @@ void dusbSetMode(uint8_t newMode)
 
 uint8_t dusbMode(void)  { return mode; }
 uint8_t dusbReady(void) { return usbConfiguration != 0; }
-void    dusbPoll(void)  { usbPoll(); }
+void dusbPoll(void)
+{
+    usbPoll();
+
+    /* Far enough after DM_FUNC_LEAVE for its status stage to have completed,
+       so the app sees the request succeed and then sees the device go. */
+    if (leaving && (uint16_t)(ticks() - leaveAt) >= 50) {
+        leaving = 0;
+        reenumerate(DUSB_HID);
+    }
+}
 
 /* ===================================================================== */
 /* HID typing                                                            */

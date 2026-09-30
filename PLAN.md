@@ -89,14 +89,20 @@ Five things follow from it:
   `find_vacant`, no `set`, no `del` — the app writes raw bytes and the
   firmware only ever walks the table to play a macro. A further saving on top
   of the estimate above.
-- **`autoexec` and `\j` must name a code, not a slot,** because slots no
-  longer exist. Both store a header byte; `0xFF` means none. In DigiMacroCDC
-  storing a code cost 62 bytes more than a slot, but that was because it gave
-  `code_finish` a second caller — here there is no slot to name.
+- **Slots survive as ordinals in the UI; the firmware stores a code.** The two
+  are not in conflict. Numbering entries by table order is what the app shows,
+  but storing a code in `autoexec` and `\j` reuses the lookup that playback
+  already performs, where an ordinal would need a second walk that counts. A
+  dangling code simply matches nothing, which is the safe failure.
 - **The walk must be bounded to the table region.** A table written without a
   terminator would otherwise run straight into the password.
-- **`\j`'s original purpose is gone** — nothing needs chaining to get past 30
-  characters any more. It stays for loops and for shared tails.
+- **`\j` survives only for loops**, its original purpose — getting past 30
+  characters — having disappeared. Worth keeping (~150 bytes is cheap now) but
+  **implement it last**: it is the one feature that can brick a board, and it
+  needs the pause-escape to be survivable. The hazard also largely moves to the
+  app, which can walk the jump graph before writing and refuse an `autoexec`
+  that loops with no pause long enough to escape — a far better place for that
+  check than the firmware.
 - **More macros makes guessing easier.** Thirty live codes out of 62 means
   nearly every guess lands. The lockout matters more than it did, and `lock 1`
   becomes the sensible default rather than a strict option.

@@ -237,6 +237,42 @@ The password and lockout carry over, but the threat model shifts:
    someone who has the chip; that is the lock bits' job. It is protection
    against someone who has the *board*, briefly, and can tap 62 codes.
 
+   ### Unless the bootloader wipes the EEPROM itself
+
+   Marco's, and it removes the constraint above rather than working around it:
+   **a micronucleus that erases the EEPROM before it will write flash** is
+   EESAVE in software, and it applies to the one path lock bits cannot cover.
+   An attacker who uploads a sketch to read the table finds the table already
+   gone, because getting their sketch there is what erased it.
+
+   Four details decide whether it works:
+
+   - **Hook it to the erase command, not to bootloader entry.** Micronucleus
+     starts on every reset and waits; erasing there would wipe the table on
+     every power cycle. It already has an "erase application" command that the
+     host sends before the first page and already waits a long time for, which
+     is exactly the right place: 512 bytes at 3.4 ms is nearly two seconds,
+     and nothing else in the protocol would sit still for that.
+   - **Gate it on a byte in the reserved area**, so development is not
+     miserable. A board with the byte clear uploads as it always did; a board
+     with it set wipes itself on every reflash. The byte is in the table
+     region's config block, which is written only through the password, so
+     clearing it is not something an attacker can do first.
+   - **It composes with the lock bits rather than replacing them.** Lock bits
+     stop an ISP readout and do not stop SPM; this stops the SPM path and does
+     nothing about ISP. Both, and the board is covered either way — and the
+     lock bits no longer mean giving up the bootloader, which was the part
+     worth getting rid of.
+   - **The app backs the table up and restores it around an upgrade**, which
+     it can do because reading needs the password anyway. That turns a wipe
+     from a hazard into a step.
+
+   The cost is a fork of somebody else's bootloader, which has to be exactly
+   right because a mistake there bricks boards, and about forty bytes of a
+   space that is already tight. Worth doing after the password exists, since
+   without it the backup has nothing to protect it and the gate byte has
+   nothing to stop it being cleared.
+
    The case for encrypting is stronger than it first looks, and it is not
    about the cipher. Today the password is protected by the lock bits, and
    **the lock bits need a programmer and exclude the bootloader**. So a board

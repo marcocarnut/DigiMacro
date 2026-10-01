@@ -559,7 +559,19 @@ testable, which is why they are in this order rather than firmware-then-app.
    can read it, and takes a translator from the app. `test/i18n.js` checks the
    dictionaries hold the same keys, because a missing translation is invisible
    in use: it falls back to English and reads as if nobody noticed.
-4. **`autoexec` and `\j` first**, being the small ones, and because `\j`
+4. **`autoexec` — done, 122 bytes.** The macro to type at power-on is stored
+   as its *header byte*, so the same walk playback already does finds it, and
+   rewriting the table cannot point it at something else. Anything impossible
+   as a header means nothing is set, so an erased byte needs no initialising;
+   a code that is no longer in the table types nothing, which is how it should
+   fail. It fires once, when the host has finished enumerating, since
+   keystrokes sent before that go nowhere. `find_code(nsym, bits)` became
+   `find_header(h)`, which is what made it one byte rather than two.
+
+   The app names it by code in a drop-down and clears the choice when that
+   macro leaves the table, rather than writing a pointer to nothing.
+
+   **`\j` next**, and because `\j`
    needs something the mode switch used to provide and no longer does.
 
    A macro that jumps to itself runs for ever, deliberately, and the only way

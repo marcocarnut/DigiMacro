@@ -28,6 +28,11 @@ en: {
   'load-example':   'Load the example',
   budget:           '{n} of {max} bytes',
   keys:             'Keys',
+  'on-plug':        'when plugged in',
+  nothing:          'nothing',
+  'auto-dangling':  'The macro this board typed on power-up is not in the '
+                  + 'table any more, so it will type nothing. Choose another, '
+                  + 'or leave it.',
   'mods-hint':      'held for the next key',
   'a-key':          'a key',
   insert:           'insert',
@@ -142,6 +147,11 @@ pt: {
   'load-example':   'Carregar o exemplo',
   budget:           '{n} de {max} bytes',
   keys:             'Teclas',
+  'on-plug':        'ao conectar',
+  nothing:          'nada',
+  'auto-dangling':  'A macro que esta placa digitava ao ligar não está mais na '
+                  + 'tabela, então ela não digitará nada. Escolha outra, ou '
+                  + 'deixe como está.',
   'mods-hint':      'fica pressionado até a próxima tecla',
   'a-key':          'uma tecla',
   insert:           'inserir',

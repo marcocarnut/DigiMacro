@@ -19,6 +19,7 @@
  * format is the interface between the two halves of the project -- see below,
  * and keep the app in step with it.
  *
+ *   plugging it in    types the macro nominated as the power-on one, if any
  *   short tap         one symbol; a press under 250 ms is a dot, longer a dash
  *   700 ms of silence the code is finished: look it up and type it
  *   4 s hold          change personality, either way
@@ -68,6 +69,10 @@
                                For working on the input path only: it is the
                                optical equivalent of a loud keyboard, and
                                shows a bystander the code. */
+#endif
+
+#ifndef HAVE_AUTOEXEC
+#define HAVE_AUTOEXEC 1     /* 0 = never type anything unasked */
 #endif
 
 #ifndef TOUCH_DEBUG
@@ -186,6 +191,19 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *   0x1F4   password, twelve bytes zero-padded
  */
 
+/* The macro to type when the board is plugged in, as a header byte rather
+ * than a position in the table: the same lookup playback already does, where
+ * a position would need a second walk that counts. A code that is not in the
+ * table matches nothing and types nothing, which is the safe way for it to be
+ * wrong -- and the table can be rewritten without this having to follow it.
+ *
+ * Anything impossible as a header means nothing is set, so an erased byte
+ * needs no initialising. It types once, when the host has finished
+ * enumerating; keystrokes sent before that go nowhere. A macro that needs the
+ * host settled further starts with its own pause.
+ */
+#define AUTO_ADDR       ((uint8_t *)0x1F3)
+
 /* ==================================================================== */
 /* Flags                                                                */
 /* ==================================================================== */
@@ -196,7 +214,8 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
    a power cycle is a bug that takes a long evening to find. */
 #define FLAG_CODE_OPEN  1       /* symbols tapped, waiting for the silence */
 #define FLAG_CODE_OVER  2       /* more symbols than any code can have     */
-#define FLAG_CONSUMED   4       /* this press was a mode switch, not a symbol */
+#define FLAG_CONSUMED   4       /* this press opened the window, not a symbol */
+#define FLAG_AUTODONE   8       /* the power-on macro has had its turn */
 #define FLAGS           GPIOR1
 
 /* ==================================================================== */
@@ -513,11 +532,13 @@ void handle_input(void)
    never be a real answer, because every entry has a header byte in front of
    it. Whole header bytes are compared rather than count and symbols
    separately, which is one instruction; and since a query's count is never
-   above five, a query can never match the byte that ends the table. */
-uint8_t *find_code(uint8_t nsym, uint8_t bits)
+   above five, a query can never match the byte that ends the table.
+   
+   Taking the header rather than the count and symbols is what lets the
+   power-on macro be stored as one byte and found with the same walk. */
+uint8_t *find_header(uint8_t want)
 {
     uint8_t *a = TABLE_BASE;
-    uint8_t  want = HDR_MAKE(nsym, bits);
 
     while (a < TABLE_TOP) {
         uint8_t h = eeprom_read_byte(a++);
@@ -600,12 +621,25 @@ void macro_play(uint8_t *a)
 void code_finish(void)
 {
     uint8_t *a = ((FLAGS & FLAG_CODE_OVER) || !code_len)
-                 ? 0 : find_code(code_len, code_bits);
+                 ? 0 : find_header(HDR_MAKE(code_len, code_bits));
 
     code_reset();
     if (a) macro_play(a);
     else   blink(3, 70);
 }
+
+#if HAVE_AUTOEXEC
+/* Type the nominated macro, once the host is listening. */
+void autoexec_run(void)
+{
+    uint8_t  h = eeprom_read_byte(AUTO_ADDR);
+    uint8_t *a;
+
+    if (HDR_END(h)) return;             /* 0xFF, or never set */
+    a = find_header(h);
+    if (a) macro_play(a);
+}
+#endif
 
 /* ==================================================================== */
 
@@ -654,6 +688,15 @@ void loop(void)
 #endif
     handle_input();
     update_led();
+
+#if HAVE_AUTOEXEC
+    /* Keystrokes sent before the host has finished enumerating go nowhere, so
+       the startup macro waits for it here rather than holding up setup(). */
+    if (!(FLAGS & FLAG_AUTODONE) && hidReady()) {
+        FLAGS |= FLAG_AUTODONE;
+        autoexec_run();
+    }
+#endif
 
 #if TOUCH_DEBUG
     {

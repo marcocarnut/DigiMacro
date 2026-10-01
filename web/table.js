@@ -19,6 +19,10 @@ const ESC_JUMP   = 0x81;    /* not implemented in the firmware yet */
 const ESC_MARK   = 0x82;    /* the repeat after this goes back to here */
 const SHIFT      = 0x80;    /* in a stored keystroke */
 
+const AUTO_ADDR  = 0x1F3;   /* the macro to type when the board is plugged
+                               in, as a header byte; anything impossible as
+                               one means nothing is set */
+const AUTO_NONE  = 0xFF;
 const TABLE_TOP  = 0x1E0;   /* the firmware stops walking here: 480,
                                leaving 32 for the password and what
                                has not been thought of yet */
@@ -556,6 +560,6 @@ function sampleRows() {
 
 if (typeof module !== 'undefined') module.exports = {
   ESC_PAUSE, ESC_MOD, ESC_REPEAT, ESC_JUMP, SHIFT, TABLE_TOP, MAX_SYM,
-  ESC_MARK, LAYOUTS, setLayout, getLayout, setMessages, MSG,
+  ESC_MARK, AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
   usages, header, codeOf, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows };

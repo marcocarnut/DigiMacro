@@ -107,6 +107,12 @@
   <tbody id="list"></tbody>
 </table>
 
+<p class="bar" style="margin-top:1rem">
+  <label class="pick"><span data-t="on-plug">when plugged in</span>
+    <select id="auto"></select>
+  </label>
+</p>
+
 <div class="bar" style="margin-top:1rem">
   <button id="add" data-t="add-macro">Add a macro</button>
   <button id="sample" data-t="load-example">Load the example</button>
@@ -183,6 +189,7 @@ const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61, F_REFUSED = 0xEE;
 
 let dev = null, eeSize = 512;
 let macros = [{ code: '.', text: '' }];
+let auto = AUTO_NONE;           /* the header byte of the power-on macro */
 
 const $ = id => document.getElementById(id);
 
@@ -269,6 +276,18 @@ function state() {
   return { each, total, error, ok };
 }
 
+/* The power-on macro is named by its code, which is what the firmware stores:
+   a position would go wrong the moment the table was reordered. */
+function drawAuto() {
+  const sel = $('auto');
+  const was = auto;
+  sel.innerHTML = `<option value="">${t('nothing')}</option>`
+    + macros.filter(m => { try { return header(m.code) >= 0; } catch (e) { return false; } })
+            .map(m => `<option value="${header(m.code)}">${m.code}</option>`).join('');
+  sel.value = was === AUTO_NONE ? '' : String(was);
+  if (sel.value === '' && was !== AUTO_NONE) auto = AUTO_NONE;  /* it went away */
+}
+
 function draw() {
   const st = state();
   const tbody = $('list');
@@ -299,6 +318,7 @@ function draw() {
     Math.min(100, st.total * 100 / TABLE_TOP) + '%';
   m.className = 'meter' + (st.error ? ' full' : '');
   $('write').disabled = !dev || !st.ok;
+  drawAuto();
 }
 
 $('list').addEventListener('input', e => {
@@ -330,6 +350,10 @@ $('add').onclick = () => {
                 '-..', '-.-', '--.', '---'].find(c => !used.has(c)) || '';
   macros.push({ code: next, text: '' });
   draw();
+};
+
+$('auto').onchange = () => {
+  auto = $('auto').value === '' ? AUTO_NONE : Number($('auto').value);
 };
 
 $('sample').onclick = () => { macros = sampleRows(); draw(); fresh();
@@ -402,8 +426,11 @@ $('read').onclick = async () => {
       return;
     }
     macros = got;
+    auto = (await eeRead(AUTO_ADDR, 1))[0];
     draw();
     say(t('read-ok', { n: got.length }), 'ok');
+    if (auto !== AUTO_NONE && $('auto').value === '')
+      say(t('auto-dangling'), 'dim');
   } catch (e) {
     say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
   }
@@ -425,6 +452,7 @@ $('write').onclick = async () => {
                                 read: hex2(back[bad]) }), 'bad');
       return;
     }
+    await eeWrite(AUTO_ADDR, Uint8Array.from([auto]));
     say(t('write-ok', { n: bytes.length }), 'ok');
     say(t('write-then-tap'));
   } catch (e) {

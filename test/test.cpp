@@ -134,7 +134,7 @@ int main(void)
     /* 0xFF everywhere means "end of table" at the first byte, so there is
        nothing to initialise and nothing to go wrong. */
     memset(EE, 0xFF, sizeof EE);
-    CHECK(find_code(1, 0) == 0, "a dot must match nothing on a blank chip");
+    CHECK(find_header(HDR_MAKE(1, 0)) == 0, "a dot must match nothing on a blank chip");
     CHECK(play(".")[0] == 0, "and nothing must be typed: \"%s\"", typed);
     CHECK(play("-----")[0] == 0, "nor for the longest code");
 
@@ -221,7 +221,7 @@ int main(void)
         EE[a] = HDR_MAKE(1, 1); EE[a+1] = K('z'); EE[a+2] = 0;
     }
     memcpy(EE + 0x1F4, "hunter2", 8);           /* the thing being protected */
-    CHECK(find_code(3, 0) == 0, "an unterminated table must still end");
+    CHECK(find_header(HDR_MAKE(3, 0)) == 0, "an unterminated table must still end");
     CHECK(play("...")[0] == 0, "and type nothing: \"%s\"", typed);
 
     printf("11. playback stops at the top of the table too\n");
@@ -357,12 +357,48 @@ int main(void)
     CHECK(!strcmp(play("."), "<00/04><00/05>"),
           "a mark on its own must change nothing: \"%s\"", typed);
 
-    printf("17. the reserved bytes are where the map says\n");
+    printf("17. the power-on macro\n");
+    /* Stored as a header byte rather than a position, so the same walk finds
+       it and rewriting the table does not have to move it. */
+    table_reset();
+    add(".",  { K('a') });
+    add("-.", { K('b') });
+    EE[(size_t)AUTO_ADDR] = HDR_MAKE(2, 0x02);          /* "-.", dash then dot */
+    typedn = 0; typed[0] = 0;
+    FLAGS &= ~FLAG_AUTODONE;
+    loop();
+    CHECK(!strcmp(typed, "<00/05>"), "should have typed b: \"%s\"", typed);
+
+    printf("17b. ...once, and only once\n");
+    typedn = 0; typed[0] = 0;
+    for (int i = 0; i < 5; i++) loop();
+    CHECK(typedn == 0, "it must not keep going: \"%s\"", typed);
+
+    printf("17c. nothing set means nothing typed\n");
+    EE[(size_t)AUTO_ADDR] = 0xFF;
+    typedn = 0; typed[0] = 0;
+    FLAGS &= ~FLAG_AUTODONE;
+    loop();
+    CHECK(typedn == 0, "an erased byte must mean nothing: \"%s\"", typed);
+
+    printf("17d. a code that is no longer there types nothing\n");
+    /* The table can be rewritten without this following it, so a dangling
+       code has to be safe rather than impossible. */
+    EE[(size_t)AUTO_ADDR] = HDR_MAKE(5, 0x1F);          /* "-----", absent */
+    typedn = 0; typed[0] = 0;
+    FLAGS &= ~FLAG_AUTODONE;
+    loop();
+    CHECK(typedn == 0, "a dangling code must type nothing: \"%s\"", typed);
+    EE[(size_t)AUTO_ADDR] = 0xFF;
+
+    printf("18. the reserved bytes are where the map says\n");
     /* The table stops 32 bytes below the end; the app is told the same
        number, so if this changes both must. */
     CHECK((size_t)TABLE_TOP == 0x1E0, "TABLE_TOP is %03X", (int)(size_t)TABLE_TOP);
     CHECK((size_t)TABLE_TOP - (size_t)TABLE_BASE == 480, "480 bytes of table");
     CHECK(512 - (size_t)TABLE_TOP == 32, "and 32 bytes kept back");
+    CHECK((size_t)AUTO_ADDR >= (size_t)TABLE_TOP,
+          "the power-on byte must be above the table, not in it");
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "all checks passed");
     return fails != 0;

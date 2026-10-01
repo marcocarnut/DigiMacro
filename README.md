@@ -14,11 +14,12 @@ line instead. That one is finished and in use; this one is early.
 
 ## Status: working, less the password
 
-Tap a code, the board types the macro. Hold the pad four seconds and
+Tap a code, the board types the macro. One macro can be nominated to type
+itself when the board is plugged in. Hold the pad four seconds and
 `web/app.html` may read and write the table for the next half minute. What is
-left is the password and lockout that should gate all of this, and `\j`.
+left is `\j`, and the password and lockout that should gate all of this.
 
-**3790 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
+**3912 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
 
 ### It never stops being a keyboard
 
@@ -172,6 +173,11 @@ whatever is selected — so nothing has to be spelled from memory. `{11}` means
 eleven in all, as a quantifier does in a regular expression, and a count counts
 whatever precedes it: one keystroke, one accented letter, or a bracketed group.
 A parenthesis is only a parenthesis unless a count follows the closing one.
+
+**When plugged in** nominates one macro to type itself at power-on, stored as
+the code rather than a position in the table — so reordering the macros cannot
+point it somewhere else, and a code that is no longer there types nothing
+rather than something.
 
 The editor encodes as you type, so a mistake is reported beside the macro that
 has it, and the byte budget — 497 of them — is always on screen. Nothing is

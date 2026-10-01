@@ -18,6 +18,8 @@
 #
 #   spike       build spike/ instead -- the mode-switch derisking spike,
 #               which also types its own pad readings
+#   spikehid    build spikehid/ instead -- the second spike: a keyboard that
+#               stays a keyboard, with a vendor collection WebHID can reach
 #   loadtable   build tools/loadtable/ instead -- writes a sample table into
 #               EEPROM so playback can be tested before the app exists
 #
@@ -37,6 +39,7 @@ TOUCHDEBUG=0
 for a in "$@"; do
     case "$a" in
         spike)     SKETCH=spike ;;
+        spikehid)  SKETCH=spikehid ;;
         loadtable) SKETCH=tools/loadtable ;;
         button)    BUTTON=1 ;;
         rc)        RC=1 ;;

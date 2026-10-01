@@ -51,3 +51,17 @@ SUBSYSTEM=="usb", ATTR{idVendor}=="16c0", ATTR{idProduct}=="05dc", MODE="0660", 
 ```
 
 in `/etc/udev/rules.d/60-digimacro.rules`, then `sudo udevadm control --reload`.
+
+## The second spike
+
+`spikehid/` asks whether the mode switch is needed at all. Flash it with
+`./build.sh spikehid upload` and open <http://localhost:8000/hid.html>.
+
+There is no pad to hold: the device stays a keyboard the whole time, and the
+page talks to a second top-level collection on vendor usage page `0xFF00`,
+which is what WebHID will hand over. Touch the pad first and check it types a
+line — that is the half of the question about report IDs. **3350 bytes**, less
+than the first spike, with the EEPROM protocol included.
+
+Its write test uses the reserved area at `0x1E0`, so a macro table on the board
+survives it.

@@ -607,7 +607,32 @@ testable, which is why they are in this order rather than firmware-then-app.
    `autoexec` is the brick hazard's other half, so the app's loop check lands
    with it, and both come before the password rather than after.
 
-5. **`STATUS` and `UNLOCK`**, the password and the lockout — including
+5. **The password — done, 298 bytes.** Optional and absent by default, which
+   is the part that mattered: plenty of boards want no security at all, and
+   one that types eleven right-arrows at a television should ask nobody for
+   anything. An erased chip is an open one.
+
+   It gates the table and not the typing, because a device that wants a
+   password before it will type is a device nobody would carry. The two gates
+   answer different questions: the window says somebody is at the board, which
+   a page cannot arrange, and the password says they are the right somebody,
+   which a thief holding the board cannot.
+
+   The checking lives in the firmware rather than the library, with weak
+   defaults in the library for sketches that want none — not for tidiness, but
+   because the firmware is what the host tests compile, and security code the
+   tests cannot reach is in the wrong place.
+
+   Two things driving it turned up. `prompt()` is no way to ask for a password
+   — it is not a password field, and it blocks the page — so the app has a real
+   one that opens itself when the board turns out to want it. And **Chrome
+   keeps a WebHID permission only for a device with a serial number**: without
+   one every replug meant picking the board out of the chooser again, which
+   had been quietly happening all along. The device has one now, which is
+   worth checking against obdev's terms for `16c0:27db`, that being the table
+   where serial numbers are what tell devices apart.
+
+   **The lockout next**, which is the other half — including
    counting failed password attempts, which the CDC version does not do and
    which matters far more over USB. `autoexec` belongs here too, beside the
    lockout that has to gate it; its byte is already reserved at 0x1F3.

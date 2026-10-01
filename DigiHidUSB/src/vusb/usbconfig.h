@@ -264,8 +264,12 @@ section at the end of this file).
  * the macros. See the file USB-IDs-for-free.txt before you assign a name if
  * you use a shared VID/PID.
  */
-/*#define USB_CFG_SERIAL_NUMBER   'N', 'o', 'n', 'e' */
-/*#define USB_CFG_SERIAL_NUMBER_LEN   0 */
+/* Chrome keeps a WebHID permission only for a device that has a serial
+ * number; without one, every replug means picking the board out of the
+ * chooser again. It need not be unique per board -- nothing here tells two
+ * apart -- it only has to exist. */
+#define USB_CFG_SERIAL_NUMBER   'd','i','g','i','m','a','c','r','o'
+#define USB_CFG_SERIAL_NUMBER_LEN   9
 /* Same as above for the serial number. If you don't want a serial number,
  * undefine the macros.
  * It may be useful to provide the serial number through other means than at

@@ -487,7 +487,47 @@ int main(void)
     code_finish();                      /* must return at all, is the point */
     CHECK(typedn == 0, "it types nothing, and must stop doing so");
 
-    printf("19. the reserved bytes are where the map says\n");
+    printf("19. the password, which is optional and absent by default\n");
+    /* An erased chip has none, and a board that types eleven right-arrows at
+       a television should not ask anybody for anything. */
+    memset(EE, 0xFF, sizeof EE);
+    unlocked = 0;
+    CHECK(!hidPassSet(), "an erased chip has no password");
+    CHECK(hidUnlocked(), "and is therefore open");
+
+    printf("19b. setting one, and what it then takes to get in\n");
+    hidSetPass((const uint8_t *)"abc", 3);
+    CHECK(hidPassSet(), "there should be one now");
+    CHECK(EE[DM_PASS_ADDR + 3] == 0, "and it should be zero-padded");
+    unlocked = 0;
+    CHECK(!hidUnlocked(), "which locks it");
+    CHECK(!hidUnlock((const uint8_t *)"abd", 3), "a wrong one is refused");
+    CHECK(!hidUnlocked(), "and leaves it locked");
+    CHECK(!hidUnlock((const uint8_t *)"ab", 2), "a prefix is not enough");
+    CHECK(!hidUnlock((const uint8_t *)"abcd", 4), "nor is something longer");
+    CHECK(hidUnlock((const uint8_t *)"abc", 3), "the right one gets in");
+    CHECK(hidUnlocked(), "and stays in, for the session");
+
+    printf("19c. ...and how it goes away again\n");
+    hidSetPass(0, 0);
+    CHECK(!hidPassSet(), "no bytes means no password");
+    CHECK(EE[DM_PASS_ADDR] == 0xFF, "and the stored one is really gone");
+    unlocked = 0;
+    CHECK(hidUnlocked(), "so the board is open again");
+
+    printf("19d. a password does not stop the board being a keyboard\n");
+    /* A device that wants a password before it will type is a device nobody
+       would carry. The answer to a stolen board is the lockout, not this. */
+    hidSetPass((const uint8_t *)"secret", 6);
+    unlocked = 0;
+    table_reset();
+    add(".", { K('a') });
+    CHECK(!strcmp(play("."), "<00/04>"),
+          "a locked board must still play its macros: \"%s\"", typed);
+    hidSetPass(0, 0);
+    unlocked = 0;
+
+    printf("20. the reserved bytes are where the map says\n");
     /* The table stops 32 bytes below the end; the app is told the same
        number, so if this changes both must. */
     CHECK((size_t)TABLE_TOP == 0x1E0, "TABLE_TOP is %03X", (int)(size_t)TABLE_TOP);
@@ -495,6 +535,9 @@ int main(void)
     CHECK(512 - (size_t)TABLE_TOP == 32, "and 32 bytes kept back");
     CHECK((size_t)AUTO_ADDR >= (size_t)TABLE_TOP,
           "the power-on byte must be above the table, not in it");
+    CHECK(DM_PASS_ADDR >= (size_t)TABLE_TOP,
+          "and so must the password");
+    CHECK(DM_PASS_ADDR + DM_PASS_LEN == 512, "which ends where the EEPROM does");
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "all checks passed");
     return fails != 0;

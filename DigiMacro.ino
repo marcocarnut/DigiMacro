@@ -224,21 +224,24 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *   0x1F1   lockout allowance
  *   0x1F2   tries left of it
  *   0x1F3   the code to type at power-on, if any
- *   0x1F4   password, twelve bytes zero-padded
+ *   0x1F4   password, twelve bytes zero-padded (DM_PASS_ADDR)
  */
 
-/* The macro to type when the board is plugged in, as a header byte rather
- * than a position in the table: the same lookup playback already does, where
- * a position would need a second walk that counts. A code that is not in the
- * table matches nothing and types nothing, which is the safe way for it to be
- * wrong -- and the table can be rewritten without this having to follow it.
+/* ---- the password -------------------------------------------------
  *
- * Anything impossible as a header means nothing is set, so an erased byte
- * needs no initialising. It types once, when the host has finished
- * enumerating; keystrokes sent before that go nowhere. A macro that needs the
- * host settled further starts with its own pause.
+ * Optional, and absent by default: an erased chip has none, and a board that
+ * types eleven right-arrows at a television should not ask anybody for
+ * anything. What it adds, when set, is a second gate on the table -- the
+ * window says somebody is at the board, which a web page cannot arrange; the
+ * password says they are the right somebody, which a thief holding the board
+ * cannot.
+ *
+ * It does not gate *playing* a macro. A device that wants a password before
+ * it will type is a device nobody would carry, and the answer to a stolen
+ * board typing for strangers is the lockout, not this.
  */
-#define AUTO_ADDR       ((uint8_t *)0x1F3)
+#define PASS_ADDR       ((uint8_t *)DM_PASS_ADDR)
+#define PASS_NONE       0xFF
 
 /* ==================================================================== */
 /* Flags                                                                */
@@ -284,6 +287,63 @@ void blink(uint8_t n, uint16_t ms)
         LED_SET(0); wait_poll(ms);
     }
 }
+
+static uint8_t unlocked;        /* this session only; RAM, so a replug locks */
+
+uint8_t hidPassSet(void)
+{
+    return eeprom_read_byte(PASS_ADDR) != PASS_NONE;
+}
+
+uint8_t hidUnlocked(void)
+{
+    return !hidPassSet() || unlocked;
+}
+
+/* Compared in full whatever happens, so that how long it takes says nothing
+   about how much of it was right. */
+uint8_t hidUnlock(const uint8_t *p, uint8_t n)
+{
+    uint8_t diff = 0;
+
+    if (!hidPassSet()) return 1;
+    if (n > DM_PASS_LEN) return 0;
+
+    for (uint8_t i = 0; i < DM_PASS_LEN; i++)
+        diff |= eeprom_read_byte(PASS_ADDR + i) ^ (i < n ? p[i] : 0);
+
+    if (diff) {
+        /* A wrong answer costs a second. Over a channel that could otherwise
+           be asked thousands of times a second, that is most of what a short
+           password has going for it. */
+        wait_poll(1000);
+        return 0;
+    }
+    unlocked = 1;
+    return 1;
+}
+
+void hidSetPass(const uint8_t *p, uint8_t n)
+{
+    if (n > DM_PASS_LEN) return;
+    for (uint8_t i = 0; i < DM_PASS_LEN; i++)
+        eeprom_update_byte(PASS_ADDR + i,
+                           n == 0 ? PASS_NONE : (i < n ? p[i] : 0));
+    unlocked = 1;
+}
+
+/* The macro to type when the board is plugged in, as a header byte rather
+ * than a position in the table: the same lookup playback already does, where
+ * a position would need a second walk that counts. A code that is not in the
+ * table matches nothing and types nothing, which is the safe way for it to be
+ * wrong -- and the table can be rewritten without this having to follow it.
+ *
+ * Anything impossible as a header means nothing is set, so an erased byte
+ * needs no initialising. It types once, when the host has finished
+ * enumerating; keystrokes sent before that go nowhere. A macro that needs the
+ * host settled further starts with its own pause.
+ */
+#define AUTO_ADDR       ((uint8_t *)0x1F3)
 
 /* ==================================================================== */
 /* Capacitive touch                                                     */
@@ -801,6 +861,8 @@ void loop(void)
 #endif
     handle_input();
     update_led();
+
+    if (!hidAllowed()) unlocked = 0;    /* the session ends with the window */
 
 #if HAVE_AUTOEXEC
     /* The startup macro waits here rather than holding up setup(), and waits

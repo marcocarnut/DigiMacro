@@ -152,6 +152,18 @@
 
 <pre id="log" class="dim" data-t="log-initial"></pre>
 
+<details id="sec">
+  <summary data-t="sec-summary">Password</summary>
+  <p class="dim" style="max-width:40rem" id="secwhy"></p>
+  <p class="bar">
+    <input id="passval" type="password" size="16" spellcheck="false"
+           autocomplete="off" data-ph="ph-password">
+    <button id="unlock" data-t="unlock">Unlock</button>
+    <button id="setpass" data-t="set-password">Set</button>
+    <button id="clearpass" data-t="clear-password">Remove it</button>
+  </p>
+</details>
+
 <details>
   <summary data-t="ref-summary">What can go in a macro</summary>
   <table>
@@ -187,12 +199,15 @@ const VND_ID  = 2;
 const VND_LEN = 36;
 const DATA_AT = 4;              /* command, address low, address high, count */
 const CHUNK   = VND_LEN - DATA_AT;
-const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61, F_REFUSED = 0xEE;
+const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61;
+const F_UNLOCK = 0x62, F_SETPASS = 0x63, F_REFUSED = 0xEE;
+const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
 
 
 let dev = null, eeSize = 512;
 let macros = [{ code: '.', text: '' }];
 let auto = AUTO_NONE;           /* the header byte of the power-on macro */
+let state_byte = 0;             /* what INFO last said about the gates */
 
 const $ = id => document.getElementById(id);
 
@@ -388,9 +403,11 @@ async function connect(mayAsk) {
       say(t('wrong-magic'), 'bad'); dev = null; return;
     }
     eeSize = b[5] | (b[6] << 8);
+    state_byte = b[7];
     connected(true, 'connected', { fw: b[4], proto: b[3] });
     say(t('connected-say'), 'ok');
-    if (!b[7]) say(t('hold-to-open'), 'dim');
+    if (!(state_byte & ST_OPEN)) say(t('hold-to-open'), 'dim');
+    drawSecurity();
   } catch (e) {
     dev = null;
     connected(false, 'not-connected');
@@ -422,6 +439,8 @@ navigator.hid?.addEventListener('connect', ev => {
 $('read').onclick = async () => {
   fresh();
   try {
+    await refreshState();
+    if (!(await unlock())) return;
     const ee = new Uint8Array(TABLE_TOP);
     for (let a = 0; a < TABLE_TOP; a += CHUNK)
       ee.set(await eeRead(a, Math.min(CHUNK, TABLE_TOP - a)), a);
@@ -448,6 +467,8 @@ $('write').onclick = async () => {
   catch (e) { say(e.message, 'bad'); return; }
 
   try {
+    await refreshState();
+    if (!(await unlock())) return;
     for (let i = 0; i < bytes.length; i += CHUNK)
       await eeWrite(i, bytes.slice(i, i + CHUNK));
     const back = await eeRead(0, bytes.length);
@@ -460,6 +481,102 @@ $('write').onclick = async () => {
     await eeWrite(AUTO_ADDR, Uint8Array.from([auto]));
     say(t('write-ok', { n: bytes.length }), 'ok');
     say(t('write-then-tap'));
+  } catch (e) {
+    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
+  }
+};
+
+/* ---- the password, which most boards will not have --------------------
+ *
+ * Absent by default and no worse for it: plenty of macros are not secret, and
+ * a board that types eleven right-arrows at a television should not ask
+ * anybody for anything. So this section says what is true and offers the
+ * change, rather than suggesting anything is wrong.
+ */
+function drawSecurity() {
+  const has = !!(state_byte & ST_PASSWORD);
+  const open = !!(state_byte & ST_UNLOCKED);
+  $('secwhy').textContent = t(has ? (open ? 'sec-unlocked' : 'sec-locked')
+                                  : 'sec-none');
+  $('clearpass').style.display = has ? '' : 'none';
+  $('unlock').style.display = has && !open ? '' : 'none';
+  $('setpass').textContent = t(has ? 'change-password' : 'set-password');
+}
+
+async function refreshState() {
+  const b = await ask(F_INFO);
+  state_byte = b[7];
+  drawSecurity();
+  return state_byte;
+}
+
+const bytesOf = s => new TextEncoder().encode(s).slice(0, 12);
+
+/* No dialog: the password goes in the field in the Password section, which is
+   a real password field rather than a prompt box, and the section opens
+   itself when the board turns out to want one. */
+async function unlock() {
+  if (!(state_byte & ST_PASSWORD) || (state_byte & ST_UNLOCKED)) return true;
+
+  const given = $('passval').value;
+  if (!given) {
+    $('sec').open = true;
+    $('passval').focus();
+    say(t('needs-password'), 'bad');
+    return false;
+  }
+  try {
+    await ask(F_UNLOCK, 0, bytesOf(given).length, bytesOf(given));
+  } catch (e) {
+    if (e.message === 'REFUSED') { say(t('wrong-password'), 'bad'); return false; }
+    throw e;
+  }
+  $('passval').value = '';
+  await refreshState();
+  return true;
+}
+
+$('unlock').onclick = async () => {
+  fresh();
+  try {
+    await refreshState();
+    if (await unlock()) say(t('unlocked'), 'ok');
+  } catch (e) {
+    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
+  }
+};
+
+$('setpass').onclick = async () => {
+  fresh();
+  const given = $('passval').value;
+  if (!given) { say(t('password-empty'), 'bad'); return; }
+  try {
+    await refreshState();
+    /* Changing one means getting past the old one first, and the field holds
+       the new password -- so the old one is asked for on its own. */
+    if ((state_byte & ST_PASSWORD) && !(state_byte & ST_UNLOCKED)) {
+      $('sec').open = true;
+      say(t('unlock-to-change'), 'bad');
+      return;
+    }
+    const bytes = bytesOf(given);
+    await ask(F_SETPASS, 0, bytes.length, bytes);
+    $('passval').value = '';
+    await refreshState();
+    say(t('password-set'), 'ok');
+  } catch (e) {
+    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
+  }
+};
+
+$('clearpass').onclick = async () => {
+  fresh();
+  try {
+    await refreshState();
+    if (!(await unlock())) return;
+    await ask(F_SETPASS, 0, 0, null);
+    await refreshState();
+    say(t('password-cleared'), 'ok');
   } catch (e) {
     say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
   }
@@ -480,6 +597,7 @@ function useLang(l) {
   try { localStorage.setItem('digimacro.lang', getLang()); } catch (e) {}
   applyLang();
   renderWho();
+  drawSecurity();               /* its text is chosen, not marked up */
   drawPad();                    /* its labels are built, not marked up */
   draw();                       /* and so are the rows and the budget */
 }

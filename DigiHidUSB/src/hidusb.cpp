@@ -23,7 +23,8 @@ static const uint8_t PROGMEM devDesc[18] = {
     0xc0, 0x16,             /* 16c0 */
     0xdb, 0x27,             /* 27db, obdev's shared keyboard id */
     0x00, 0x01,
-    1, 2, 0,
+    1, 2, 3,                /* manufacturer, product, and a serial number --
+                               see usbconfig.h for why the third matters */
     1
 };
 
@@ -130,6 +131,17 @@ uint8_t hidAllowed(void)
     return allowOpen;
 }
 
+/* The password belongs to the firmware, not to the transport: the firmware
+   owns the EEPROM map, and -- more to the point -- the firmware is what the
+   host tests compile, so putting the checking there is what lets it be
+   tested. These are the defaults, for a sketch that wants none of it. */
+uint8_t __attribute__((weak)) hidPassSet(void)  { return 0; }
+uint8_t __attribute__((weak)) hidUnlocked(void) { return 1; }
+uint8_t __attribute__((weak)) hidUnlock(const uint8_t *p, uint8_t n)
+                                                { (void)p; (void)n; return 1; }
+void    __attribute__((weak)) hidSetPass(const uint8_t *p, uint8_t n)
+                                                { (void)p; (void)n; }
+
 /* ===================================================================== */
 /* Requests                                                              */
 /* ===================================================================== */
@@ -141,10 +153,18 @@ static void vndAnswer(void)
 
     if (n > DM_VND_CHUNK) n = DM_VND_CHUNK;
 
-    /* The table is what is being protected, so both directions wait for
-       someone at the board. INFO answers regardless: it tells a page what
-       this is and whether it may ask, which gives nothing away. */
+    /* Two gates, and they answer different questions. The window says somebody
+       is at the board, which a web page cannot arrange; the password says
+       they are the right somebody, which someone holding a stolen board
+       cannot. Both, or neither if no password is set.
+
+       INFO answers whatever the gates say: it tells a page what this is and
+       what it would have to do, which gives nothing away. */
     if (vnd[0] != DM_FUNC_INFO && !hidAllowed()) {
+        vnd[0] = DM_REFUSED;
+        return;
+    }
+    if (vnd[0] != DM_FUNC_INFO && vnd[0] != DM_FUNC_UNLOCK && !hidUnlocked()) {
         vnd[0] = DM_REFUSED;
         return;
     }
@@ -157,7 +177,19 @@ static void vndAnswer(void)
         vnd[4] = DM_FW_VERSION;
         vnd[5] = (uint8_t)(E2END + 1);
         vnd[6] = (uint8_t)((E2END + 1) >> 8);
-        vnd[7] = hidAllowed();
+        vnd[7] = (hidAllowed()  ? DM_ST_OPEN     : 0)
+               | (hidPassSet()  ? DM_ST_PASSWORD : 0)
+               | (hidUnlocked() ? DM_ST_UNLOCKED : 0);
+        break;
+
+    case DM_FUNC_UNLOCK:
+        if (!hidUnlock(vnd + DM_VND_DATA, n)) vnd[0] = DM_REFUSED;
+        break;
+
+    case DM_FUNC_SETPASS:
+        /* Zero bytes clears it, which is how a board goes back to needing
+           nothing. Reaching here at all meant getting past both gates. */
+        hidSetPass(vnd + DM_VND_DATA, n);
         break;
 
     case DM_FUNC_READ:

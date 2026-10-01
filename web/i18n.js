@@ -46,6 +46,34 @@ en: {
                   + 'when the board asks — it stays a keyboard throughout, and '
                   + 'the hold is the one thing a web page cannot do for itself.',
 
+  'sec-summary':    'Password',
+  'sec-none':       'This board has no password, which is the usual thing and '
+                  + 'perfectly fine: holding the pad is what keeps a web page '
+                  + 'out, and plenty of macros are not secret. Set one if the '
+                  + 'table is worth protecting from somebody holding the '
+                  + 'board.',
+  'sec-locked':     'This board has a password. It will be asked for before '
+                  + 'the table can be read or written, once per session.',
+  'sec-unlocked':   'This board has a password, and it has been given. It will '
+                  + 'be asked for again after the window closes.',
+  'set-password':   'Set',
+  'change-password':'Change',
+  'clear-password': 'Remove it',
+  'ph-password':    'a password, up to 12 characters',
+  unlock:           'Unlock',
+  unlocked:         'Unlocked, until the window closes.',
+  'needs-password': 'This board has a password. Type it in the Password '
+                  + 'section below and press Unlock.',
+  'unlock-to-change': 'Press Unlock with the current password first, then type '
+                  + 'the new one and press Change.',
+  'wrong-password': 'That is not the password. The board waits a second after '
+                  + 'each wrong answer, which is most of what a short password '
+                  + 'has going for it.',
+  'password-empty': 'Type a password first, or use Remove it.',
+  'password-set':   'Password set. It is asked for once per session, and the '
+                  + 'board still types its macros without it.',
+  'password-cleared': 'Password removed. The board is open to anyone who can '
+                  + 'hold the pad.',
   'ref-summary':    'What can go in a macro',
   'ref-anything':   'typed as itself',
   'ref-escapes':    'newline, tab, backslash',
@@ -171,6 +199,33 @@ pt: {
                   + 'todo, e segurar é a única coisa que uma página não '
                   + 'consegue fazer sozinha.',
 
+  'sec-summary':    'Senha',
+  'sec-none':       'Esta placa não tem senha, que é o normal e está ótimo: '
+                  + 'segurar o sensor é o que mantém uma página web de fora, e '
+                  + 'muitas macros não são secretas. Defina uma se a tabela '
+                  + 'merecer proteção contra quem estiver com a placa na mão.',
+  'sec-locked':     'Esta placa tem senha. Ela será pedida antes de ler ou '
+                  + 'gravar a tabela, uma vez por sessão.',
+  'sec-unlocked':   'Esta placa tem senha, e ela já foi dada. Será pedida de '
+                  + 'novo depois que a janela fechar.',
+  'set-password':   'Definir',
+  'change-password':'Trocar',
+  'clear-password': 'Remover',
+  'ph-password':    'uma senha, até 12 caracteres',
+  unlock:           'Destravar',
+  unlocked:         'Destravada, até a janela fechar.',
+  'needs-password': 'Esta placa tem senha. Digite-a na seção Senha abaixo e '
+                  + 'clique em Destravar.',
+  'unlock-to-change': 'Clique em Destravar com a senha atual primeiro, depois '
+                  + 'digite a nova e clique em Trocar.',
+  'wrong-password': 'Essa não é a senha. A placa espera um segundo a cada '
+                  + 'resposta errada, que é quase tudo o que uma senha curta '
+                  + 'tem a seu favor.',
+  'password-empty': 'Digite uma senha primeiro, ou use Remover.',
+  'password-set':   'Senha definida. É pedida uma vez por sessão, e a placa '
+                  + 'continua digitando as macros sem ela.',
+  'password-cleared': 'Senha removida. A placa está aberta a quem conseguir '
+                  + 'segurar o sensor.',
   'ref-summary':    'O que pode entrar numa macro',
   'ref-anything':   'digitado como está',
   'ref-escapes':    'nova linha, tabulação, barra invertida',

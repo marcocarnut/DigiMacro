@@ -34,10 +34,28 @@
 #define DM_VND_DATA         4       /* where the data starts */
 #define DM_VND_CHUNK        (DM_VND_LEN - DM_VND_DATA)
 
-#define DM_FUNC_INFO        0x40    /* magic, versions, EEPROM size, open? */
+#define DM_FUNC_INFO        0x40    /* magic, versions, EEPROM size, state */
 #define DM_FUNC_READ        0x60    /* address, count -> data */
 #define DM_FUNC_WRITE       0x61    /* address, count, data */
+#define DM_FUNC_UNLOCK      0x62    /* count, password -> accepted or not */
+#define DM_FUNC_SETPASS     0x63    /* count, password; count 0 clears it */
 #define DM_REFUSED          0xEE    /* comes back in place of the command */
+
+/* INFO's state byte */
+#define DM_ST_OPEN          0x01    /* somebody held the pad recently */
+#define DM_ST_PASSWORD      0x02    /* a password is stored */
+#define DM_ST_UNLOCKED      0x04    /* ...and has been given this session */
+
+/* Twelve bytes at the top of the EEPROM, zero-padded, 0xFF for none. The
+ * firmware's map owns this address; it is here because guarding this channel
+ * is the library's job and the two must agree.
+ *
+ * Having no password is the ordinary case and costs nothing: plenty of macros
+ * are not secret, and a board that types eleven right-arrows at a television
+ * should not ask anybody for anything. An erased chip is therefore an open
+ * one, and the password only ever adds a gate. */
+#define DM_PASS_ADDR        0x1F4
+#define DM_PASS_LEN         12
 
 /* Reaching the table still needs someone at the board. The mode switch used
    to enforce that by accident of being a mode switch; now the sketch opens a
@@ -66,8 +84,14 @@ uint8_t hidLeds(void);          /* the host's lock lights, as it last said */
    attached a keyboard to anything yet. The first lock-light report is the
    host talking TO the keyboard, which it only does once there is one. */
 
-void    hidAllow(uint16_t ms);  /* let the table be read and written, briefly */
+void    hidAllow(uint16_t ms);  /* somebody is at the board, briefly */
 uint8_t hidAllowed(void);
+/* Provided by the firmware, which owns the EEPROM map and is what the host
+   tests compile. The library ships defaults that want no password at all. */
+uint8_t hidPassSet(void);
+uint8_t hidUnlocked(void);
+uint8_t hidUnlock(const uint8_t *p, uint8_t n);
+void    hidSetPass(const uint8_t *p, uint8_t n);
 
 void    hidKey(uint8_t modifier, uint8_t key);
 void    hidTypeChar(char c, uint8_t mod);

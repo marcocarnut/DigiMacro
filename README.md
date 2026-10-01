@@ -20,7 +20,7 @@ macro can carry on with another, including itself. Hold the pad four seconds and
 `web/app.html` may read and write the table for the next half minute. What is
 left is `\j`, and the password and lockout that should gate all of this.
 
-**4118 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
+**4416 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
 
 ### It never stops being a keyboard
 
@@ -60,6 +60,26 @@ stopped and repaired with one gesture.
 The one loop that cannot be stopped that way is one that never types or pauses
 at all, since the pad is never reached. The firmware bounds that by counting
 jumps, and the app refuses to write it, because nobody meant it.
+
+### The password, which most boards will not have
+
+Optional, and absent by default. An erased chip has none, and a board that
+types eleven right-arrows at a television should not ask anybody for anything.
+
+What it adds, when set, is a *second* gate on the table. The window says
+somebody is at the board, which a web page cannot arrange; the password says
+they are the right somebody, which a thief holding the board cannot. Both are
+needed to read or write, and neither is needed if no password is set.
+
+It does not gate *playing* a macro. A device that wants a password before it
+will type is a device nobody would carry, and the answer to a stolen board
+typing for strangers is the lockout, which is still to come.
+
+A wrong answer costs a second, which over a channel that could otherwise be
+asked thousands of times a second is most of what a short password has going
+for it. The comparison runs to the end whatever happens, so its timing says
+nothing about how much of the answer was right. The unlock lasts as long as
+the window and lives in RAM, so unplugging the board locks it again.
 
 **The hold survives, with a different job.** It used to change what the device
 was; now it opens a window during which the table may be read and written. That
@@ -134,6 +154,8 @@ One feature report on the vendor collection, both ways:
 | `0x40` INFO | magic `DM`, protocol, firmware, EEPROM size, window open? |
 | `0x60` READ | address and count in, data back |
 | `0x61` WRITE | address, count and data in |
+| `0x62` UNLOCK | the password, if the board has one |
+| `0x63` SETPASS | a new password, or none at all |
 | `0xEE` | comes back in place of the command when the window is shut |
 
 Set the report to ask, get it to see the answer. INFO always answers — it says

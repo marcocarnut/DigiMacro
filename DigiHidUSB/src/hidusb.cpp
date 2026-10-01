@@ -2,6 +2,7 @@
 #include <avr/eeprom.h>
 #include <avr/pgmspace.h>
 #include <avr/interrupt.h>
+#include <avr/wdt.h>
 #include <util/delay.h>
 
 extern "C" {
@@ -23,8 +24,8 @@ static const uint8_t PROGMEM devDesc[18] = {
     0xc0, 0x16,             /* 16c0 */
     0xdb, 0x27,             /* 27db, obdev's shared keyboard id */
     0x00, 0x01,
-    1, 2, 3,                /* manufacturer, product, and a serial number --
-                               see usbconfig.h for why the third matters */
+    1, 2, 3,                /* manufacturer, product, serial -- and the third
+                               is what makes a WebHID permission stick */
     1
 };
 
@@ -96,6 +97,58 @@ extern "C" usbMsgLen_t usbFunctionDescriptor(usbRequest_t *rq)
         usbMsgPtr = (usbMsgPtr_t)hidReportDesc;  return sizeof(hidReportDesc);
     }
     return 0;
+}
+
+/* ===================================================================== */
+/* Serial number                                                         */
+/* ===================================================================== */
+
+int usbDescriptorStringSerialNumber[1 + DM_SERIAL_LEN] = {
+    USB_STRING_DESCRIPTOR_HEADER(DM_SERIAL_LEN),
+};
+
+/* Random bits from the watchdog oscillator's jitter against the CPU clock:
+ * two independent RC oscillators, so the low bits of Timer0 at each watchdog
+ * timeout are unpredictable. Takes about a second, and runs once in a board's
+ * life -- on a chip whose EEPROM has never held one.
+ *
+ * Interrupts stay off throughout, because the watchdog is put in interrupt
+ * mode to stop it resetting the part and there is no handler for it. Nothing
+ * is lost: this runs before the USB driver starts. */
+static uint32_t entropy(void)
+{
+    uint32_t s = OSCCAL;
+    uint8_t sreg = SREG;
+
+    cli();
+    TCCR0B = (1 << CS00);
+    WDTCR = (1 << WDCE) | (1 << WDE);
+    WDTCR = (1 << WDIF) | (1 << WDIE);          /* 16 ms, and no reset */
+    for (uint8_t i = 0; i < 64; i++) {
+        while (!(WDTCR & (1 << WDIF)))
+            ;
+        WDTCR |= (1 << WDIF);
+        s = ((s << 3) | (s >> 29)) ^ TCNT0;
+    }
+    wdt_disable();
+    TCCR0B = 0;
+    SREG = sreg;
+    return s;
+}
+
+static void initSerial(void)
+{
+    uint32_t serial = eeprom_read_dword((uint32_t *)DM_SERIAL_ADDR);
+
+    if (serial == 0xFFFFFFFF) {                 /* never had one */
+        serial = entropy();
+        eeprom_write_dword((uint32_t *)DM_SERIAL_ADDR, serial);
+    }
+    for (uint8_t i = 0; i < DM_SERIAL_LEN; i++) {
+        uint8_t n = (serial >> (28 - 4 * i)) & 0x0F;
+        usbDescriptorStringSerialNumber[1 + i] =
+            n < 10 ? '0' + n : 'A' - 10 + n;
+    }
 }
 
 /* ===================================================================== */
@@ -318,6 +371,8 @@ void hidType_P(const char *s)
 
 void hidBegin(void)
 {
+    initSerial();
+
     vnd[0] = DM_FUNC_INFO;
     vndAnswer();                /* so a first read answers something */
 

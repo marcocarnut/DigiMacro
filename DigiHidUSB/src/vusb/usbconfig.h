@@ -264,12 +264,8 @@ section at the end of this file).
  * the macros. See the file USB-IDs-for-free.txt before you assign a name if
  * you use a shared VID/PID.
  */
-/* Chrome keeps a WebHID permission only for a device that has a serial
- * number; without one, every replug means picking the board out of the
- * chooser again. It need not be unique per board -- nothing here tells two
- * apart -- it only has to exist. */
-#define USB_CFG_SERIAL_NUMBER   'd','i','g','i','m','a','c','r','o'
-#define USB_CFG_SERIAL_NUMBER_LEN   9
+/* The serial number is built at startup from a random one kept in EEPROM, so
+ * it is not a constant here -- see hidusb.cpp, and the property below. */
 /* Same as above for the serial number. If you don't want a serial number,
  * undefine the macros.
  * It may be useful to provide the serial number through other means than at
@@ -361,7 +357,11 @@ section at the end of this file).
 #define USB_CFG_DESCR_PROPS_STRING_0                0
 #define USB_CFG_DESCR_PROPS_STRING_VENDOR           0
 #define USB_CFG_DESCR_PROPS_STRING_PRODUCT          0
-#define USB_CFG_DESCR_PROPS_STRING_SERIAL_NUMBER    0
+/* Chrome keeps a WebHID permission only for a device that has a serial
+ * number; without one, every replug means picking the board out of the
+ * chooser again. Ours is random per board, so two boards are also told apart
+ * rather than sharing one grant. */
+#define USB_CFG_DESCR_PROPS_STRING_SERIAL_NUMBER    (USB_PROP_IS_RAM | USB_PROP_LENGTH(2 + 2 * 8))
 #define USB_CFG_DESCR_PROPS_HID                     USB_PROP_IS_DYNAMIC
 #define USB_CFG_DESCR_PROPS_HID_REPORT              USB_PROP_IS_DYNAMIC
 #define USB_CFG_DESCR_PROPS_UNKNOWN                 0

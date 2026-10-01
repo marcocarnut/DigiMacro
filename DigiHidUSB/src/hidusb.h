@@ -57,6 +57,15 @@
 #define DM_PASS_ADDR        0x1F4
 #define DM_PASS_LEN         12
 
+/* Four bytes of randomness, made once on a virgin chip and kept. Chrome only
+ * remembers a WebHID permission for a device that has a serial number, so
+ * without one every replug means picking the board out of the chooser again;
+ * and making it per board rather than per model means two boards get their
+ * own grants instead of sharing one. Same trick as DigiISP, for the same
+ * reason. */
+#define DM_SERIAL_ADDR      0x1E0
+#define DM_SERIAL_LEN       8       /* as hex digits, in the descriptor */
+
 /* Reaching the table still needs someone at the board. The mode switch used
    to enforce that by accident of being a mode switch; now the sketch opens a
    window when the pad has been held, and INFO says whether one is open so the

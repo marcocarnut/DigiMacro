@@ -20,7 +20,7 @@ macro can carry on with another, including itself. Hold the pad four seconds and
 `web/app.html` may read and write the table for the next half minute. What is
 left is `\j`, and the password and lockout that should gate all of this.
 
-**4416 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
+**4694 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
 
 ### It never stops being a keyboard
 
@@ -60,6 +60,20 @@ stopped and repaired with one gesture.
 The one loop that cannot be stopped that way is one that never types or pauses
 at all, since the pad is never reached. The firmware bounds that by counting
 jumps, and the app refuses to write it, because nobody meant it.
+
+### Every board has a serial number
+
+Four random bytes, made once on a chip that has never had one and kept in
+EEPROM, rendered as eight hex digits. Chrome remembers a WebHID permission
+only for a device that has a serial number, so without one every replug means
+picking the board out of the chooser again — and making it per board rather
+than per model means two boards get their own grants instead of sharing one.
+
+The randomness comes from the watchdog oscillator's jitter against the CPU
+clock: two independent RC oscillators, so the low bits of a timer sampled at
+each watchdog timeout are unpredictable. It takes about a second, once in a
+board's life. The same trick, for the same reason, as
+[DigiISP](../DigiISP).
 
 ### The password, which most boards will not have
 

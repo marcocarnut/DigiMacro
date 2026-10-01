@@ -220,7 +220,10 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  * All of it belongs to steps still to come, and the gap is deliberate: it is
  * cheaper to leave room now than to move a board's table later.
  *
- *   0x1E0   free, for whatever this turns out to want
+ *   0x1E0   the board's serial number, four random bytes made once
+ *           (DM_SERIAL_ADDR -- see DigiHidUSB, which needs it to exist
+ *           before anything here runs)
+ *   0x1E4   free, for whatever this turns out to want
  *   0x1F1   lockout allowance
  *   0x1F2   tries left of it
  *   0x1F3   the code to type at power-on, if any

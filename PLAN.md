@@ -628,9 +628,18 @@ testable, which is why they are in this order rather than firmware-then-app.
    one that opens itself when the board turns out to want it. And **Chrome
    keeps a WebHID permission only for a device with a serial number**: without
    one every replug meant picking the board out of the chooser again, which
-   had been quietly happening all along. The device has one now, which is
-   worth checking against obdev's terms for `16c0:27db`, that being the table
-   where serial numbers are what tell devices apart.
+   had been quietly happening all along.
+
+   The serial is now four random bytes made once and kept in EEPROM, which is
+   DigiISP's trick for the same reason -- Marco remembered it, and its own
+   comment says "remembers WebUSB permissions for devices that have a serial
+   number". Per board rather than per model, so two boards get their own
+   grants rather than sharing one. 278 bytes, mostly 32-bit shifting.
+
+   Worth checking against obdev's terms for `16c0:27db`, that being the table
+   where serial numbers are what tell devices apart. And worth remembering
+   that a wiped EEPROM means a new serial and therefore a new grant, which
+   bears on the self-wiping bootloader above.
 
    **The lockout next**, which is the other half — including
    counting failed password attempts, which the CDC version does not do and

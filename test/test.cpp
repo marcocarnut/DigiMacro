@@ -538,6 +538,8 @@ int main(void)
     CHECK(DM_PASS_ADDR >= (size_t)TABLE_TOP,
           "and so must the password");
     CHECK(DM_PASS_ADDR + DM_PASS_LEN == 512, "which ends where the EEPROM does");
+    CHECK(DM_SERIAL_ADDR >= (size_t)TABLE_TOP,
+          "and the serial number, which the table must never reach");
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "all checks passed");
     return fails != 0;

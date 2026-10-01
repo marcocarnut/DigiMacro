@@ -11,8 +11,9 @@ uint8_t hidAwake(void);
 uint8_t hidLeds(void);
 void    hidAllow(uint16_t ms);
 uint8_t hidAllowed(void);
-#define DM_PASS_ADDR 0x1F4
-#define DM_PASS_LEN  12
+#define DM_PASS_ADDR   0x1F4
+#define DM_PASS_LEN    12
+#define DM_SERIAL_ADDR 0x1E0
 void    hidKey(uint8_t modifier, uint8_t key);
 void    hidTypeChar(char c, uint8_t mod);
 void    hidType_P(const char *s);

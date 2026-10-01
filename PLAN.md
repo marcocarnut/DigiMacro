@@ -349,7 +349,26 @@ The password and lockout carry over, but the threat model shifts:
    `DeviceInterfaceGUID` to worry about. What this trade really costs is the
    landing page, not the installation.
 
-   Still to answer: Windows.
+   ### And on Windows, first try, with nothing installed
+
+   Which settles it. The trade is the same udev rule on Linux and *nothing* on
+   Windows, against an MS OS 2.0 descriptor, a WinUSB binding and a cached
+   `DeviceInterfaceGUID` to worry about. **Migrated.**
+
+   The firmware went from 4244 bytes to 3790 and the app lost its reconnect
+   dance, since nothing re-enumerates any more. `DigiModeUSB`, `spike/`,
+   `web/spike.html` and `web/eeprom.html` are gone from the tree and live in
+   the history, where they can be read if any of this has to be revisited.
+
+   **The hold survives with a different job.** It used to change what the
+   device was; now it opens a thirty-second window during which the table may
+   be read and written, and `INFO` says whether one is open so the app can ask
+   rather than fail. Physical presence was never really about re-enumeration,
+   which is the thing the last few days taught: the requirement outlived the
+   mechanism, as requirements do.
+
+   Still open, and now the only thing standing between a hostile page and the
+   macro table: the password. Step 4.
 
 ## What to reuse
 

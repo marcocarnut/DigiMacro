@@ -140,8 +140,6 @@
 <div class="bar" style="margin-top:1.4rem">
   <button id="read" disabled data-t="read">Read from the board</button>
   <button id="write" class="primary" disabled data-t="write">Write to the board</button>
-  <span class="spacer"></span>
-  <button id="leave" disabled data-t="leave">Done</button>
 </div>
 
 <pre id="log" class="dim" data-t="log-initial"></pre>
@@ -171,12 +169,17 @@
 <script src="i18n.js"></script>
 <script src="table.js"></script>
 <script>
-const DM_FUNC_INFO  = 0x40;
-const DM_FUNC_READ  = 0x60;
-const DM_FUNC_WRITE = 0x61;
-const DM_FUNC_LEAVE = 0x62;
-const CHUNK = 32;       /* bytes per transfer: a byte takes 3.4 ms to write,
-                           and the device answers nothing while it writes */
+/* The device never stops being a keyboard. The app reaches it through a second
+   top-level collection on a vendor usage page, which is the one kind WebHID
+   hands over -- a protected page, keyboards among them, it will not. A feature
+   report is a control transfer, so this is the protocol the vendor requests
+   carried, in a different envelope. */
+const VND_ID  = 2;
+const VND_LEN = 36;
+const DATA_AT = 4;              /* command, address low, address high, count */
+const CHUNK   = VND_LEN - DATA_AT;
+const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61, F_REFUSED = 0xEE;
+
 
 let dev = null, eeSize = 512;
 let macros = [{ code: '.', text: '' }];
@@ -190,7 +193,7 @@ let whoKey = 'connect-hint', whoParams = {}, whoOk = false;
 function connected(yes, key, params) {
   whoKey = key; whoParams = params || {}; whoOk = yes;
   renderWho();
-  $('read').disabled = $('leave').disabled = !yes;
+  $('read').disabled = !yes;
   $('connect').disabled = yes;
   draw();                       /* Write also wants the macros to be valid */
 }
@@ -215,20 +218,31 @@ const hex2 = v => v.toString(16).padStart(2, '0');
 
 /* ---- the device ---------------------------------------------------- */
 
-async function eeRead(addr, len) {
-  const r = await dev.controlTransferIn({
-    requestType: 'vendor', recipient: 'device',
-    request: DM_FUNC_READ, value: addr, index: 0 }, len);
-  if (r.status !== 'ok') throw new Error(`read at ${addr}: ${r.status}`);
-  return new Uint8Array(r.data.buffer);
+/* Whether the report ID travels in the payload as well as in the request is
+   the one thing the specification leaves to taste, so this looks rather than
+   assumes: no command is 2, so a leading 2 can only be the id. Chrome does not
+   send one back, and a host that did would still work. */
+let idInPayload = null;
+
+async function ask(cmd, addr = 0, count = 0, data = null) {
+  const out = new Uint8Array(VND_LEN);
+  out[0] = cmd; out[1] = addr & 0xFF; out[2] = addr >> 8; out[3] = count;
+  if (data) out.set(data, DATA_AT);
+  await dev.sendFeatureReport(VND_ID, out);
+
+  const view = await dev.receiveFeatureReport(VND_ID);
+  let b = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  if (idInPayload === null) idInPayload = b[0] === VND_ID;
+  if (idInPayload) b = b.slice(1);
+
+  if (b[0] === F_REFUSED) throw new Error('REFUSED');
+  return b;
 }
 
-async function eeWrite(addr, bytes) {
-  const r = await dev.controlTransferOut({
-    requestType: 'vendor', recipient: 'device',
-    request: DM_FUNC_WRITE, value: addr, index: 0 }, bytes);
-  if (r.status !== 'ok') throw new Error(`write at ${addr}: ${r.status}`);
-}
+const eeRead = async (addr, len) =>
+  (await ask(F_READ, addr, len)).slice(DATA_AT, DATA_AT + len);
+const eeWrite = (addr, bytes) => ask(F_WRITE, addr, bytes.length, bytes);
+
 
 /* ---- the editor ---------------------------------------------------- */
 
@@ -323,73 +337,58 @@ $('sample').onclick = () => { macros = sampleRows(); draw(); fresh();
 
 /* ---- connect, read, write ------------------------------------------ */
 
-$('connect').onclick = async () => {
+/* `ask` is whether we may put the picker up, which needs a real click behind
+   it. The device coming back on its own has no click, so it takes what the
+   origin was already given and stops there rather than failing noisily. */
+async function connect(mayAsk) {
   fresh();
-  if (!navigator.usb) {
-    say(t('no-webusb'), 'bad');
-    return;
-  }
+  if (!navigator.hid) { say(t('no-webhid'), 'bad'); return; }
   try {
-    const known = await navigator.usb.getDevices();
-    dev = known.find(d => d.vendorId === 0x16c0 && d.productId === 0x05dc)
-       || await navigator.usb.requestDevice(
-            { filters: [{ vendorId: 0x16c0, productId: 0x05dc }] });
-    await dev.open();
-    if (dev.configuration === null) await dev.selectConfiguration(1);
-    await dev.claimInterface(0);
-    const r = await dev.controlTransferIn({
-      requestType: 'vendor', recipient: 'device',
-      request: DM_FUNC_INFO, value: 0, index: 0 }, 6);
-    const b = new Uint8Array(r.data.buffer);
-    if (String.fromCharCode(b[0], b[1]) !== 'DM') {
+    /* A device this origin already knows comes back without the picker. */
+    const known = await navigator.hid.getDevices();
+    dev = known.find(d => d.vendorId === 0x16c0
+                       && d.collections.some(c => c.usagePage === 0xFF00));
+    if (!dev && mayAsk)
+      dev = (await navigator.hid.requestDevice(
+               { filters: [{ vendorId: 0x16c0, usagePage: 0xFF00 }] }))[0];
+    if (!dev) { connected(false, 'not-connected'); return; }
+    if (!dev.opened) await dev.open();
+
+    const b = await ask(F_INFO);
+    if (String.fromCharCode(b[1], b[2]) !== 'DM') {
       say(t('wrong-magic'), 'bad'); dev = null; return;
     }
-    if (b.length >= 6) eeSize = b[4] | (b[5] << 8);
-    connected(true, 'connected', { fw: b[3], proto: b[2] });
+    eeSize = b[5] | (b[6] << 8);
+    connected(true, 'connected', { fw: b[4], proto: b[3] });
     say(t('connected-say'), 'ok');
+    if (!b[7]) say(t('hold-to-open'), 'dim');
   } catch (e) {
     dev = null;
     connected(false, 'not-connected');
     say(t('connect-failed', { msg: e.message }), 'bad');
-    if (/no device selected/i.test(e.message)) say(t('connect-hint-kbd'), 'dim');
+    /* Only when it is one: "failed to open" on Linux is a file permission
+       wearing a browser's error message, but a dismissed picker is not, and
+       answering the wrong question is worse than saying nothing. */
+    if (navigator.userAgent.includes('Linux') && /open/i.test(e.message))
+      say(t('udev-hint'), 'dim');
   }
-};
+}
 
-/* Going back to being a keyboard takes the device off the bus, so the page
-   has to be told rather than left holding a handle to something that is no
-   longer there -- which is what made connecting again fail. */
-$('leave').onclick = async () => {
-  fresh();
-  try {
-    await dev.controlTransferIn({
-      requestType: 'vendor', recipient: 'device',
-      request: DM_FUNC_LEAVE, value: 0, index: 0 }, 1);
-  } catch (e) {
-    /* The device may go before the answer arrives; that is success, not
-       failure, so only a genuine refusal is worth reporting. */
-    if (!/transfer|disconnect|device/i.test(e.message)) {
-      say(e.message, 'bad');
-      return;
-    }
-  }
-  say(t('leave-ok'), 'ok');
-};
+$('connect').onclick = () => connect(true);
 
-navigator.usb?.addEventListener('disconnect', ev => {
+navigator.hid?.addEventListener('disconnect', ev => {
   if (dev && ev.device !== dev) return;
   dev = null;
   connected(false, 'board-left');
   say(t('board-left-say'), 'dim');
 });
 
-/* ...and when it comes back, it is a new object: the old handle is dead, so
-   reconnecting means asking for the device afresh rather than reusing it. */
-navigator.usb?.addEventListener('connect', ev => {
-  if (dev) return;
-  if (ev.device.vendorId !== 0x16c0 || ev.device.productId !== 0x05dc) return;
+navigator.hid?.addEventListener('connect', ev => {
+  if (dev || ev.device.vendorId !== 0x16c0) return;
   $('connect').disabled = false;
-  $('connect').click();
+  connect(false);              /* no click behind this, so no picker */
 });
+
 
 $('read').onclick = async () => {
   fresh();
@@ -406,7 +405,7 @@ $('read').onclick = async () => {
     draw();
     say(t('read-ok', { n: got.length }), 'ok');
   } catch (e) {
-    say(e.message, 'bad');
+    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
   }
 };
 
@@ -429,7 +428,7 @@ $('write').onclick = async () => {
     say(t('write-ok', { n: bytes.length }), 'ok');
     say(t('write-then-tap'));
   } catch (e) {
-    say(e.message, 'bad');
+    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
   }
 };
 

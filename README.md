@@ -14,35 +14,42 @@ line instead. That one is finished and in use; this one is early.
 
 ## Status: working, less the password
 
-The firmware plays macros out of a packed EEPROM table; `READ` and `WRITE`
-vendor requests put one there; and `web/app.html` is an editor for it that
-reads a board's table, checks what you type, and writes it back verified.
-What is left is the password and lockout that should gate all of this, and
-`\j`.
+Tap a code, the board types the macro. Hold the pad four seconds and
+`web/app.html` may read and write the table for the next half minute. What is
+left is the password and lockout that should gate all of this, and `\j`.
 
-**4058 bytes of the 6650** the stock bootloader leaves, and 106 of RAM — so it
-installs over USB like any sketch, with about 2.5 KB still to spend on the
-password, the lockout and `\j`.
+**3790 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
 
-`spike/` answered the one question everything rested on — whether a keyboard can
-become something WebUSB will talk to — and **it does**:
+### It never stops being a keyboard
 
-```
-picked digimacro.postcogito.org / DigiMacro
-  16c0:05dc  USB 2.1
-open() ok
-configuration 1
-claimInterface(0) ok -- the interface is not a protected class
-INFO -> 44 4d 01 01
-```
+It used to. A HID keyboard is not something a browser will talk to — Chrome
+refuses to claim interfaces of protected classes — so the board re-enumerated as
+a vendor-class device to be configured, and back again afterwards. That worked,
+and it is gone.
 
-| | |
-|---|---|
-| Linux, Chrome | works |
-| Windows 10, Chrome and Edge | works, nothing to install |
+The replacement is a second top-level collection on a **vendor usage page**,
+`0xFF00`. WebHID blocks protected usage pages, not vendor ones, so a page can
+reach that collection while the keyboard half carries on being a keyboard. A
+feature report is a control transfer, so the EEPROM protocol moved across
+unchanged.
 
-`PLAN.md` holds the design and the order of work.
+| | before | after |
+|---|---|---|
+| Linux | a udev rule | a udev rule |
+| Windows | MS OS 2.0 descriptor, WinUSB binding | **nothing** |
+| flash | 4244 bytes | 3790 |
+| configuring | re-enumerate, reconnect, re-enumerate | nothing moves |
 
+What it cost: the WebUSB landing page, where Chrome offered to open the app
+when the board appeared. And the keyboard gave up boot protocol, since two
+collections on one interface need report IDs and a boot report may not have
+one. That also caps it at three key slots rather than six, which matters to
+nothing that only ever presses one key at a time.
+
+**The hold survives, with a different job.** It used to change what the device
+was; now it opens a window during which the table may be read and written. That
+is the part a web page cannot do for itself, and until there is a password it
+is the only thing between a hostile page and the macros.
 ## The table
 
 The app rewrites the whole table, so entries are packed rather than slotted:
@@ -100,39 +107,32 @@ page and a test that plays what it encodes against the real firmware.
 
 ## Reading and writing it over USB
 
-Two vendor requests, answered **in vendor mode only** — which is what makes the
-four-second hold a physical-presence check rather than a convenience. In
-keyboard mode the device answers nothing but HID class requests, so a program on
-the host cannot read the table out of a board nobody is touching.
+One feature report on the vendor collection, both ways:
+
+```
+ [0] command   [1] address low   [2] address high   [3] count   [4..35] data
+```
 
 | | |
 |---|---|
-| `0x60` READ | IN, `wValue` = address, `wLength` = count |
-| `0x61` WRITE | OUT, `wValue` = address, payload = the bytes |
-| `0x40` INFO | IN, 6 bytes: `DM`, protocol, firmware, EEPROM size |
+| `0x40` INFO | magic `DM`, protocol, firmware, EEPROM size, window open? |
+| `0x60` READ | address and count in, data back |
+| `0x61` WRITE | address, count and data in |
+| `0xEE` | comes back in place of the command when the window is shut |
 
-Writes are chunked, 32 bytes at a time: an EEPROM byte takes 3.4 ms and the
-device can answer nothing else while it writes, so the whole table in one
-transfer would be nearly two seconds of silence. `eeprom_update_byte`, so a
-table saved unchanged costs no wear. A read past the last byte comes back
-short and a write that would cross it is refused, because what sits above the
-table is the password.
+Set the report to ask, get it to see the answer. INFO always answers — it says
+what this is and whether it may be asked, which gives nothing away. READ and
+WRITE need the window, which the four-second hold opens for half a minute.
 
-## Why a mode switch rather than one device
+Writes are chunked at 32 bytes because an EEPROM byte takes 3.4 ms and the
+device can answer nothing else while it writes. `eeprom_update_byte`, so a
+table saved unchanged costs no wear. A read past the last byte returns 0xFF and
+a write past it stops, because what sits above the table is the password.
 
-A HID keyboard cannot also be a WebUSB device. Chrome refuses to claim
-interfaces of protected classes, HID among them, and Windows binds a HID device
-to HIDClass rather than to WinUSB. So the board is one or the other, and a
-four-second hold changes it over.
-
-Which is the better arrangement anyway: reaching the macro table needs someone
-holding the pad, so **no web page can reconfigure the device on its own**, and
-while it is configurable it is not a keyboard, so it cannot be made to type.
-
-Entering vendor mode makes Chrome offer to go to `digimacro.postcogito.org`,
-the URL in the WebUSB descriptor. That is expected, and eventually it is the
-whole install story: plug in, hold the pad, click the notification, configure.
-The address does not serve anything yet.
+Whether the report ID travels in the payload as well as in the request is the
+one thing the HID specification leaves to taste. Chrome does not send one back;
+the app looks rather than assuming, and the firmware accepts either, which is
+safe because no command byte is 2.
 
 ## Building it
 
@@ -222,15 +222,16 @@ device with no serial port has.
 | | |
 |---|---|
 | `DigiMacro.ino` | the firmware: touch, morse, the table walk, playback |
-| `DigiModeUSB/` | one V-USB stack with two personalities: HID keyboard, or vendor class for WebUSB |
+| `DigiHidUSB/` | the V-USB stack: a keyboard, and a vendor collection the app talks to |
 | `test/` | host build of the real sketch against stub hardware |
 | `tools/loadtable/` | writes a sample table into EEPROM, until the app can |
-| `spike/` | the derisking sketch |
+| `spikehid/` | the sketch that derisked the vendor collection |
 | `web/` | `app.html` is the editor, `eeprom.html` the raw-byte tool, `table.js` and `i18n.js` what they share |
 | `PLAN.md` | design, decisions and what comes next |
 
-Descriptors for the WebUSB side are lifted from [DigiISP](../DigiISP), which
-had already solved the BOS and MS OS 2.0 work.
+[DigiISP](../DigiISP) solved the BOS and MS OS 2.0 work that the WebUSB
+personality needed. The HID transport needs none of it, which is most of why
+it won.
 
 ## Licence
 

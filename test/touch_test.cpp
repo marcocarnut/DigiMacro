@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "Arduino.h"
-#include "modeusb.h"
+#include "hidusb.h"
 
 #define HAVE_TOUCH 1
 
@@ -34,11 +34,11 @@ uint8_t fake_pinb(void)
 void fake_charge(void){ pinb_count = q[qi++ % qn]; }
 
 
-void dusbBegin(uint8_t){} void dusbPoll(void){}
-uint8_t dusbMode(void){ return DUSB_VENDOR; } void dusbSetMode(uint8_t){}
-uint8_t dusbReady(void){ return 1; }
-void dusbKey(uint8_t,uint8_t){} void dusbTypeChar(char,uint8_t){}
-void dusbType(const char*){} void dusbType_P(const char*){}
+void hidBegin(void){} void hidPoll(void){}
+uint8_t hidReady(void){ return 1; } uint8_t hidLeds(void){ return 0; }
+void hidAllow(uint16_t){} uint8_t hidAllowed(void){ return 0; }
+void hidKey(uint8_t,uint8_t){} void hidTypeChar(char,uint8_t){}
+void hidType(const char*){} void hidType_P(const char*){}
 
 #include "DigiMacro.ino"
 

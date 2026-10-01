@@ -12,7 +12,7 @@
 
 #define HAVE_TOUCH 0
 #include "Arduino.h"
-#include "modeusb.h"
+#include "hidusb.h"
 
 uint8_t PORTB, DDRB;
 uint8_t GPIOR0, GPIOR1, GPIOR2;
@@ -23,20 +23,24 @@ void    fake_charge(void){}
 
 static char typed[4096];
 static int  typedn;
-static uint8_t cur_mode = DUSB_HID;
-
-void dusbBegin(uint8_t m){ cur_mode = m; }
-void dusbPoll(void){}
-uint8_t dusbMode(void){ return cur_mode; }
-void dusbSetMode(uint8_t m){ cur_mode = m; }
-uint8_t dusbReady(void){ return 1; }
-void dusbKey(uint8_t mod, uint8_t key)
+void hidBegin(void){}
+void hidPoll(void){}
+uint8_t hidReady(void){ return 1; }
+uint8_t hidLeds(void){ return 0; }
+/* The configuration window the four-second hold opens. */
+static uint16_t allow_until; static uint8_t allow_open;
+void hidAllow(uint16_t ms){ allow_until = (uint16_t)fake_ms + ms; allow_open = 1; }
+uint8_t hidAllowed(void){
+    if (allow_open && (int16_t)((uint16_t)fake_ms - allow_until) >= 0) allow_open = 0;
+    return allow_open;
+}
+void hidKey(uint8_t mod, uint8_t key)
 {
     if (typedn < (int)sizeof typed - 16)
         typedn += sprintf(typed + typedn, "<%02X/%02X>", mod, key);
 }
-void dusbTypeChar(char, uint8_t){}
-void dusbType(const char*){} void dusbType_P(const char*){}
+void hidTypeChar(char, uint8_t){}
+void hidType(const char*){} void hidType_P(const char*){}
 
 #include "DigiMacro.ino"
 #include "../tools/loadtable/sample_table.h"
@@ -50,7 +54,6 @@ static const char *play(const char *code)
     uint8_t bits = 0, n = 0;
     for (const char *s = code; *s; s++) { bits = (bits << 1) | (*s == '-'); n++; }
     typedn = 0; typed[0] = 0;
-    cur_mode = DUSB_HID;
     code_reset();
     code_bits = bits; code_len = n;
     code_finish();

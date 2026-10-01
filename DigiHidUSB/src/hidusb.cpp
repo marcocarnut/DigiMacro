@@ -112,7 +112,22 @@ static uint8_t vndLeft;         /* bytes of it still to come */
 static uint8_t vndAt;           /* where the next ones go */
 static uint8_t writingVnd;      /* tells usbFunctionWrite which it is serving */
 
+static uint16_t allowUntil;     /* the configuration window */
+static uint8_t  allowOpen;
+
 static inline uint16_t ticks(void) { return (uint16_t)millis(); }
+
+void hidAllow(uint16_t ms)
+{
+    allowUntil = ticks() + ms;
+    allowOpen = 1;
+}
+
+uint8_t hidAllowed(void)
+{
+    if (allowOpen && (int16_t)(ticks() - allowUntil) >= 0) allowOpen = 0;
+    return allowOpen;
+}
 
 /* ===================================================================== */
 /* Requests                                                              */
@@ -125,6 +140,14 @@ static void vndAnswer(void)
 
     if (n > DM_VND_CHUNK) n = DM_VND_CHUNK;
 
+    /* The table is what is being protected, so both directions wait for
+       someone at the board. INFO answers regardless: it tells a page what
+       this is and whether it may ask, which gives nothing away. */
+    if (vnd[0] != DM_FUNC_INFO && !hidAllowed()) {
+        vnd[0] = DM_REFUSED;
+        return;
+    }
+
     switch (vnd[0]) {
     case DM_FUNC_INFO:
         vnd[1] = DM_MAGIC0;
@@ -133,6 +156,7 @@ static void vndAnswer(void)
         vnd[4] = DM_FW_VERSION;
         vnd[5] = (uint8_t)(E2END + 1);
         vnd[6] = (uint8_t)((E2END + 1) >> 8);
+        vnd[7] = hidAllowed();
         break;
 
     case DM_FUNC_READ:

@@ -34,9 +34,16 @@
 #define DM_VND_DATA         4       /* where the data starts */
 #define DM_VND_CHUNK        (DM_VND_LEN - DM_VND_DATA)
 
-#define DM_FUNC_INFO        0x40    /* magic, versions, EEPROM size */
+#define DM_FUNC_INFO        0x40    /* magic, versions, EEPROM size, open? */
 #define DM_FUNC_READ        0x60    /* address, count -> data */
 #define DM_FUNC_WRITE       0x61    /* address, count, data */
+#define DM_REFUSED          0xEE    /* comes back in place of the command */
+
+/* Reaching the table still needs someone at the board. The mode switch used
+   to enforce that by accident of being a mode switch; now the sketch opens a
+   window when the pad has been held, and INFO says whether one is open so the
+   app can ask for it rather than fail at it. INFO itself always answers: it
+   says nothing about what is stored. */
 
 #define DM_MAGIC0           'D'
 #define DM_MAGIC1           'M'
@@ -51,6 +58,9 @@ void    hidBegin(void);
 void    hidPoll(void);
 uint8_t hidReady(void);
 uint8_t hidLeds(void);          /* the host's lock lights, as it last said */
+
+void    hidAllow(uint16_t ms);  /* let the table be read and written, briefly */
+uint8_t hidAllowed(void);
 
 void    hidKey(uint8_t modifier, uint8_t key);
 void    hidTypeChar(char c, uint8_t mod);

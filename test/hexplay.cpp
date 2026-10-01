@@ -12,7 +12,7 @@
 
 #define HAVE_TOUCH 0
 #include "Arduino.h"
-#include "modeusb.h"
+#include "hidusb.h"
 
 uint8_t PORTB, DDRB;
 uint8_t GPIOR0, GPIOR1, GPIOR2;
@@ -24,18 +24,19 @@ void    fake_charge(void){}
 static char typed[4096];
 static int  typedn;
 
-void dusbBegin(uint8_t){}
-void dusbPoll(void){}
-uint8_t dusbMode(void){ return DUSB_HID; }
-void dusbSetMode(uint8_t){}
-uint8_t dusbReady(void){ return 1; }
-void dusbKey(uint8_t mod, uint8_t key)
+void hidBegin(void){}
+void hidPoll(void){}
+uint8_t hidReady(void){ return 1; }
+uint8_t hidLeds(void){ return 0; }
+void hidAllow(uint16_t){}
+uint8_t hidAllowed(void){ return 1; }
+void hidKey(uint8_t mod, uint8_t key)
 {
     if (typedn < (int)sizeof typed - 16)
         typedn += sprintf(typed + typedn, "<%02X/%02X>", mod, key);
 }
-void dusbTypeChar(char, uint8_t){}
-void dusbType(const char*){} void dusbType_P(const char*){}
+void hidTypeChar(char, uint8_t){}
+void hidType(const char*){} void hidType_P(const char*){}
 
 #include "DigiMacro.ino"
 

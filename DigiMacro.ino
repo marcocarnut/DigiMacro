@@ -3,27 +3,31 @@
  *
  * One input, a touch pad on P0. Tap a code in dots and dashes; if the table
  * in EEPROM has an entry for that code, the board types it as keystrokes.
- * Hold the pad four seconds and the device re-enumerates as a vendor-class
- * device that a WebUSB page can talk to, which is where the table gets
- * edited; hold it again for the keyboard.
+ * Hold the pad four seconds and the app may read and write the table for the
+ * next half minute.
+ *
+ * It stays a keyboard throughout. The app reaches it through a second
+ * top-level collection on a vendor usage page, which is the one kind of HID
+ * collection a browser will hand over -- so there is no second personality,
+ * no re-enumeration, and nothing to install on either platform. The hold is
+ * not a mode switch any more; it is the part a web page cannot forge, which
+ * is somebody standing at the board.
  *
  * Sibling of DigiMacroCDC, which does the same job with an on-device command
  * line over a CDC serial port. Everything that edited the table there has
- * moved to the app, so the firmware here only ever *reads* it. That is what
- * pays for the WebUSB descriptors, and it makes the table format the
- * interface between the two halves of the project -- see below, and keep the
- * app in step with it.
+ * moved to the app, so the firmware here only ever *reads* it, and the table
+ * format is the interface between the two halves of the project -- see below,
+ * and keep the app in step with it.
  *
  *   short tap         one symbol; a press under 250 ms is a dot, longer a dash
  *   700 ms of silence the code is finished: look it up and type it
  *   4 s hold          change personality, either way
  *
- *   LED  off          keyboard mode, idle -- deliberately dark while a code
- *                     is tapped, so it does not spell the code out for anyone
- *                     watching
+ *   LED  off          idle -- deliberately dark while a code is tapped, so it
+ *                     does not spell the code out for anyone watching
  *        on           a macro is typing
  *        3 quick      the code matched nothing
- *        blinking     vendor mode, ready for the app
+ *        blinking     the app may configure it, for half a minute
  *
  * The pad wants no external parts. When it misbehaves, build with
  * TOUCH_DEBUG=1 (./build.sh touchdebug) and the board types its own readings
@@ -48,7 +52,7 @@
 
 #define VERSION "0.1"
 
-#include <modeusb.h>
+#include <hidusb.h>
 #include <avr/eeprom.h>
 #include <avr/pgmspace.h>
 #include <util/delay.h>
@@ -87,7 +91,8 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define DEBOUNCE_MS             25
 #define DOT_MAX_MS             250  /* shorter press is a dot, longer a dash */
 #define END_OF_CODE_MS         700  /* silence this long ends the code       */
-#define HOLD_MS               4000  /* hold this long to change personality  */
+#define HOLD_MS               4000  /* hold this long to let the app in      */
+#define CONFIG_MS            30000  /* ...and it stays in for this long      */
 
 /* ==================================================================== */
 /* The table                                                            */
@@ -203,7 +208,7 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 void wait_poll(uint16_t ms)
 {
     uint16_t t = ticks();
-    while ((uint16_t)(ticks() - t) < ms) dusbPoll();
+    while ((uint16_t)(ticks() - t) < ms) hidPoll();
 }
 
 void blink(uint8_t n, uint16_t ms)
@@ -467,7 +472,7 @@ void handle_input(void)
         if (raw) {
             press_start = now;
             FLAGS &= ~FLAG_CONSUMED;
-        } else if (!(FLAGS & FLAG_CONSUMED) && dusbMode() == DUSB_HID) {
+        } else if (!(FLAGS & FLAG_CONSUMED)) {
             /* A completed press is one symbol. */
             uint16_t held = now - press_start;
             if (code_len >= MACRO_MAX_SYM) {
@@ -484,13 +489,19 @@ void handle_input(void)
 
     /* Held long enough to mean "let the app in". Fires while the pad is still
        touched so it is obvious it registered, and marks the press consumed so
-       the release does not also become a dash. */
+       the release does not also become a dash.
+       
+       It used to change what the device was, because that was the only way a
+       page could reach it: a keyboard is not something WebUSB will claim. Now
+       that the app talks to a vendor collection on the keyboard itself, the
+       hold has nothing to switch -- but it still has something to say, which
+       is that somebody is here. Reaching the table needs that, and a web page
+       cannot forge it. */
     if (in_down && !(FLAGS & FLAG_CONSUMED) &&
         (uint16_t)(now - press_start) >= HOLD_MS) {
         FLAGS |= FLAG_CONSUMED;
         code_reset();
-        LED_SET(0);
-        dusbSetMode(dusbMode() == DUSB_HID ? DUSB_VENDOR : DUSB_HID);
+        hidAllow(CONFIG_MS);
     }
 }
 
@@ -560,7 +571,7 @@ void macro_play(uint8_t *a)
                    so whatever the group was -- an accent and its letter, a
                    word, a pause -- repeats whole. */
                 if (!mark) {
-                    while (arg--) dusbKey(lastmod, lastkey);
+                    while (arg--) hidKey(lastmod, lastkey);
                 } else if (!reps) {
                     reps = arg;         /* the group has played once already */
                     a = mark;
@@ -579,7 +590,7 @@ void macro_play(uint8_t *a)
         lastmod = mod | ((c & KEY_SHIFT) ? MOD_SHIFT : 0);
         lastkey = c & 0x7F;
         mod = 0;
-        dusbKey(lastmod, lastkey);
+        hidKey(lastmod, lastkey);
     }
 
     LED_SET(0);
@@ -600,7 +611,7 @@ void code_finish(void)
 
 void update_led(void)
 {
-    if (dusbMode() != DUSB_HID)
+    if (hidAllowed())
         LED_SET((ticks() & 0x3FF) < 512);       /* blinking: configurable */
     else
 #if LED_ECHO
@@ -629,12 +640,12 @@ void setup(void)
     DDRB  &= ~(1 << PIN_BUTTON);        /* input... */
     PORTB |=  (1 << PIN_BUTTON);        /* ...with the pull-up on */
 #endif
-    dusbBegin(DUSB_HID);
+    hidBegin();
 }
 
 void loop(void)
 {
-    dusbPoll();
+    hidPoll();
 #if HAVE_TOUCH
     touch_poll();                       /* refreshes touch_state */
 #if TOUCH_DEBUG
@@ -643,8 +654,6 @@ void loop(void)
 #endif
     handle_input();
     update_led();
-
-    if (dusbMode() != DUSB_HID) return; /* the app's turn; nothing to type */
 
 #if TOUCH_DEBUG
     {

@@ -17,7 +17,7 @@
 
 #define HAVE_TOUCH 0
 #include "Arduino.h"
-#include "modeusb.h"
+#include "hidusb.h"
 
 uint8_t PORTB, DDRB;
 uint8_t GPIOR0, GPIOR1, GPIOR2;
@@ -31,19 +31,23 @@ void    fake_charge(void){}
 /* captured device behaviour */
 static char    typed[4096];
 static int     typedn;
-static uint8_t cur_mode = DUSB_HID;
-
-void dusbBegin(uint8_t m){ cur_mode = m; }
-void dusbPoll(void){}
-uint8_t dusbMode(void){ return cur_mode; }
-void dusbSetMode(uint8_t m){ cur_mode = m; }
-uint8_t dusbReady(void){ return 1; }
-void dusbTypeChar(char, uint8_t){}
-void dusbType(const char*){} void dusbType_P(const char*){}
+void hidBegin(void){}
+void hidPoll(void){}
+uint8_t hidReady(void){ return 1; }
+uint8_t hidLeds(void){ return 0; }
+/* The configuration window the four-second hold opens. */
+static uint16_t allow_until; static uint8_t allow_open;
+void hidAllow(uint16_t ms){ allow_until = (uint16_t)fake_ms + ms; allow_open = 1; }
+uint8_t hidAllowed(void){
+    if (allow_open && (int16_t)((uint16_t)fake_ms - allow_until) >= 0) allow_open = 0;
+    return allow_open;
+}
+void hidTypeChar(char, uint8_t){}
+void hidType(const char*){} void hidType_P(const char*){}
 
 /* Every keystroke, modifiers and all, in the order they were sent. Hex
    rather than letters so that a modifier or an odd usage cannot hide. */
-void dusbKey(uint8_t mod, uint8_t key)
+void hidKey(uint8_t mod, uint8_t key)
 {
     if (typedn < (int)sizeof typed - 16)
         typedn += sprintf(typed + typedn, "<%02X/%02X>", mod, key);
@@ -95,7 +99,6 @@ static void add(const char *code, std::initializer_list<uint8_t> body)
 static const char *play(const char *code)
 {
     typedn = 0; typed[0] = 0;
-    cur_mode = DUSB_HID;
     code_reset();
     code_bits = code_of(code, &code_len);
     code_finish();
@@ -255,7 +258,6 @@ int main(void)
     table_reset();
     add("....", { K('a') });
     typedn = 0; typed[0] = 0;
-    cur_mode = DUSB_HID;
     code_reset();
     btn_held = 0;
     DOT(); DOT(); DOT(); DOT();
@@ -299,37 +301,35 @@ int main(void)
           code_len);
     CHECK(!(FLAGS & FLAG_CODE_OVER), "and nothing may be marked overlong");
 
-    printf("14. a four-second hold changes personality, and taps nothing\n");
+    printf("14. a four-second hold lets the app in, and taps nothing\n");
+    /* It used to change what the device was, because that was the only way a
+       page could reach it. Now the device never stops being a keyboard, and
+       the hold says the one thing a web page cannot say for itself: that
+       somebody is standing here. */
     code_reset();
-    cur_mode = DUSB_HID;
+    CHECK(!hidAllowed(), "nothing is open to begin with");
     btn_held = 1; loop();
     fake_ms += DEBOUNCE_MS + 1; loop();
     fake_ms += HOLD_MS + 10; loop();
-    CHECK(cur_mode == DUSB_VENDOR, "should be in vendor mode now");
+    CHECK(hidAllowed(), "the hold should have opened the window");
     btn_held = 0; loop();
     fake_ms += DEBOUNCE_MS + 1; loop();
     CHECK(code_len == 0, "the hold must not leave a dash behind");
-    typedn = 0; typed[0] = 0;
-    fake_ms += END_OF_CODE_MS + 10; loop();
-    CHECK(typedn == 0, "and nothing may be typed in vendor mode: \"%s\"",
-          typed);
 
-    printf("14b. ...and another hold brings the keyboard back\n");
-    btn_held = 1; loop();
-    fake_ms += DEBOUNCE_MS + 1; loop();
-    fake_ms += HOLD_MS + 10; loop();
-    CHECK(cur_mode == DUSB_HID, "should be a keyboard again");
-    btn_held = 0; loop();
-    fake_ms += DEBOUNCE_MS + 1; loop();
-
-    printf("15. a tap in vendor mode is not a symbol\n");
-    /* While the app has the device, the pad only means "change back". */
-    cur_mode = DUSB_VENDOR;
+    printf("14b. ...and the keyboard goes on working while it is open\n");
+    /* The old mode switch stopped the device being a keyboard at all. This
+       does not, which is the whole point of the change. */
+    table_reset();
+    add(".", { K('q') });
     code_reset();
-    DOT(); DOT();
-    CHECK(code_len == 0, "vendor mode must not collect symbols, got %d",
-          code_len);
-    cur_mode = DUSB_HID;
+    DOT();
+    CHECK(!strcmp(silence(), "<00/14>"),
+          "a code must still play with the window open: \"%s\"", typed);
+    CHECK(hidAllowed(), "and typing must not close it");
+
+    printf("15. the window closes by itself\n");
+    fake_ms += 31000;
+    CHECK(!hidAllowed(), "half a minute should be the end of it");
 
     printf("16. a marked group repeats whole\n");
     /* Once a keystroke stops being a character, "repeat the previous

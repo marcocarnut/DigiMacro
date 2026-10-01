@@ -19,7 +19,7 @@ en: {
   keyboard:         'keyboard',
   language:         'language',
   connect:          'Connect',
-  'connect-hint':   'hold the pad four seconds, then connect',
+  'connect-hint':   'not connected yet',
   macros:           'Macros',
   'th-code':        'Code',
   'th-types':       'Types',
@@ -37,10 +37,9 @@ en: {
                   + 'editing. A modifier stays pressed until the next key.',
   read:             'Read from the board',
   write:            'Write to the board',
-  leave:            'Done — back to keyboard',
-  'log-initial':    'Nothing yet. Hold the pad for four seconds to put the '
-                  + 'board in vendor mode, then connect — in keyboard mode it '
-                  + 'answers none of this, which is the point of the hold.',
+  'log-initial':    'Nothing yet. Connect, then hold the pad for four seconds '
+                  + 'when the board asks — it stays a keyboard throughout, and '
+                  + 'the hold is the one thing a web page cannot do for itself.',
 
   'ref-summary':    'What can go in a macro',
   'ref-anything':   'typed as itself',
@@ -72,12 +71,19 @@ en: {
                   + 'no way to type one at all, so the editor says so rather '
                   + 'than typing something else.',
 
-  'no-webusb':      'navigator.usb is missing. WebUSB needs Chrome or Edge, '
+  'no-webhid':      'navigator.hid is missing. WebHID needs Chrome or Edge, '
                   + 'over https or localhost.',
+  'hold-to-open':   'Hold the pad for four seconds to let the app read and '
+                  + 'write the table. The board stays a keyboard the whole '
+                  + 'time; the hold is the part a web page cannot do for '
+                  + 'itself.',
+  refused:          'The board said no. Hold the pad for four seconds and try '
+                  + 'again — reaching the table needs somebody at the board.',
+  'udev-hint':      'On Linux a hidraw device is root-only until a udev rule '
+                  + 'says otherwise. web/60-digimacro.rules is that rule: copy '
+                  + 'it into /etc/udev/rules.d, run "sudo udevadm control '
+                  + '--reload", then unplug the board and plug it back in.',
   'connect-failed': 'could not connect: {msg}',
-  'connect-hint-kbd': 'If the board is in keyboard mode it is a different '
-                  + 'device altogether and will not be offered. Hold the pad '
-                  + 'four seconds first.',
   connected:        'connected — firmware {fw}, protocol {proto}',
   'connected-say':  'Connected. Read the board to edit what is on it, or write '
                   + 'what is here over it.',
@@ -127,7 +133,7 @@ pt: {
   keyboard:         'teclado',
   language:         'idioma',
   connect:          'Conectar',
-  'connect-hint':   'segure o sensor por quatro segundos e conecte',
+  'connect-hint':   'ainda não conectada',
   macros:           'Macros',
   'th-code':        'Código',
   'th-types':       'Digita',
@@ -145,11 +151,10 @@ pt: {
                   + 'modificador fica pressionado até a próxima tecla.',
   read:             'Ler da placa',
   write:            'Gravar na placa',
-  leave:            'Pronto — voltar a ser teclado',
-  'log-initial':    'Nada ainda. Segure o sensor por quatro segundos para pôr '
-                  + 'a placa em modo vendor e conecte — em modo teclado ela '
-                  + 'não responde a nada disto, que é justamente a razão de ter '
-                  + 'de segurar.',
+  'log-initial':    'Nada ainda. Conecte e segure o sensor por quatro segundos '
+                  + 'quando a placa pedir — ela continua sendo teclado o tempo '
+                  + 'todo, e segurar é a única coisa que uma página não '
+                  + 'consegue fazer sozinha.',
 
   'ref-summary':    'O que pode entrar numa macro',
   'ref-anything':   'digitado como está',
@@ -183,12 +188,20 @@ pt: {
                   + 'Num teclado US puro não há como digitar um acento, então '
                   + 'o editor avisa em vez de digitar outra coisa.',
 
-  'no-webusb':      'navigator.usb não existe. WebUSB precisa do Chrome ou do '
+  'no-webhid':      'navigator.hid não existe. WebHID precisa do Chrome ou do '
                   + 'Edge, por https ou localhost.',
+  'hold-to-open':   'Segure o sensor por quatro segundos para o aplicativo '
+                  + 'poder ler e gravar a tabela. A placa continua sendo '
+                  + 'teclado o tempo todo; segurar é a parte que uma página '
+                  + 'não consegue fazer sozinha.',
+  refused:          'A placa recusou. Segure o sensor por quatro segundos e '
+                  + 'tente de novo — chegar à tabela exige alguém na placa.',
+  'udev-hint':      'No Linux um dispositivo hidraw é só do root até que uma '
+                  + 'regra do udev diga o contrário. web/60-digimacro.rules é '
+                  + 'essa regra: copie para /etc/udev/rules.d, rode "sudo '
+                  + 'udevadm control --reload", depois desconecte e reconecte '
+                  + 'a placa.',
   'connect-failed': 'não foi possível conectar: {msg}',
-  'connect-hint-kbd': 'Se a placa estiver em modo teclado, ela é outro '
-                  + 'dispositivo e não aparece na lista. Segure o sensor por '
-                  + 'quatro segundos primeiro.',
   connected:        'conectada — firmware {fw}, protocolo {proto}',
   'connected-say':  'Conectada. Leia a placa para editar o que está nela, ou '
                   + 'grave por cima o que está aqui.',

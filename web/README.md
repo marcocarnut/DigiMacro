@@ -11,8 +11,7 @@ then, in Chrome or Edge:
 | | |
 |---|---|
 | <http://localhost:8000/app.html> | **the app**: edit the macros and write them |
-| <http://localhost:8000/eeprom.html> | the low-level tool: dump, write and verify raw bytes |
-| <http://localhost:8000/spike.html> | the original derisking page: connect and ask INFO |
+| <http://localhost:8000/hid.html> | the spike's own page: INFO, a dump, a bounds test |
 
 `table.js` turns macro text into the bytes the firmware plays, and back again
 so a board's table can be edited rather than retyped. It is shared with
@@ -34,15 +33,14 @@ looking for a bug that was not there.
 back short, and a write that would cross the end should be refused. Both are
 about what sits above the table, which is the password.
 
-The board types its pad readings twice a second in keyboard mode (`TOUCH_DEBUG`
-in `spike/spike.ino`), so open a text editor first and check the numbers move
-when you touch it. `F8` that never changes means nothing is charging the pad;
+The board can type its pad readings twice a second (`./build.sh touchdebug`),
+so open a text editor first and check the numbers move when you touch it. `F8` that never changes means nothing is charging the pad;
 `00` means it charges faster than one loop pass. Only once the readings respond
 can a four-second hold mean anything.
 
-Hold the pad four seconds so the board is in vendor mode before connecting —
-in keyboard mode it is `16c0:27db` and the filter will not offer it, which is
-itself part of what the spike is checking.
+The board is `16c0:27db` and stays a keyboard throughout; connect whenever you
+like, and hold the pad for four seconds when the app asks, which opens the
+window during which the table may be read and written.
 
 On Linux the board needs a udev rule to be reachable without root. Both
 transports are in `60-digimacro.rules`:

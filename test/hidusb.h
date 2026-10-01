@@ -1,0 +1,15 @@
+/* Stub of the library header, for the host build. Shadows DigiHidUSB/src
+   because the test compiles with -I. ahead of anything else. */
+#pragma once
+#include <stdint.h>
+#define HID_REPORT_KBD 1
+#define HID_REPORT_VND 2
+void    hidBegin(void);
+void    hidPoll(void);
+uint8_t hidReady(void);
+uint8_t hidLeds(void);
+void    hidAllow(uint16_t ms);
+uint8_t hidAllowed(void);
+void    hidKey(uint8_t modifier, uint8_t key);
+void    hidTypeChar(char c, uint8_t mod);
+void    hidType_P(const char *s);

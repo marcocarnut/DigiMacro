@@ -26,7 +26,7 @@ static int  typedn;
 
 void hidBegin(void){}
 void hidPoll(void){}
-uint8_t hidReady(void){ return 1; }
+uint8_t hidReady(void){ return 1; } uint8_t hidAwake(void){ return 1; }
 uint8_t hidLeds(void){ return 0; }
 void hidAllow(uint16_t){}
 uint8_t hidAllowed(void){ return 1; }

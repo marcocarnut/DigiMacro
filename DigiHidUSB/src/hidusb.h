@@ -56,8 +56,15 @@ extern "C" {
 
 void    hidBegin(void);
 void    hidPoll(void);
-uint8_t hidReady(void);
+uint8_t hidReady(void);         /* enumerated: the host knows what this is */
+uint8_t hidAwake(void);         /* ...and has spoken to the keyboard half */
 uint8_t hidLeds(void);          /* the host's lock lights, as it last said */
+
+/* The difference between those two matters, and costs a macro its first
+   characters when it is missed. Enumeration is the host reading descriptors;
+   it happens early, and keystrokes sent then go nowhere, because nothing has
+   attached a keyboard to anything yet. The first lock-light report is the
+   host talking TO the keyboard, which it only does once there is one. */
 
 void    hidAllow(uint16_t ms);  /* let the table be read and written, briefly */
 uint8_t hidAllowed(void);

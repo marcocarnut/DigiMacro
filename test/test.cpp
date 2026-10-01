@@ -34,6 +34,8 @@ static int     typedn;
 void hidBegin(void){}
 void hidPoll(void){}
 uint8_t hidReady(void){ return 1; }
+static uint8_t host_awake = 1;  /* the host has said hello, unless a test says not */
+uint8_t hidAwake(void){ return host_awake; }
 uint8_t hidLeds(void){ return 0; }
 /* The configuration window the four-second hold opens. */
 static uint16_t allow_until; static uint8_t allow_open;
@@ -358,16 +360,49 @@ int main(void)
           "a mark on its own must change nothing: \"%s\"", typed);
 
     printf("17. the power-on macro\n");
+    /* Being enumerated is not the same as having somewhere to type, so it
+       waits for the host to speak to the keyboard before it types at it. */
+    auto play_at_power_on = [&]() {
+        typedn = 0; typed[0] = 0;
+        FLAGS &= ~(FLAG_AUTODONE | FLAG_AUTOWAIT);
+        loop();                             /* notices the host is there */
+        fake_ms += AUTO_SETTLE_MS + 10;
+        loop();                             /* and now it may type */
+        return (const char *)typed;
+    };
+
     /* Stored as a header byte rather than a position, so the same walk finds
        it and rewriting the table does not have to move it. */
     table_reset();
     add(".",  { K('a') });
     add("-.", { K('b') });
     EE[(size_t)AUTO_ADDR] = HDR_MAKE(2, 0x02);          /* "-.", dash then dot */
+    CHECK(!strcmp(play_at_power_on(), "<00/05>"),
+          "should have typed b: \"%s\"", typed);
+
+    printf("17a. ...but not before the host has somewhere to put it\n");
+    /* The bug this exists for: a macro that started at enumeration lost
+       however much of itself fitted in the gap before the host attached a
+       keyboard, so "wheee!{pause 1}waaah!" arrived as "waaah!". */
     typedn = 0; typed[0] = 0;
-    FLAGS &= ~FLAG_AUTODONE;
+    FLAGS &= ~(FLAG_AUTODONE | FLAG_AUTOWAIT);
     loop();
-    CHECK(!strcmp(typed, "<00/05>"), "should have typed b: \"%s\"", typed);
+    CHECK(typedn == 0, "nothing may be typed the instant it is enumerated");
+    fake_ms += AUTO_SETTLE_MS - 20; loop();
+    CHECK(typedn == 0, "nor before the settling time is up");
+    fake_ms += 40; loop();
+    CHECK(typedn > 0, "and then it should type");
+
+    printf("17b2. a host that never says hello is waited for, and given up on\n");
+    host_awake = 0;
+    typedn = 0; typed[0] = 0;
+    FLAGS &= ~(FLAG_AUTODONE | FLAG_AUTOWAIT);
+    loop();
+    fake_ms += AUTO_SETTLE_MS + 10; loop();
+    CHECK(typedn == 0, "the short wait is for a host that answered");
+    fake_ms += AUTO_WAIT_MS; loop();
+    CHECK(typedn > 0, "but it must not wait for ever: \"%s\"", typed);
+    host_awake = 1;
 
     printf("17b. ...once, and only once\n");
     typedn = 0; typed[0] = 0;
@@ -376,19 +411,15 @@ int main(void)
 
     printf("17c. nothing set means nothing typed\n");
     EE[(size_t)AUTO_ADDR] = 0xFF;
-    typedn = 0; typed[0] = 0;
-    FLAGS &= ~FLAG_AUTODONE;
-    loop();
-    CHECK(typedn == 0, "an erased byte must mean nothing: \"%s\"", typed);
+    CHECK(play_at_power_on()[0] == 0,
+          "an erased byte must mean nothing: \"%s\"", typed);
 
     printf("17d. a code that is no longer there types nothing\n");
     /* The table can be rewritten without this following it, so a dangling
        code has to be safe rather than impossible. */
     EE[(size_t)AUTO_ADDR] = HDR_MAKE(5, 0x1F);          /* "-----", absent */
-    typedn = 0; typed[0] = 0;
-    FLAGS &= ~FLAG_AUTODONE;
-    loop();
-    CHECK(typedn == 0, "a dangling code must type nothing: \"%s\"", typed);
+    CHECK(play_at_power_on()[0] == 0,
+          "a dangling code must type nothing: \"%s\"", typed);
     EE[(size_t)AUTO_ADDR] = 0xFF;
 
     printf("18. the reserved bytes are where the map says\n");

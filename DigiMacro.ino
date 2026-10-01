@@ -99,6 +99,16 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define HOLD_MS               4000  /* hold this long to let the app in      */
 #define CONFIG_MS            30000  /* ...and it stays in for this long      */
 
+/* How long to let the host attach before typing at it unprompted. Being
+   enumerated is not the same as having somewhere to type: the host reads the
+   descriptors early and binds a keyboard to the input stack some time later,
+   and a macro that starts before that loses however much of itself fits in
+   the gap. The first lock-light report is the host speaking to the keyboard,
+   which is as good a sign as there is that one now exists; failing that,
+   there is a timeout, because nothing guarantees a host sends one. */
+#define AUTO_SETTLE_MS         250  /* after the host says hello */
+#define AUTO_WAIT_MS          1500  /* ...or after this, if it never does */
+
 /* ==================================================================== */
 /* The table                                                            */
 /* ==================================================================== */
@@ -216,6 +226,7 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define FLAG_CODE_OVER  2       /* more symbols than any code can have     */
 #define FLAG_CONSUMED   4       /* this press opened the window, not a symbol */
 #define FLAG_AUTODONE   8       /* the power-on macro has had its turn */
+#define FLAG_AUTOWAIT  16       /* ...and is waiting for the host to settle */
 #define FLAGS           GPIOR1
 
 /* ==================================================================== */
@@ -629,6 +640,8 @@ void code_finish(void)
 }
 
 #if HAVE_AUTOEXEC
+uint16_t auto_since;            /* when the host finished enumerating */
+
 /* Type the nominated macro, once the host is listening. */
 void autoexec_run(void)
 {
@@ -690,11 +703,18 @@ void loop(void)
     update_led();
 
 #if HAVE_AUTOEXEC
-    /* Keystrokes sent before the host has finished enumerating go nowhere, so
-       the startup macro waits for it here rather than holding up setup(). */
+    /* The startup macro waits here rather than holding up setup(), and waits
+       for somewhere to type rather than merely for enumeration -- see
+       AUTO_SETTLE_MS above for why those are not the same thing. */
     if (!(FLAGS & FLAG_AUTODONE) && hidReady()) {
-        FLAGS |= FLAG_AUTODONE;
-        autoexec_run();
+        if (!(FLAGS & FLAG_AUTOWAIT)) {
+            FLAGS |= FLAG_AUTOWAIT;
+            auto_since = ticks();
+        } else if ((uint16_t)(ticks() - auto_since) >=
+                   (hidAwake() ? AUTO_SETTLE_MS : AUTO_WAIT_MS)) {
+            FLAGS |= FLAG_AUTODONE;
+            autoexec_run();
+        }
     }
 #endif
 

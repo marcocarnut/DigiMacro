@@ -19,7 +19,7 @@ itself when the board is plugged in. Hold the pad four seconds and
 `web/app.html` may read and write the table for the next half minute. What is
 left is `\j`, and the password and lockout that should gate all of this.
 
-**3912 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
+**3982 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
 
 ### It never stops being a keyboard
 
@@ -178,6 +178,14 @@ A parenthesis is only a parenthesis unless a count follows the closing one.
 the code rather than a position in the table — so reordering the macros cannot
 point it somewhere else, and a code that is no longer there types nothing
 rather than something.
+
+It waits for the host to have somewhere to put the keystrokes, which is not
+the same as being plugged in: the host reads the descriptors early and attaches
+a keyboard to the input stack some time later, and a macro that starts in
+between loses however much of itself fits in the gap. The board waits for the
+host to send it a lock-light report — the host talking *to* the keyboard, which
+it only does once there is one — and gives up waiting after a second and a half
+in case a host never does.
 
 The editor encodes as you type, so a mistake is reported beside the macro that
 has it, and the byte budget — 497 of them — is always on screen. Nothing is

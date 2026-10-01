@@ -7,6 +7,7 @@
 void    hidBegin(void);
 void    hidPoll(void);
 uint8_t hidReady(void);
+uint8_t hidAwake(void);
 uint8_t hidLeds(void);
 void    hidAllow(uint16_t ms);
 uint8_t hidAllowed(void);

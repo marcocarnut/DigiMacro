@@ -106,6 +106,7 @@ extern "C" usbMsgLen_t usbFunctionDescriptor(usbRequest_t *rq)
 static uint8_t kbdReport[KBD_REPORT_LEN] = { HID_REPORT_KBD };
 static uint8_t hidIdleRate;
 static uint8_t leds;            /* what the host last said its lights are */
+static uint8_t awake;           /* ...and that it said anything at all */
 
 static uint8_t vnd[DM_VND_LEN]; /* the feature report, both ways */
 static uint8_t vndLeft;         /* bytes of it still to come */
@@ -216,6 +217,7 @@ extern "C" uchar usbFunctionWrite(uchar *data, uchar len)
 {
     if (!writingVnd) {
         if (len) leds = data[len - 1];  /* the lock lights, ID or no ID */
+        awake = 1;                      /* and the host has a keyboard now */
         return 1;
     }
 
@@ -299,4 +301,5 @@ void hidBegin(void)
 
 void    hidPoll(void)  { usbPoll(); }
 uint8_t hidReady(void) { return usbConfiguration != 0; }
+uint8_t hidAwake(void) { return awake; }
 uint8_t hidLeds(void)  { return leds; }

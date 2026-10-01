@@ -35,7 +35,7 @@ void fake_charge(void){ pinb_count = q[qi++ % qn]; }
 
 
 void hidBegin(void){} void hidPoll(void){}
-uint8_t hidReady(void){ return 1; } uint8_t hidLeds(void){ return 0; }
+uint8_t hidReady(void){ return 1; } uint8_t hidAwake(void){ return 1; } uint8_t hidLeds(void){ return 0; }
 void hidAllow(uint16_t){} uint8_t hidAllowed(void){ return 0; }
 void hidKey(uint8_t,uint8_t){} void hidTypeChar(char,uint8_t){}
 void hidType(const char*){} void hidType_P(const char*){}

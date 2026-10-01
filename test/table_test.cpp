@@ -26,6 +26,8 @@ static int  typedn;
 void hidBegin(void){}
 void hidPoll(void){}
 uint8_t hidReady(void){ return 1; }
+static uint8_t host_awake = 1;  /* the host has said hello, unless a test says not */
+uint8_t hidAwake(void){ return host_awake; }
 uint8_t hidLeds(void){ return 0; }
 /* The configuration window the four-second hold opens. */
 static uint16_t allow_until; static uint8_t allow_open;

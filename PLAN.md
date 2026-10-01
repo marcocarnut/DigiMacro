@@ -212,8 +212,30 @@ The password and lockout carry over, but the threat model shifts:
 4. ~~Repeat count range~~ — settled: one byte of extra presses, 256 in all,
    and the app writes it as a quantifier.
 
-5. **Store the password, or encrypt the table with it?** Raised by Marco, and
-   worth settling before step 4 rather than after.
+5. ~~**Store the password, or encrypt the table with it?**~~ **Settled: store
+   it, and protect the chip with the lock bits.** Marco's reasoning, and it is
+   the right way round: a macro has to play with nobody's help, so the key has
+   to be present whenever the device is plugged in. Holding it in RAM means
+   typing a password before the device does anything, every single time, and
+   keeping it in EEPROM is theatre. Per-entry protection softens that but does
+   not remove it, and the answer to "my macro pad wants a password before it
+   will work" is that nobody would use it.
+
+   **But the lock bits only protect a board with no bootloader, and that is
+   not a detail.** The ATtiny85 lock byte has LB1 and LB2 and nothing else:
+   there are no boot lock bits, because there is no boot section. SPM is
+   therefore allowed whatever the lock bits say, so micronucleus can still
+   rewrite flash on a locked chip — and an attacker with the board in hand
+   uploads a sketch that dumps the EEPROM, lock bits or no lock bits. A
+   protected deployment is the whole set or none of it:
+
+   - flashed with a programmer, **no bootloader** (`./build.sh isp`)
+   - lock bits set, which DigiISP can do
+   - EESAVE left unprogrammed, so a chip erase takes the table with it
+
+   Which also shrinks what the password is for. It is not protection against
+   someone who has the chip; that is the lock bits' job. It is protection
+   against someone who has the *board*, briefly, and can tap 62 codes.
 
    The case for encrypting is stronger than it first looks, and it is not
    about the cipher. Today the password is protected by the lock bits, and
@@ -501,12 +523,40 @@ testable, which is why they are in this order rather than firmware-then-app.
    can read it, and takes a translator from the app. `test/i18n.js` checks the
    dictionaries hold the same keys, because a missing translation is invisible
    in use: it falls back to English and reads as if nobody noticed.
-4. **`STATUS` and `UNLOCK`**, the password and the lockout — including
+4. **`autoexec` and `\j` first**, being the small ones, and because `\j`
+   needs something the mode switch used to provide and no longer does.
+
+   A macro that jumps to itself runs for ever, deliberately, and the only way
+   out used to be the four-second hold taking the device out of keyboard mode.
+   There is no mode to leave now — but the hold still exists, and giving it a
+   second meaning during playback costs nothing: a pause is the one
+   interruptible moment, so a hold during a pause stops the macro *and* opens
+   the configuration window. One gesture, and it leaves the board in exactly
+   the state from which the app can fix what is wrong. Which is better than
+   what it replaced: the old escape left you in a mode, not in a position to
+   repair anything.
+
+   `autoexec` is the brick hazard's other half, so the app's loop check lands
+   with it, and both come before the password rather than after.
+
+5. **`STATUS` and `UNLOCK`**, the password and the lockout — including
    counting failed password attempts, which the CDC version does not do and
    which matters far more over USB. `autoexec` belongs here too, beside the
    lockout that has to gate it; its byte is already reserved at 0x1F3.
-5. **`\j`** last: it is the one feature that can brick a board, and by then
-   the app can refuse a looping `autoexec`.
+6. **Reboot into the bootloader**, a command Marco wants for upgrades and
+   DigiISP already has as `0x41`. Twenty bytes: enable the watchdog and spin.
+
+   **It must sit behind the same window as READ and WRITE**, and for a sharper
+   reason than they do. A page that can reboot a board into micronucleus can
+   have anything flashed onto it, including a sketch that reads the table out
+   — so an ungated reboot would hand away more than an ungated read. It is
+   also the one command that is pointless on a protected board, which has no
+   bootloader to reboot into.
+
+   Upgrading *from the browser* is a separate question and a harder one:
+   micronucleus is a plain vendor-class device with no BOS and no MS OS 2.0
+   set, so Windows wants a driver for it, which is the thing this whole
+   transport change was about avoiding.
 
 ## Spike: passed on hardware
 

@@ -153,6 +153,38 @@ for (const text of ['a{3}', 'ç{5}', '(ab){3}', 'f(x)', 'f(x){2}', 'x{1}',
         `${JSON.stringify(text)} drifts: ${JSON.stringify(t.decodeMacro(bytes))}`);
 }
 
+console.log('5c. jumps, and the loop nothing could stop');
+check(JSON.stringify(t.encodeMacro('a{goto .}')) ===
+      JSON.stringify([0x04, t.ESC_JUMP, 0x01]),
+      'the jump carries the header plus one, since a zero would end the macro');
+check(t.decodeMacro(t.encodeMacro('{goto -.}')) === '{goto -.}',
+      'and reads back as the code it names');
+
+/* Touching the pad stops a macro, so a loop that types or pauses can always be
+   got out of and is a feature. A loop that does neither never reaches a point
+   where anyone is asked, so the firmware counts jumps instead -- and nobody
+   meant to write one. Only what happens BEFORE the jump counts, since nothing
+   after a jump ever runs. */
+for (const [rows, want] of [
+  [[{ code: '.', text: 'a{goto -}' }, { code: '-', text: 'b' }], null],
+  [[{ code: '.', text: 'a{pause 1.0}{goto .}' }], null],
+  [[{ code: '.', text: 'a{goto .}' }], null],
+  [[{ code: '.', text: 'a{goto -}' }, { code: '-', text: 'b{goto .}' }], null],
+  [[{ code: '.', text: '{goto -}' }, { code: '-', text: '{goto .}' }], /never type or pause/],
+  [[{ code: '.', text: '{goto .}' }], /never type or pause/],
+  [[{ code: '.', text: 'a{goto -}{pause 1.0}' }, { code: '-', text: '{goto .}' }], null],
+  [[{ code: '.', text: 'a{goto --}' }], /no macro with that code/],
+]) {
+  let msg = null;
+  try { t.encodeTable(rows); } catch (e) { msg = e.message; }
+  if (want === null)
+    check(msg === null, `${rows[0].text} should be allowed, got ${msg}`);
+  else
+    check(msg !== null && want.test(msg),
+          `${rows[0].text} should be refused with ${want}, got ` +
+          (msg === null ? 'nothing' : JSON.stringify(msg)));
+}
+
 console.log('6. accents, on a layout that can type them');
 /* The board sends scan codes, so an accent is the host's business: two
    keystrokes on a dead-key layout, and impossible on a plain US one. Getting

@@ -15,7 +15,9 @@
 const ESC_PAUSE  = 0x01;    /* nn tenths of a second */
 const ESC_MOD    = 0x02;    /* a HID modifier mask, for the next keystroke */
 const ESC_REPEAT = 0x03;    /* press the previous keystroke nn more times */
-const ESC_JUMP   = 0x81;    /* not implemented in the firmware yet */
+const ESC_JUMP   = 0x81;    /* carry on with the macro whose header is arg-1:
+                               plus one because a zero byte ends a macro, and
+                               the header of "." is zero */
 const ESC_MARK   = 0x82;    /* the repeat after this goes back to here */
 const SHIFT      = 0x80;    /* in a stored keystroke */
 
@@ -93,6 +95,10 @@ const MSG = {
   'group-empty':     () => '() has nothing in it',
   'nested-repeat':   () => 'a count inside a group: the firmware has one mark, '
                          + 'so the inner count would take the outer one over',
+  'goto-nowhere':    p => `{goto ${p.what}}: there is no macro with that code`,
+  'loop-empty':      p => `${p.what}: these only jump to each other and never `
+                         + `type or pause, so the firmware would give up on `
+                         + `them rather than run them`,
   'no-key-after':    p => `{${p.what}}: no key after the +`,
   'not-a-modifier':  p => `"${p.what}" is not a modifier`,
   'not-a-key':       p => `"${p.what}" is not a key`,
@@ -204,6 +210,7 @@ function usages(text) {
  *    x{11}               eleven of them, as a quantifier reads in a regular
  *                        expression -- eleven in all, not eleven more
  *    (ab){3}             ...of a whole group, rather than one thing
+ *    {goto .-}           carry on with another macro, and never come back
  *    \(  \)              a parenthesis that is only a parenthesis
  *
  * The group exists because a keystroke stopped being a character. "ç" on a
@@ -314,6 +321,13 @@ function encodeMacro(text) {
           push(ESC_REPEAT, n - 1);              /* the firmware counts MORE */
         }
         unitAt = -1;                            /* a count cannot count a count */
+        continue;
+      }
+
+      const go = /^goto\s+([.-]+)$/i.exec(body);
+      if (go) {
+        push(ESC_JUMP, header(go[1]) + 1);
+        unitAt = -1;                            /* nothing after it runs */
         continue;
       }
 
@@ -432,6 +446,7 @@ function decodeMacro(bytes) {
     if ((b & 0x7F) < 0x04) {                    /* an escape */
       const arg = bytes[++i];
       if (b === ESC_PAUSE)  { out += `{pause ${(arg / 10).toFixed(1)}}`; continue; }
+      if (b === ESC_JUMP) { out += `{goto ${codeOf(arg - 1)}}`; continue; }
       if (b === ESC_REPEAT) {
         const n = arg + 1;              /* the firmware counts the extra ones */
         if (groupAt < 0) {
@@ -499,6 +514,50 @@ function codeOf(header) {
   return code;
 }
 
+/* Where a macro goes when it is done, and whether it does anything on the
+   way. Execution is linear until a jump, and a jump never comes back, so only
+   the first one counts -- and only what happens BEFORE it ever runs. */
+function entryFate(bytes) {
+  let acts = false;
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i];
+    if (b === ESC_JUMP)  return { acts, goes: bytes[i + 1] - 1 };
+    if (b === ESC_MARK)  continue;
+    if ((b & 0x7F) < 0x04) { acts = true; i++; continue; }  /* a pause, say */
+    acts = true;                                            /* a keystroke */
+  }
+  return { acts, goes: null };
+}
+
+/* A macro that jumps to itself runs for ever, which is the point of having
+   jumps, and touching the pad stops it -- the firmware reads the pad between
+   keystrokes and during pauses. So a loop is only a problem when it does
+   neither: macros that merely jump to each other never reach a point where
+   anybody is asked, and the firmware bounds them by counting instead. That is
+   never what anyone meant, so it is worth saying so here. */
+function loopCheck(entries) {
+  const fate = new Map();
+  for (const [code, body] of entries) fate.set(header(code), entryFate(body));
+
+  for (const start of fate.keys()) {
+    const path = [];
+    let at = start;
+    while (at !== null && fate.has(at)) {
+      const seen = path.indexOf(at);
+      if (seen >= 0) {                          /* a cycle, from here on */
+        const cycle = path.slice(seen);
+        if (!cycle.some(h => fate.get(h).acts))
+          fail('loop-empty',
+               { what: [...cycle, cycle[0]]
+                       .map(h => `"${codeOf(h)}"`).join(' -> ') });
+        break;
+      }
+      path.push(at);
+      at = fate.get(at).goes;
+    }
+  }
+}
+
 /* [[code, keystrokes], ...] -> the whole table, terminator and all. Entries
    are packed, so their order in the array is their order in EEPROM. */
 function packTable(entries) {
@@ -517,6 +576,17 @@ function packTable(entries) {
   out.push(0xFF);
   if (out.length > TABLE_TOP)
     fail('too-big', { n: out.length, fits: TABLE_TOP });
+
+  /* A jump to a code that is not here ends the macro rather than doing
+     something wrong, so this is a warning the firmware does not need -- but
+     it is almost always a typo, and silence would be unkind. */
+  const present = new Set(entries.map(([code]) => header(code)));
+  for (const [code, body] of entries) {
+    const f = entryFate(body);
+    if (f.goes !== null && !present.has(f.goes))
+      fail('goto-nowhere', { what: codeOf(f.goes) });
+  }
+  loopCheck(entries);
   return Uint8Array.from(out);
 }
 
@@ -560,6 +630,6 @@ function sampleRows() {
 
 if (typeof module !== 'undefined') module.exports = {
   ESC_PAUSE, ESC_MOD, ESC_REPEAT, ESC_JUMP, SHIFT, TABLE_TOP, MAX_SYM,
-  ESC_MARK, AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
+  ESC_MARK, ESC_JUMP, AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
   usages, header, codeOf, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows };

@@ -571,7 +571,27 @@ testable, which is why they are in this order rather than firmware-then-app.
    The app names it by code in a drop-down and clears the choice when that
    macro leaves the table, rather than writing a pointer to nothing.
 
-   **`\j` next**, and because `\j`
+   **`\j` — done, 136 bytes.** `{goto .-}` carries on with another macro
+   and never comes back, so a chain of any length needs no stack and a macro
+   that jumps to itself runs for ever, which is the point. The argument is the
+   header plus one, because a zero byte ends a macro and the header of "." is
+   zero; no valid header is 0xFC or above, so adding one is always safe.
+
+   **Marco's, and it replaced the whole escape design:** any touch stops a
+   macro. The pad is read between keystrokes — a quarter of a millisecond
+   against a keystroke's twenty — so no loop has to be written carefully to
+   stay escapable, which is what the plan had assumed. The press that stops a
+   macro is marked consumed so it does not also become a symbol and fire the
+   next macro along, and holding it on still opens the window, so stopping a
+   runaway and repairing it are one gesture.
+
+   What survives of the hazard is small: a loop that only jumps, typing and
+   pausing never, never reaches a point where the pad is read. The firmware
+   counts jumps between keystrokes and gives up after a hundred; the app
+   refuses to write one, since nobody meant it. The loop check the plan called
+   for shrank from "every loop needs a pause" to that.
+
+   **Which is still `\j`,** and
    needs something the mode switch used to provide and no longer does.
 
    A macro that jumps to itself runs for ever, deliberately, and the only way

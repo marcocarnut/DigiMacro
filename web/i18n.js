@@ -118,6 +118,11 @@ en: {
   'group-empty':    '() has nothing in it',
   'nested-repeat':  'a count inside a group: the firmware has one mark, so the '
                   + 'inner count would take the outer one over',
+  'goto-nowhere':   '{{goto {what}}}: there is no macro with that code',
+  'loop-empty':     '{what}: these only jump to each other and never type or '
+                  + 'pause, so the firmware would give up on them rather than '
+                  + 'run them',
+  'ref-goto':       'carry on with another macro, and never come back',
   'nothing-to-rep': '{{what}}: nothing to repeat yet',
   'no-key-after':   '{{what}}: no key after the +',
   'not-a-modifier': '"{what}" is not a modifier',
@@ -242,6 +247,11 @@ pt: {
   'group-empty':    '() não tem nada dentro',
   'nested-repeat':  'uma contagem dentro de um grupo: o firmware tem uma marca '
                   + 'só, então a contagem de dentro tomaria o lugar da de fora',
+  'goto-nowhere':   '{{goto {what}}}: não existe macro com esse código',
+  'loop-empty':     '{what}: estas só pulam umas para as outras e nunca '
+                  + 'digitam nem pausam, então o firmware desiste delas em vez '
+                  + 'de executá-las',
+  'ref-goto':       'continua em outra macro, e não volta',
   'nothing-to-rep': '{{what}}: não há nada para repetir ainda',
   'no-key-after':   '{{what}}: falta a tecla depois do +',
   'not-a-modifier': '"{what}" não é um modificador',

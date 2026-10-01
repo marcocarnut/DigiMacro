@@ -422,7 +422,72 @@ int main(void)
           "a dangling code must type nothing: \"%s\"", typed);
     EE[(size_t)AUTO_ADDR] = 0xFF;
 
-    printf("18. the reserved bytes are where the map says\n");
+    printf("18. a jump carries on somewhere else\n");
+    /* A jump, not a call: nothing after it runs and nothing comes back, so a
+       chain of any length needs no stack. The argument is the header plus
+       one, because a zero byte ends a macro and the header of "." is zero. */
+    table_reset();
+    add(".",  { K('a'), ESC_JUMP, (uint8_t)(HDR_MAKE(1, 1) + 1), K('z') });
+    add("-",  { K('b') });
+    CHECK(!strcmp(play("."), "<00/04><00/05>"),
+          "a jumps to b, and what follows the jump never runs: \"%s\"", typed);
+
+    printf("18b. a jump to a code that is not there ends the macro\n");
+    table_reset();
+    add(".", { K('a'), ESC_JUMP, (uint8_t)(HDR_MAKE(5, 0x1F) + 1), K('z') });
+    CHECK(!strcmp(play("."), "<00/04>"), "should stop at the jump: \"%s\"", typed);
+
+    printf("18c. a macro may jump to itself, and any touch stops it\n");
+    /* The point of having jumps, and the only question that ever mattered:
+       how to stop one. The pad is read between keystrokes, so a loop needs no
+       pause in it to remain escapable. */
+    table_reset();
+    add(".", { K('a'), ESC_JUMP, (uint8_t)(HDR_MAKE(1, 0) + 1) });
+    btn_held = 0;
+    typedn = 0; typed[0] = 0;
+    code_reset();
+    code_bits = 0; code_len = 1;
+    btn_held = 1;                       /* a finger goes down */
+    code_finish();
+    CHECK(typedn / 7 < 3, "a touch must stop it almost at once, typed %d",
+          typedn / 7);
+
+    printf("18d. ...and that press is not also a symbol\n");
+    /* Otherwise stopping a macro would tap a dot, and the dot would fire
+       whatever macro has that code. */
+    btn_held = 0; loop();
+    fake_ms += DEBOUNCE_MS + 1; loop();
+    CHECK(code_len == 0, "the press that stopped it must not become a symbol, "
+          "got %d", code_len);
+
+    printf("18e. ...but holding it still opens the window\n");
+    /* Which is how a runaway gets repaired: stop it, keep holding, and the
+       app can reach the table. */
+    CHECK(!hidAllowed(), "nothing open yet");
+    typedn = 0; typed[0] = 0;
+    code_reset();
+    code_bits = 0; code_len = 1;
+    btn_held = 1;
+    code_finish();                      /* stopped by the touch again */
+    for (int i = 0; i < 3; i++) { fake_ms += HOLD_MS / 2; loop(); }
+    CHECK(hidAllowed(), "holding on after the stop must open the window");
+    btn_held = 0; loop();
+    fake_ms += 40000; loop();           /* let it lapse */
+
+    printf("18f. a loop that does nothing at all is still bounded\n");
+    /* Macros that only jump to each other never reach a keystroke, so the pad
+       is never read. The jump count is what stops that one. */
+    table_reset();
+    add(".", { ESC_JUMP, (uint8_t)(HDR_MAKE(1, 1) + 1) });
+    add("-", { ESC_JUMP, (uint8_t)(HDR_MAKE(1, 0) + 1) });
+    btn_held = 0;
+    typedn = 0; typed[0] = 0;
+    code_reset();
+    code_bits = 0; code_len = 1;
+    code_finish();                      /* must return at all, is the point */
+    CHECK(typedn == 0, "it types nothing, and must stop doing so");
+
+    printf("19. the reserved bytes are where the map says\n");
     /* The table stops 32 bytes below the end; the app is told the same
        number, so if this changes both must. */
     CHECK((size_t)TABLE_TOP == 0x1E0, "TABLE_TOP is %03X", (int)(size_t)TABLE_TOP);

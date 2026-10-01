@@ -71,6 +71,10 @@
                                shows a bystander the code. */
 #endif
 
+#ifndef HAVE_JUMP
+#define HAVE_JUMP 1         /* 0 = no {goto}, and no loops to escape from */
+#endif
+
 #ifndef HAVE_AUTOEXEC
 #define HAVE_AUTOEXEC 1     /* 0 = never type anything unasked */
 #endif
@@ -90,6 +94,12 @@
 #define LED_SET(v)   do { if (v) PORTB |=  (1 << PIN_LED); \
                           else   PORTB &= ~(1 << PIN_LED); } while (0)
 #define BTN_PRESSED()  (!(PINB & (1 << PIN_BUTTON)))
+
+#if HAVE_TOUCH
+#define INPUT_ACTIVE()  touch_state     /* refreshed by touch_poll() */
+#else
+#define INPUT_ACTIVE()  BTN_PRESSED()
+#endif
 
 static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 
@@ -144,7 +154,16 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *      0x02 mm   latch modifier mask mm into the next keystroke
  *      0x03 nn   do the previous keystroke nn more times
  *      0x82      mark: the rest repeats as a group, not one keystroke
- *      0x81 hh   carry on with the macro whose header is hh    (not yet)
+ *      0x81 hh   carry on with the macro whose header is hh-1
+ *
+ * The jump's argument is the header plus one, because a zero byte ends a
+ * macro and the header of "." is zero. No valid header is 0xFC or above, so
+ * adding one can never produce a zero either.
+ *
+ * It is a jump and not a call: nothing after it runs and nothing comes back,
+ * so a chain of any length needs no stack, and a macro that jumps to itself
+ * runs for ever -- which is the point of having it. A jump to a code that is
+ * not in the table simply ends the macro.
  *
  * 0x82 is what makes the repeat useful once a keystroke stops being a
  * character. On a dead-key keyboard "c-cedilla" is two presses, the accent
@@ -185,6 +204,13 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define ESC_REPEAT      0x03
 #define ESC_JUMP        0x81
 #define ESC_MARK        0x82
+
+/* Touching the pad stops a macro, so a loop that types or pauses can always
+   be got out of. What cannot is a loop that does neither -- macros that only
+   jump to each other -- because it never reaches a point where the pad is
+   read. Counting the jumps between keystrokes bounds that one, and a hundred
+   is more than any chain anyone means. */
+#define JUMP_MAX        100
 #define IS_ESC(c)       (((c) & 0x7F) < 0x04)
 
 #define KEY_SHIFT       0x80        /* in a stored keystroke */
@@ -227,7 +253,17 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define FLAG_CONSUMED   4       /* this press opened the window, not a symbol */
 #define FLAG_AUTODONE   8       /* the power-on macro has had its turn */
 #define FLAG_AUTOWAIT  16       /* ...and is waiting for the host to settle */
+#define FLAG_HELD      32       /* the hold has already fired for this press */
 #define FLAGS           GPIOR1
+
+/* ==================================================================== */
+/* The input                                                            */
+/* ==================================================================== */
+
+uint8_t  in_down;               /* the input, once we believe it */
+uint8_t  in_seen;               /* ...and what it has been reading lately */
+uint16_t in_since;              /* since when, which is how long we wait */
+uint16_t press_start;
 
 /* ==================================================================== */
 /* Waiting                                                              */
@@ -457,10 +493,6 @@ static void type_reading(void)
 /* Tapping                                                              */
 /* ==================================================================== */
 
-uint8_t  in_down;               /* the input, once we believe it */
-uint8_t  in_seen;               /* ...and what it has been reading lately */
-uint16_t in_since;              /* since when, which is how long we wait */
-uint16_t press_start;
 uint16_t last_release;
 
 uint8_t  code_bits;
@@ -501,7 +533,7 @@ void handle_input(void)
 
         if (raw) {
             press_start = now;
-            FLAGS &= ~FLAG_CONSUMED;
+            FLAGS &= ~(FLAG_CONSUMED | FLAG_HELD);
         } else if (!(FLAGS & FLAG_CONSUMED)) {
             /* A completed press is one symbol. */
             uint16_t held = now - press_start;
@@ -527,9 +559,9 @@ void handle_input(void)
        hold has nothing to switch -- but it still has something to say, which
        is that somebody is here. Reaching the table needs that, and a web page
        cannot forge it. */
-    if (in_down && !(FLAGS & FLAG_CONSUMED) &&
+    if (in_down && !(FLAGS & FLAG_HELD) &&
         (uint16_t)(now - press_start) >= HOLD_MS) {
-        FLAGS |= FLAG_CONSUMED;
+        FLAGS |= FLAG_HELD | FLAG_CONSUMED;
         code_reset();
         hidAllow(CONFIG_MS);
     }
@@ -564,9 +596,54 @@ uint8_t *find_header(uint8_t want)
     return 0;
 }
 
+/* ---- stopping a macro ----------------------------------------------
+ *
+ * Touching the pad stops whatever is playing. That is worth more than it
+ * sounds: a macro that jumps to itself runs for ever, which is the point of
+ * having jumps, and the only question that ever mattered was how to stop one.
+ * Reading the input between keystrokes answers it for nothing -- a touch
+ * reading is a quarter of a millisecond against a keystroke's twenty -- and
+ * it means no loop has to be written carefully to remain escapable.
+ *
+ * The press that stops a macro is marked consumed, so it does not also become
+ * a symbol and fire the next macro along. Holding it still opens the
+ * configuration window, which is how a runaway gets repaired: stop it, keep
+ * holding, and the app can reach the table.
+ */
+static void stop_for_touch(void)
+{
+    uint16_t now = ticks();
+
+    /* Tell handle_input() this press has been seen and dealt with, since it
+       was not looking while the macro played. */
+    in_down = in_seen = 1;
+    in_since = press_start = now;
+    FLAGS |= FLAG_CONSUMED;
+    FLAGS &= ~FLAG_HELD;        /* ...but it may still become a hold */
+}
+
+/* Wait, while watching the pad. Nothing else here is timing critical enough
+   to need a state machine, but dropping hidPoll() for 100 ms loses the host. */
+uint8_t pause_poll(uint16_t ms)
+{
+    uint16_t t = ticks();
+
+    while ((uint16_t)(ticks() - t) < ms) {
+        hidPoll();
+#if HAVE_TOUCH
+        touch_poll();
+#endif
+        if (INPUT_ACTIVE()) return 1;
+    }
+    return 0;
+}
+
 /* Type one macro, given where its keystrokes start. */
 void macro_play(uint8_t *a)
 {
+#if HAVE_JUMP
+    uint8_t  jumps = 0;         /* since the last pause; see JUMP_MAX */
+#endif
     uint8_t  mod = 0;           /* latched by ESC_MOD for the next keystroke */
     uint8_t  lastkey = 0;       /* what a bare ESC_REPEAT repeats... */
     uint8_t  lastmod = 0;       /* ...modifiers and all */
@@ -576,7 +653,15 @@ void macro_play(uint8_t *a)
     LED_SET(1);
 
     while (a < TABLE_TOP) {
-        uint8_t c = eeprom_read_byte(a++);
+        uint8_t c;
+
+        /* Between one thing and the next, is anybody touching it? */
+#if HAVE_TOUCH
+        touch_poll();
+#endif
+        if (INPUT_ACTIVE()) { stop_for_touch(); break; }
+
+        c = eeprom_read_byte(a++);
         if (!c) break;
 
         if (IS_ESC(c)) {
@@ -594,7 +679,10 @@ void macro_play(uint8_t *a)
             if (!arg) break;            /* no argument may be zero; a table
                                            that says otherwise is corrupt */
             if (c == ESC_PAUSE) {
-                wait_poll((uint16_t)arg * 100);
+                if (pause_poll((uint16_t)arg * 100)) {
+                    stop_for_touch();
+                    break;
+                }
             } else if (c == ESC_MOD) {
                 mod = arg;
             } else if (c == ESC_REPEAT) {
@@ -612,9 +700,18 @@ void macro_play(uint8_t *a)
                 } else {
                     mark = 0;           /* done; carry on past the repeat */
                 }
+#if HAVE_JUMP
+            } else if (c == ESC_JUMP) {
+                uint8_t *nx = find_header(arg - 1);
+                if (!nx || ++jumps > JUMP_MAX) break;
+                a = nx;                 /* carry on there, and never come back */
+                mod = 0;
+                mark = 0;
+                reps = 0;
+#endif
             } else {
-                break;                  /* ESC_JUMP, which this build does
-                                           not have: stop rather than guess */
+                break;                  /* an escape this build does not have:
+                                           stop rather than guess */
             }
             continue;
         }
@@ -622,6 +719,9 @@ void macro_play(uint8_t *a)
         lastmod = mod | ((c & KEY_SHIFT) ? MOD_SHIFT : 0);
         lastkey = c & 0x7F;
         mod = 0;
+#if HAVE_JUMP
+        jumps = 0;              /* a keystroke is a chance to stop it */
+#endif
         hidKey(lastmod, lastkey);
     }
 

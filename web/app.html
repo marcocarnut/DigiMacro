@@ -139,6 +139,8 @@
     <button data-ins="rep" data-t="insert">insert</button>
     <button data-ins="group" style="margin-left:.8rem"
             title="( )">( )</button>
+    <label style="margin-left:.8rem">goto <select id="gotoval"></select></label>
+    <button data-ins="goto" data-t="insert">insert</button>
   </div>
 </div>
 <p class="hint" data-t="pad-hint"></p>
@@ -163,6 +165,7 @@
     <tr><td>x{11}</td><td data-t="ref-repeat"></td></tr>
     <tr><td>(ab){3}</td><td data-t="ref-group"></td></tr>
     <tr><td>\( \)</td><td data-t="ref-paren"></td></tr>
+    <tr><td>{goto .-}</td><td data-t="ref-goto"></td></tr>
     <tr><td>á ç ã</td><td data-t="ref-accent"></td></tr>
     <tr><td>{'}</td><td data-t="ref-bare-mark"></td></tr>
   </table>
@@ -311,6 +314,8 @@ function draw() {
     }
   });
 
+  $('gotoval').innerHTML = macros
+    .map(m => `<option>${m.code.replace(/[^.-]/g, '')}</option>`).join('');
   $('budget').textContent = t('budget', { n: st.total, max: TABLE_TOP });
   $('budget').className = st.error ? 'bad' : 'dim';
   const m = $('meter');
@@ -590,6 +595,11 @@ $('pad').addEventListener('click', e => {
   /* A count counts the thing before it, and that thing is one keystroke
      unless something says otherwise. Parentheses are how you say otherwise:
      around a selection if there is one, ready to type into if there is not. */
+  if (t.dataset.ins === 'goto') {
+    if ($('gotoval').value) insert(`{goto ${$('gotoval').value}}`);
+    return;
+  }
+
   if (t.dataset.ins === 'group') {
     const el = lastField && lastField.isConnected
              ? lastField : document.querySelector('#list input.text');

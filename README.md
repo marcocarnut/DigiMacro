@@ -14,12 +14,13 @@ line instead. That one is finished and in use; this one is early.
 
 ## Status: working, less the password
 
-Tap a code, the board types the macro. One macro can be nominated to type
-itself when the board is plugged in. Hold the pad four seconds and
+Tap a code, the board types the macro; touch the pad again to stop it. One
+macro can be nominated to type itself when the board is plugged in, and a
+macro can carry on with another, including itself. Hold the pad four seconds and
 `web/app.html` may read and write the table for the next half minute. What is
 left is `\j`, and the password and lockout that should gate all of this.
 
-**3982 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
+**4118 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
 
 ### It never stops being a keyboard
 
@@ -46,6 +47,19 @@ when the board appeared. And the keyboard gave up boot protocol, since two
 collections on one interface need report IDs and a boot report may not have
 one. That also caps it at three key slots rather than six, which matters to
 nothing that only ever presses one key at a time.
+
+### Stopping a macro
+
+Touching the pad stops whatever is playing. The pad is read between keystrokes
+— a touch reading is a quarter of a millisecond against a keystroke's twenty
+— and during pauses, so a macro that jumps to itself, which runs for ever by
+design, is got out of by touching it. That press is not also counted as a
+symbol, and holding it on opens the configuration window, so a runaway is
+stopped and repaired with one gesture.
+
+The one loop that cannot be stopped that way is one that never types or pauses
+at all, since the pad is never reached. The firmware bounds that by counting
+jumps, and the app refuses to write it, because nobody meant it.
 
 **The hold survives, with a different job.** It used to change what the device
 was; now it opens a window during which the table may be read and written. That
@@ -88,6 +102,7 @@ four.
 | `0x02 mm` | latch HID modifier mask `mm` into the next keystroke |
 | `0x03 nn` | do the previous keystroke `nn` more times |
 | `0x82` | mark: what follows repeats as a group, not as one keystroke |
+| `0x81 hh` | carry on with the macro whose header is `hh-1` |
 | `0x81 hh` | carry on with the macro whose header is `hh` — not implemented yet |
 
 No argument may be zero, since a zero byte ends the macro. `0x03` is
@@ -165,6 +180,7 @@ back. A macro is text, with braces for what text cannot say:
  {pause 1.5}                  wait, in seconds
  x{11}                        eleven of them, as in a regular expression
  (ab){3}                      ...of a whole group rather than one thing
+ {goto .-}                    carry on with another macro, and never come back
 ```
 
 A key palette inserts any of it at the cursor — arrows, function keys, the

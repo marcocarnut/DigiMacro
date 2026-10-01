@@ -44,13 +44,26 @@ Hold the pad four seconds so the board is in vendor mode before connecting —
 in keyboard mode it is `16c0:27db` and the filter will not offer it, which is
 itself part of what the spike is checking.
 
-On Linux you may need a udev rule to reach the device without root:
+On Linux the board needs a udev rule to be reachable without root. Both
+transports are in `60-digimacro.rules`:
 
 ```
-SUBSYSTEM=="usb", ATTR{idVendor}=="16c0", ATTR{idProduct}=="05dc", MODE="0660", TAG+="uaccess"
+sudo cp web/60-digimacro.rules /etc/udev/rules.d/
+sudo udevadm control --reload
 ```
 
-in `/etc/udev/rules.d/60-digimacro.rules`, then `sudo udevadm control --reload`.
+then unplug the board and plug it back in.
+
+**WebHID needs the second rule and fails without it.** Every `/dev/hidraw`
+node on Linux is root-only by default, so Chrome reports only `Failed to open
+the device` — which reads like a browser problem and is a file permission.
+`ls -l /dev/hidraw*` will show which node is the board, and a `+` on the mode
+means the rule took. Note `ATTRS` rather than `ATTR` in that line: the vendor
+and product ids belong to the USB device, which is the hidraw node's
+grandparent, and a rule written with `ATTR` matches nothing and says nothing.
+
+Windows needs none of this: HID devices are openable as they are, which is the
+same reason WebHID wants no MS OS 2.0 descriptor.
 
 ## The second spike
 

@@ -323,6 +323,34 @@ The password and lockout carry over, but the threat model shifts:
    the HID channel is proven on Linux and Windows both. Nothing here is urgent
    enough to break a working device for.
 
+   ### The spike passed on Linux
+
+   `spikehid/` with `DigiHidUSB`: **3350 bytes**, against the first spike's
+   3550 for a device that had no EEPROM protocol in it at all.
+
+   ```
+   INFO -> magic "DM", protocol 2, firmware 1, 512 bytes of EEPROM
+   40 44 4d 02 01 00 02 00 ...
+   ```
+
+   Proven: the keyboard still types with a report ID and three key slots; the
+   device is offered to WebHID and the vendor collection comes through; a
+   feature report reaches the firmware and comes back **while the device is
+   still a keyboard**; and `receiveFeatureReport` returns the payload *without*
+   the report ID, which is the thing the specification leaves to taste. The
+   write path tolerates it either way, and safely, because no command byte is
+   2.
+
+   **The udev rule is not a new cost.** WebUSB needs one on Linux as well
+   — Chrome needs write access to `/dev/bus/usb/...` there and to
+   `/dev/hidraw*` here, and a stock Linux grants neither. The honest
+   comparison is: the same rule on Linux, and *nothing at all* on Windows,
+   where WebUSB wanted an MS OS 2.0 descriptor, a WinUSB binding and a cached
+   `DeviceInterfaceGUID` to worry about. What this trade really costs is the
+   landing page, not the installation.
+
+   Still to answer: Windows.
+
 ## What to reuse
 
 | from | what |

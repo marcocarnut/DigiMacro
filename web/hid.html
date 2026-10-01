@@ -84,7 +84,24 @@ $('connect').onclick = async () => {
     if (!got.length) { say('nothing chosen', 'bad'); return; }
     dev = got[0];
     if (!dev.opened) await dev.open();
-  } catch (e) { say('could not open: ' + e.message, 'bad'); return; }
+  } catch (e) {
+    say('could not open: ' + e.message, 'bad');
+    /* On Linux this is a file permission wearing a browser's error message:
+       the device was listed, because Chrome reads the report descriptor out
+       of sysfs, and only the hidraw node needs rights Chrome has not got. */
+    if (navigator.userAgent.includes('Linux')) {
+      say('');
+      say('The device was offered, so Chrome can see it; what it cannot do is '
+        + 'open /dev/hidraw*, which is root-only on every Linux. One line '
+        + 'fixes it for good:', 'dim');
+      say('');
+      say('  sudo cp web/60-digimacro.rules /etc/udev/rules.d/');
+      say('  sudo udevadm control --reload');
+      say('');
+      say('then unplug the board and plug it back in.', 'dim');
+    }
+    return;
+  }
 
   say(`opened ${dev.productName}`, 'ok');
   /* The interesting part: which collections did Chrome hand over? */

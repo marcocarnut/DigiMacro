@@ -22,7 +22,7 @@
  *   plugging it in    types the macro nominated as the power-on one, if any
  *   short tap         one symbol; a press under 250 ms is a dot, longer a dash
  *   700 ms of silence the code is finished: look it up and type it
- *   4 s hold          change personality, either way
+ *   4 s hold          let the app in, for half a minute
  *
  *   LED  off          idle -- deliberately dark while a code is tapped, so it
  *                     does not spell the code out for anyone watching

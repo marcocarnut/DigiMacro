@@ -16,8 +16,6 @@
 #   isp         build for a chip with no bootloader: all 8192 bytes, and a
 #               .hex to feed to a programmer
 #
-#   spike       build spike/ instead -- the mode-switch derisking spike,
-#               which also types its own pad readings
 #   spikehid    build spikehid/ instead -- the second spike: a keyboard that
 #               stays a keyboard, with a vendor collection WebHID can reach
 #   loadtable   build tools/loadtable/ instead -- writes a sample table into
@@ -38,7 +36,6 @@ LEDECHO=0
 TOUCHDEBUG=0
 for a in "$@"; do
     case "$a" in
-        spike)     SKETCH=spike ;;
         spikehid)  SKETCH=spikehid ;;
         loadtable) SKETCH=tools/loadtable ;;
         button)    BUTTON=1 ;;
@@ -68,7 +65,7 @@ EXTRA=()
 [ -n "$FLAGS" ] && EXTRA=(--build-property "build.extra_flags=${FLAGS# }")
 [ "$ISP" = 1 ]  && EXTRA+=(--build-property "upload.maximum_size=8192")
 
-# --libraries . makes DigiModeUSB/ visible without installing it into
+# --libraries . makes DigiHidUSB/ visible without installing it into
 # ~/Arduino/libraries, so the whole project stays in this directory.
 # --output-dir pins the artefacts somewhere upload can find them without
 # having to resolve the sketch again (upload takes neither flag).

@@ -1,7 +1,7 @@
 # DigiMacro — plan
 
 A morse-activated macro keyboard on an ATtiny85 Digispark, configured from a
-WebUSB app rather than from an on-device command line.
+web app over WebHID rather than from an on-device command line.
 
 Sibling of **DigiMacroCDC**, which keeps the CDC terminal. That one is
 finished and working; this one starts from it and removes more than it adds.
@@ -28,11 +28,17 @@ every WebUSB descriptor come to **3372 bytes of 6650**, with 93 of RAM. What
 is left to add is the table walk, morse decoding, playback and the EEPROM
 requests.
 
-## Architecture: decided — mode switch
+## Architecture: a mode switch, and then not
 
-Keyboard mode is HID as now; a four-second hold re-enumerates as pure vendor
-class, the DigiISP device. The reasoning is below, kept because it is the
-constraint that shapes everything else.
+**Superseded.** The mode switch below was built and worked on Linux and
+Windows, and was then replaced by option A, a vendor HID collection on the
+keyboard itself — see decision 7 under *Open decisions*. The board never stops
+being a keyboard now, and the four-second hold opens a thirty-second window
+rather than changing personality. The reasoning is kept because it is how the
+project got here.
+
+What was first decided: keyboard mode is HID as now; a four-second hold
+re-enumerates as pure vendor class, the DigiISP device.
 
 **A HID keyboard cannot simply also be a WebUSB device.** Chrome's WebUSB
 refuses to claim interfaces of protected classes, HID among them, and on
@@ -158,18 +164,22 @@ enforce that, and the firmware must reject it, as `\p00` taught us.
 
 ## Vendor requests
 
-Numbered above DigiISP's range so a shared tool can tell the devices apart.
+First vendor control requests, now one feature report on the vendor collection,
+`[command][address low][address high][count][32 bytes of data]`. Numbered above
+DigiISP's range so a shared tool can tell the devices apart.
 
 | | |
 |---|---|
-| `INFO` | magic, protocol version, firmware version, slot count, EEPROM size |
-| `READ` | 0x60. wValue = address, wLength = count. To be refused while locked |
-| `WRITE` | 0x61. wValue = address, data in the payload. To be refused while locked |
-| `STATUS` | password set? lockout armed? tries left? unlocked this session? |
-| `UNLOCK` | password in the payload; on success clears the lockout count |
+| `INFO` | 0x40. Magic, protocol, firmware, EEPROM size, and a state byte: window open, password set, unlocked |
+| `READ` | 0x60. Address and count in, data back |
+| `WRITE` | 0x61. Address, count and data in |
+| `UNLOCK` | 0x62. The password; on success, the session is unlocked |
+| `SETPASS` | 0x63. A new password, or none with a count of zero |
 
-Only `INFO` and `STATUS` answer while locked, and `STATUS` must say nothing
-about *what* the password is.
+Refused with `0xEE` in place of the command unless the window is open, and,
+on a board with a password, unless it has been given. `INFO` always answers,
+and says nothing about *what* the password is. The planned `STATUS` became
+`INFO`'s state byte; tries left join it with the lockout.
 
 **Writes must be chunked.** 496 bytes at 3.4 ms each is nearly two seconds
 with USB unpolled, because `eeprom_update_byte` blocks. Take 8–32 bytes per
@@ -181,7 +191,7 @@ beyond V-USB's 254-byte control payload.
 
 A checksum over the table would let the firmware notice a write interrupted
 half way, which is otherwise silent. Cheap, optional, worth pricing — though
-the app reading the table back and comparing, which `eeprom.html` already does,
+the app reading the table back and comparing, which `app.html` already does,
 covers the same ground for nothing.
 
 ## Security, including one new hole
@@ -202,9 +212,8 @@ The password and lockout carry over, but the threat model shifts:
 1. ~~Product strings must differ from DigiMacroCDC's~~ — moot: DigiMacroCDC
    stays private, DigiMacro is the one that ships. To be fixed on the CDC side
    only if that changes.
-2. Which PID for vendor mode — DigiISP's `16c0:05dc` is for "vendor class with
-   libusb" and fits, but sharing it with DigiISP means the strings must
-   distinguish them.
+2. ~~Which PID for vendor mode~~ — moot: there is no vendor mode any more, and
+   the board is `16c0:27db` throughout, obdev's shared keyboard id.
 3. **Read-back is needed but is the thing being protected.** The app cannot
    edit one macro without reading the table first, so a locked board can only
    be overwritten wholesale. Resolution: no password means read freely, a
@@ -437,7 +446,7 @@ The password and lockout carry over, but the threat model shifts:
 
 ## Next, in this order
 
-The USB layer is done and lives in `DigiModeUSB`. Each step is separately
+The USB layer is done and lives in `DigiHidUSB`. Each step is separately
 testable, which is why they are in this order rather than firmware-then-app.
 
 1. ~~**Playback from a packed table.**~~ **Done: 3804 bytes of 6650, 102 RAM.**
@@ -591,22 +600,6 @@ testable, which is why they are in this order rather than firmware-then-app.
    refuses to write one, since nobody meant it. The loop check the plan called
    for shrank from "every loop needs a pause" to that.
 
-   **Which is still `\j`,** and
-   needs something the mode switch used to provide and no longer does.
-
-   A macro that jumps to itself runs for ever, deliberately, and the only way
-   out used to be the four-second hold taking the device out of keyboard mode.
-   There is no mode to leave now — but the hold still exists, and giving it a
-   second meaning during playback costs nothing: a pause is the one
-   interruptible moment, so a hold during a pause stops the macro *and* opens
-   the configuration window. One gesture, and it leaves the board in exactly
-   the state from which the app can fix what is wrong. Which is better than
-   what it replaced: the old escape left you in a mode, not in a position to
-   repair anything.
-
-   `autoexec` is the brick hazard's other half, so the app's loop check lands
-   with it, and both come before the password rather than after.
-
 5. **The password — done, 298 bytes.** Optional and absent by default, which
    is the part that mattered: plenty of boards want no security at all, and
    one that types eleven right-arrows at a television should ask nobody for
@@ -643,8 +636,8 @@ testable, which is why they are in this order rather than firmware-then-app.
 
    **The lockout next**, which is the other half — including
    counting failed password attempts, which the CDC version does not do and
-   which matters far more over USB. `autoexec` belongs here too, beside the
-   lockout that has to gate it; its byte is already reserved at 0x1F3.
+   which matters far more over USB. Its two bytes are already reserved, at
+   0x1F1 and 0x1F2.
 6. **Reboot into the bootloader**, a command Marco wants for upgrades and
    DigiISP already has as `0x41`. Twenty bytes: enable the watchdog and spin.
 
@@ -660,7 +653,11 @@ testable, which is why they are in this order rather than firmware-then-app.
    set, so Windows wants a driver for it, which is the thing this whole
    transport change was about avoiding.
 
-## Spike: passed on hardware
+## The first spike: passed on hardware, and since replaced
+
+Kept for the record. Everything here about the BOS, the MS OS 2.0 set, the
+`DeviceInterfaceGUID` and the landing page went with the mode switch; the
+manufacturer string is the one part that still applies.
 
 `spike/spike.ino` with the `DigiModeUSB` library: HID keyboard, a four-second
 hold to vendor class and back, and one vendor request. **3372 bytes (50%),

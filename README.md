@@ -4,23 +4,23 @@ A morse-activated macro keyboard on an ATtiny85 Digispark, configured from a
 web page.
 
 Touch a pad in dots and dashes; if it matches an entry in the EEPROM table, the
-macro is typed as keystrokes. Hold for four seconds and the board re-enumerates
-as a vendor-class USB device that a WebUSB page configures — no terminal, no
-driver to install, and nothing on the device itself beyond reading and writing
-its own EEPROM.
+macro is typed as keystrokes. Hold it for four seconds and a web page may read
+and write the table over WebHID — no terminal, no driver to install, and
+nothing on the device itself beyond reading and writing its own EEPROM.
 
 Sibling of [DigiMacroCDC](../DigiMacroCDC), which keeps an on-device CDC command
-line instead. That one is finished and in use; this one is early.
+line instead. That one is finished and in use.
 
-## Status: working, less the password
+## Status: working, less the lockout
 
 Tap a code, the board types the macro; touch the pad again to stop it. One
 macro can be nominated to type itself when the board is plugged in, and a
 macro can carry on with another, including itself. Hold the pad four seconds and
-`web/app.html` may read and write the table for the next half minute. What is
-left is `\j`, and the password and lockout that should gate all of this.
+`web/app.html` may read and write the table for the next half minute, behind
+an optional password. What is left is the lockout that should stand behind
+that password.
 
-**4694 bytes of the 6650** the stock bootloader leaves, and 133 of RAM.
+**4694 bytes of the 6650** the stock bootloader leaves, and 155 of RAM.
 
 ### It never stops being a keyboard
 
@@ -97,8 +97,9 @@ the window and lives in RAM, so unplugging the board locks it again.
 
 **The hold survives, with a different job.** It used to change what the device
 was; now it opens a window during which the table may be read and written. That
-is the part a web page cannot do for itself, and until there is a password it
-is the only thing between a hostile page and the macros.
+is the part a web page cannot do for itself, and on a board with no password
+it is the only thing between a hostile page and the macros.
+
 ## The table
 
 The app rewrites the whole table, so entries are packed rather than slotted:
@@ -137,7 +138,6 @@ four.
 | `0x03 nn` | do the previous keystroke `nn` more times |
 | `0x82` | mark: what follows repeats as a group, not as one keystroke |
 | `0x81 hh` | carry on with the macro whose header is `hh-1` |
-| `0x81 hh` | carry on with the macro whose header is `hh` — not implemented yet |
 
 No argument may be zero, since a zero byte ends the macro. `0x03` is
 run-length coding: "left arrow eleven times" costs three bytes rather than
@@ -202,7 +202,9 @@ EEPROM, so the table survives the second upload.
 Options: `button` for a pushbutton instead of a pad, `rc` for a pad read
 through a bleed resistor, `ledecho` to make the LED follow the input while
 tapping — which is for working on the input path only, since it shows a
-bystander the code — and `isp` for a chip with no bootloader.
+bystander the code — `touchdebug` to make the board type its own pad readings,
+the only diagnostic channel a device with no serial port has, and `isp` for a
+chip with no bootloader.
 
 ## Writing macros
 
@@ -263,25 +265,21 @@ test/run.sh
 
 compiles the real `DigiMacro.ino` for the host against stub hardware and
 exercises the table walk, every escape, the bounds that keep a malformed table
-from reaching the password, the morse decoding from the input pin, the sample
-table the loader flashes, and — across the language boundary — a table encoded
-by `web/table.js` played through the firmware. Five suites, about a second.
+from reaching the password, the morse decoding from the input pin, both ways of
+reading the pad, and the sample table the loader flashes; then the app's macro
+language on its own, the two languages against each other, and — across the
+language boundary — a table encoded by `web/table.js` played through the
+firmware. Seven suites, about a second.
 
-## Building the spike
+## Running the app
 
 ```
-./build.sh spike upload
 cd web && python3 -m http.server 8000
 ```
 
-Then `http://localhost:8000/spike.html` in Chrome or Edge — WebUSB needs a
-secure context, and `localhost` counts. Hold the pad four seconds first, so the
-board is in vendor mode. `web/README.md` has the Linux udev rule and the notes
-on reading the pad.
-
-Short touch types a line; `TOUCH_DEBUG` in `spike/spike.ino` makes the board
-type its own pad readings instead, which is the only diagnostic channel a
-device with no serial port has.
+Then `http://localhost:8000/app.html` in Chrome or Edge — WebHID needs a secure
+context, and `localhost` counts. `web/README.md` has the Linux udev rule, the
+raw protocol page and the notes on reading the pad.
 
 ## Layout
 
@@ -290,9 +288,9 @@ device with no serial port has.
 | `DigiMacro.ino` | the firmware: touch, morse, the table walk, playback |
 | `DigiHidUSB/` | the V-USB stack: a keyboard, and a vendor collection the app talks to |
 | `test/` | host build of the real sketch against stub hardware |
-| `tools/loadtable/` | writes a sample table into EEPROM, until the app can |
+| `tools/loadtable/` | writes a sample table into EEPROM, without a browser |
 | `spikehid/` | the sketch that derisked the vendor collection |
-| `web/` | `app.html` is the editor, `eeprom.html` the raw-byte tool, `table.js` and `i18n.js` what they share |
+| `web/` | `app.html` is the editor, `hid.html` the raw protocol tool, `table.js` and `i18n.js` what they share |
 | `PLAN.md` | design, decisions and what comes next |
 
 [DigiISP](../DigiISP) solved the BOS and MS OS 2.0 work that the WebUSB

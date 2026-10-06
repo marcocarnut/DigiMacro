@@ -1,6 +1,6 @@
 # Test pages
 
-WebUSB needs a secure context, and `localhost` counts as one:
+WebHID needs a secure context, and `localhost` counts as one:
 
 ```
 cd web && python3 -m http.server 8000
@@ -11,7 +11,7 @@ then, in Chrome or Edge:
 | | |
 |---|---|
 | <http://localhost:8000/app.html> | **the app**: edit the macros and write them |
-| <http://localhost:8000/hid.html> | the spike's own page: INFO, a dump, a bounds test |
+| <http://localhost:8000/hid.html> | the spike's own page: INFO, a dump, a write read back |
 
 `table.js` turns macro text into the bytes the firmware plays, and back again
 so a board's table can be edited rather than retyped. It is shared with
@@ -29,10 +29,6 @@ edit it. If a change seems to have no effect, hard-reload with
 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>. It cost me twenty minutes of
 looking for a bug that was not there.
 
-`eeprom.html` also has a bounds test: a read that runs off the end should come
-back short, and a write that would cross the end should be refused. Both are
-about what sits above the table, which is the password.
-
 The board can type its pad readings twice a second (`./build.sh touchdebug`),
 so open a text editor first and check the numbers move when you touch it. `F8` that never changes means nothing is charging the pad;
 `00` means it charges faster than one loop pass. Only once the readings respond
@@ -42,8 +38,8 @@ The board is `16c0:27db` and stays a keyboard throughout; connect whenever you
 like, and hold the pad for four seconds when the app asks, which opens the
 window during which the table may be read and written.
 
-On Linux the board needs a udev rule to be reachable without root. Both
-transports are in `60-digimacro.rules`:
+On Linux the board needs a udev rule to be reachable without root. It is in
+`60-digimacro.rules`:
 
 ```
 sudo cp web/60-digimacro.rules /etc/udev/rules.d/
@@ -52,7 +48,7 @@ sudo udevadm control --reload
 
 then unplug the board and plug it back in.
 
-**WebHID needs the second rule and fails without it.** Every `/dev/hidraw`
+**WebHID fails without it.** Every `/dev/hidraw`
 node on Linux is root-only by default, so Chrome reports only `Failed to open
 the device` — which reads like a browser problem and is a file permission.
 `ls -l /dev/hidraw*` will show which node is the board, and a `+` on the mode
@@ -63,9 +59,9 @@ grandparent, and a rule written with `ATTR` matches nothing and says nothing.
 Windows needs none of this: HID devices are openable as they are, which is the
 same reason WebHID wants no MS OS 2.0 descriptor.
 
-## The second spike
+## The spike
 
-`spikehid/` asks whether the mode switch is needed at all. Flash it with
+`spikehid/` is what showed the mode switch was not needed. Flash it with
 `./build.sh spikehid upload` and open <http://localhost:8000/hid.html>.
 
 There is no pad to hold: the device stays a keyboard the whole time, and the

@@ -377,7 +377,7 @@ void hidBegin(void)
     vndAnswer();                /* so a first read answers something */
 
     usbInit();
-    /* Make the host forget the bootloader, as DigiModeUSB does. */
+    /* Make the host forget the bootloader. */
     USB_INTR_ENABLE &= ~(1 << USB_INTR_ENABLE_BIT);
     usbDeviceDisconnect();
     for (uint8_t i = 30; i; i--) _delay_ms(10);

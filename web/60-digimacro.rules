@@ -7,9 +7,6 @@
 # whoever is logged in at the seat, which is the modern way of saying what a
 # plugdev group used to say.
 
-# WebUSB, the vendor-class personality: a device node under /dev/bus/usb.
-SUBSYSTEM=="usb", ATTR{idVendor}=="16c0", ATTR{idProduct}=="05dc", MODE="0660", TAG+="uaccess"
-
 # WebHID, the keyboard with a vendor collection: a /dev/hidraw node, which is
 # root-only by default on every Linux. Note ATTRS rather than ATTR -- the ids
 # live on the USB device, which is the hidraw node's grandparent.

@@ -14,6 +14,8 @@ uint8_t hidAllowed(void);
 #define DM_PASS_ADDR   0x1F4
 #define DM_PASS_LEN    12
 #define DM_SERIAL_ADDR 0x1E0
+#define DM_ST_SOFTLOCK 0x08
+#define DM_ST_HARDLOCK 0x10
 void    hidKey(uint8_t modifier, uint8_t key);
 void    hidTypeChar(char c, uint8_t mod);
 void    hidType_P(const char *s);

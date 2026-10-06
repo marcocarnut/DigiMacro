@@ -29,6 +29,8 @@
  *        on           a macro is typing
  *        3 quick      the code matched nothing
  *        blinking     the app may configure it, for half a minute
+ *        blip every 2 s   soft lock: too many wrong codes, taps ignored
+ *        fast flicker     hard lock: taps ignored until the password
  *
  * The pad wants no external parts. When it misbehaves, build with
  * TOUCH_DEBUG=1 (./build.sh touchdebug) and the board types its own readings
@@ -224,8 +226,13 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *           (DM_SERIAL_ADDR -- see DigiHidUSB, which needs it to exist
  *           before anything here runs)
  *   0x1E4   free, for whatever this turns out to want
- *   0x1F1   lockout allowance
- *   0x1F2   tries left of it
+ *   0x1EC   lockout: wrong codes before a soft lock, 0 or 0xFF for none
+ *   0x1ED   ...soft locks in a row before a hard one, 0 or 0xFF for never
+ *   0x1EE   ...how long a soft lock lasts, in tens of seconds
+ *   0x1EF   ...wrong codes so far              (these three counters are
+ *   0x1F0   ...soft locks in a row so far       stored inverted, so that
+ *   0x1F1   ...hard locks lifted, ever          an erased byte is a zero)
+ *   0x1F2   free
  *   0x1F3   the code to type at power-on, if any
  *   0x1F4   password, twelve bytes zero-padded (DM_PASS_ADDR)
  */
@@ -298,10 +305,140 @@ uint8_t hidPassSet(void)
     return eeprom_read_byte(PASS_ADDR) != PASS_NONE;
 }
 
+/* ---- the lockout ------------------------------------------------------
+ *
+ * Two stages, so that the owner can fumble a code without needing the app.
+ * Too many wrong codes and the board ignores every tap, right or wrong, for a
+ * while: a soft lock. Too many soft locks in a row and it ignores them until
+ * the password is given: a hard lock. A code that matches clears both
+ * counts, so somebody guessing gets at most (soft x hard) codes before the
+ * board stops listening -- and three, at 1 and 3, is a good deal less than
+ * the 62 there are.
+ *
+ * It needs a password, and is off without one whatever the settings say,
+ * because the password is the only thing that lifts a hard lock. An erased
+ * chip is therefore an open one, as before.
+ *
+ * Everything lives in EEPROM so that unplugging the board gets nobody
+ * anywhere. Whether it is locked is never stored; it is worked out from the
+ * counts each time, so it cannot disagree with them. The board has no clock
+ * to say how long it spent unplugged, so a soft lock found at power-up starts
+ * its whole wait again.
+ *
+ * A wrong password counts as a wrong code. The password itself is never
+ * refused for being locked, though: it is what lifts a hard lock, and a limit
+ * on it is the one lock that can shut the owner out too. Its defence is its
+ * own length.
+ */
+#define LOCK_SOFT       ((uint8_t *)0x1EC)  /* wrong codes before a soft lock */
+#define LOCK_HARD       ((uint8_t *)0x1ED)  /* soft locks in a row, then hard */
+#define LOCK_WAIT       ((uint8_t *)0x1EE)  /* a soft lock, in tens of seconds */
+#define LOCK_MISSES     ((uint8_t *)0x1EF)  /* the counters, stored inverted */
+#define LOCK_SOFTS      ((uint8_t *)0x1F0)
+#define LOCK_CLEARED    ((uint8_t *)0x1F1)
+
+#define LOCK_WAIT_MAX   240                 /* forty minutes */
+#define LOCK_WAIT_DEF   6                   /* a minute, for anything else */
+#define LOCK_TICK_MS    10000
+
+#define THR_SET(t)      ((uint8_t)((t) - 1) < 0xFE)     /* 1 to 254 */
+
+static uint8_t count_of(uint8_t *a)           { return ~eeprom_read_byte(a); }
+static void    count_put(uint8_t *a, uint8_t v) { eeprom_update_byte(a, ~v); }
+
+static void count_up(uint8_t *a)
+{
+    uint8_t n = count_of(a);
+    if (n != 0xFF) count_put(a, n + 1);
+}
+
+/* The soft threshold, or 0 if there is no lockout. */
+static uint8_t lock_soft(void)
+{
+    uint8_t t = eeprom_read_byte(LOCK_SOFT);
+    return hidPassSet() && THR_SET(t) ? t : 0;
+}
+
+uint8_t hidLockState(void)
+{
+    uint8_t s = lock_soft(), h;
+
+    if (!s) return 0;
+    h = eeprom_read_byte(LOCK_HARD);
+    if (THR_SET(h) && count_of(LOCK_SOFTS) >= h) return DM_ST_HARDLOCK;
+    if (count_of(LOCK_MISSES) >= s)              return DM_ST_SOFTLOCK;
+    return 0;
+}
+
+/* A wrong code, or a wrong password.
+ *
+ * Callers count it BEFORE anything shows the result. Otherwise a guesser
+ * watches for the three blinks and pulls the plug before the count is
+ * written, and guesses for ever. Nothing a person can see differs between a
+ * hit and a miss until this has returned.
+ *
+ * The soft lock is counted before the miss that causes it, for the same
+ * reason: unplugged between the two, the board has counted the lock and not
+ * imposed it, which costs the guesser a step towards the hard lock and gains
+ * them nothing, since they never saw the result. The other way round would
+ * hand them a soft lock that did not count. */
+static void lock_miss(void)
+{
+    uint8_t s = lock_soft(), m;
+
+    if (!s || hidLockState()) return;
+    m = count_of(LOCK_MISSES) + 1;
+    if (m >= s) count_up(LOCK_SOFTS);
+    count_put(LOCK_MISSES, m);
+}
+
+static uint8_t  lock_left;      /* tens of seconds of soft lock still to wait */
+static uint16_t lock_tick;      /* when the last ten began */
+
+/* The right code, or the right password. eeprom_update_byte() writes only
+   what has changed, so the common case -- nothing to clear -- costs no wear. */
+static void lock_clear(void)
+{
+    count_put(LOCK_MISSES, 0);
+    count_put(LOCK_SOFTS, 0);
+    lock_left = 0;
+}
+
+/* Runs the soft lock's clock. RAM only, and that is deliberate: a board
+   plugged back in finds itself soft-locked with nothing running, and starts
+   the whole wait again. */
+static void lock_poll(void)
+{
+    if (hidLockState() != DM_ST_SOFTLOCK) {
+        lock_left = 0;
+        return;
+    }
+    if (!lock_left) {
+        uint8_t w = eeprom_read_byte(LOCK_WAIT);
+        lock_left = (uint8_t)(w - 1) < LOCK_WAIT_MAX ? w : LOCK_WAIT_DEF;
+        lock_tick = ticks();
+    }
+    /* A while and not an if, so that time spent away from loop() -- the
+       power-on macro, say, which a soft lock does not stop -- is caught up
+       rather than added on. */
+    while ((uint16_t)(ticks() - lock_tick) >= LOCK_TICK_MS) {
+        lock_tick += LOCK_TICK_MS;
+        if (!--lock_left) {
+            count_put(LOCK_MISSES, 0);                  /* served */
+            break;
+        }
+    }
+}
+
 uint8_t hidUnlocked(void)
 {
     return !hidPassSet() || unlocked;
 }
+
+#define PASS_PAUSE_MS   1000
+
+static uint16_t pass_failed;    /* when the last wrong answer came... */
+static uint8_t  pass_pausing;   /* ...and whether that still holds */
 
 /* Compared in full whatever happens, so that how long it takes says nothing
    about how much of it was right. */
@@ -310,18 +447,34 @@ uint8_t hidUnlock(const uint8_t *p, uint8_t n)
     uint8_t diff = 0;
 
     if (!hidPassSet()) return 1;
+
+    /* A wrong answer costs a second: for that long, another is turned away
+       without being looked at or counted. A rate limit, not a lockout -- it
+       holds up nobody but whoever is asking -- and over a channel that could
+       otherwise be asked thousands of times a second it is worth having.
+
+       It used to be a wait_poll() right here, and that was a crash. This runs
+       inside usbFunctionWrite(), and V-USB marks the packet consumed only
+       after that returns -- so polling USB from in here processed the same
+       packet again, which checked the same wrong password, which waited
+       again, until the stack ran out. Never poll USB from a USB callback. */
+    if (pass_pausing && (uint16_t)(ticks() - pass_failed) < PASS_PAUSE_MS)
+        return 0;
+    pass_pausing = 0;
+
     if (n > DM_PASS_LEN) return 0;
 
     for (uint8_t i = 0; i < DM_PASS_LEN; i++)
         diff |= eeprom_read_byte(PASS_ADDR + i) ^ (i < n ? p[i] : 0);
 
     if (diff) {
-        /* A wrong answer costs a second. Over a channel that could otherwise
-           be asked thousands of times a second, that is most of what a short
-           password has going for it. */
-        wait_poll(1000);
+        lock_miss();            /* and it counts as a wrong code */
+        pass_failed = ticks();
+        pass_pausing = 1;
         return 0;
     }
+    if (hidLockState() == DM_ST_HARDLOCK) count_up(LOCK_CLEARED);
+    lock_clear();
     unlocked = 1;
     return 1;
 }
@@ -332,6 +485,9 @@ void hidSetPass(const uint8_t *p, uint8_t n)
     for (uint8_t i = 0; i < DM_PASS_LEN; i++)
         eeprom_update_byte(PASS_ADDR + i,
                            n == 0 ? PASS_NONE : (i < n ? p[i] : 0));
+    lock_clear();               /* a new password starts with a clean slate,
+                                   rather than with counts left over from
+                                   whenever the lockout last ran */
     unlocked = 1;
 }
 
@@ -791,15 +947,27 @@ void macro_play(uint8_t *a)
     LED_SET(0);
 }
 
-/* Look the finished code up, and play it or say we could not. */
+/* Look the finished code up, and play it or say we could not. Locked, a code
+   means nothing at all, right or wrong -- telling the two apart would be the
+   very answer the lock is withholding. */
 void code_finish(void)
 {
-    uint8_t *a = ((FLAGS & FLAG_CODE_OVER) || !code_len)
-                 ? 0 : find_header(HDR_MAKE(code_len, code_bits));
+    uint8_t *a;
 
+    if (hidLockState()) {
+        code_reset();
+        return;
+    }
+    a = ((FLAGS & FLAG_CODE_OVER) || !code_len)
+        ? 0 : find_header(HDR_MAKE(code_len, code_bits));
     code_reset();
-    if (a) macro_play(a);
-    else   blink(3, 70);
+    if (a) {
+        lock_clear();
+        macro_play(a);
+    } else {
+        lock_miss();            /* before the blinks: see lock_miss() */
+        blink(3, 70);
+    }
 }
 
 #if HAVE_AUTOEXEC
@@ -812,6 +980,7 @@ void autoexec_run(void)
     uint8_t *a;
 
     if (HDR_END(h)) return;             /* 0xFF, or never set */
+    if (hidLockState() == DM_ST_HARDLOCK) return;   /* or a thief replugs it */
     a = find_header(h);
     if (a) macro_play(a);
 }
@@ -821,8 +990,16 @@ void autoexec_run(void)
 
 void update_led(void)
 {
+    uint8_t lock = hidLockState();
+
+    /* The window comes first: holding the pad on a locked board is how the
+       owner gets the app in to lift the lock, and they want to see it took. */
     if (hidAllowed())
-        LED_SET((ticks() & 0x3FF) < 512);       /* blinking: configurable */
+        LED_SET((ticks() & 0x3FF) < 512);       /* a steady blink: configurable */
+    else if (lock == DM_ST_HARDLOCK)
+        LED_SET(ticks() & 0x40);                /* fast, eight times a second */
+    else if (lock == DM_ST_SOFTLOCK)
+        LED_SET((ticks() & 0x7FF) < 60);        /* a blip every two seconds */
     else
 #if LED_ECHO
         LED_SET(in_down);
@@ -863,6 +1040,7 @@ void loop(void)
 #endif
 #endif
     handle_input();
+    lock_poll();
     update_led();
 
     if (!hidAllowed()) unlocked = 0;    /* the session ends with the window */

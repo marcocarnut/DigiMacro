@@ -194,6 +194,7 @@ uint8_t __attribute__((weak)) hidUnlock(const uint8_t *p, uint8_t n)
                                                 { (void)p; (void)n; return 1; }
 void    __attribute__((weak)) hidSetPass(const uint8_t *p, uint8_t n)
                                                 { (void)p; (void)n; }
+uint8_t __attribute__((weak)) hidLockState(void) { return 0; }
 
 /* ===================================================================== */
 /* Requests                                                              */
@@ -232,7 +233,8 @@ static void vndAnswer(void)
         vnd[6] = (uint8_t)((E2END + 1) >> 8);
         vnd[7] = (hidAllowed()  ? DM_ST_OPEN     : 0)
                | (hidPassSet()  ? DM_ST_PASSWORD : 0)
-               | (hidUnlocked() ? DM_ST_UNLOCKED : 0);
+               | (hidUnlocked() ? DM_ST_UNLOCKED : 0)
+               | hidLockState();
         break;
 
     case DM_FUNC_UNLOCK:

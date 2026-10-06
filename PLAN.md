@@ -200,8 +200,10 @@ The password and lockout carry over, but the threat model shifts:
 
 - **Password attempts must count against the lockout.** Over a CDC terminal a
   brute-force was slow and clumsy; over vendor requests it is thousands per
-  second. Without this the password is decoration. DigiMacroCDC does not do
-  this, and should probably learn to.
+  second. DigiMacroCDC does not do this, and should probably learn to.
+  *Settled in step 5: a wrong password counts as a wrong code, but the
+  password itself is never refused, so it cannot be used to lock the owner
+  out. Its length is its defence.*
 - **Reads must be gated, not just writes.** The macro table *is* the secret.
 - **Recovery changes.** There is no terminal fallback: a locked-out board
   needs the app. Worth stating plainly in the README.
@@ -634,11 +636,50 @@ testable, which is why they are in this order rather than firmware-then-app.
    that a wiped EEPROM means a new serial and therefore a new grant, which
    bears on the self-wiping bootloader above.
 
-   **The lockout next**, which is the other half — including
-   counting failed password attempts, which the CDC version does not do and
-   which matters far more over USB. Its two bytes are already reserved, at
-   0x1F1 and 0x1F2.
-6. **Reboot into the bootloader**, a command Marco wants for upgrades and
+   **The lockout — done, 374 bytes.** Marco's design, in two stages so a
+   legitimate user can fumble a code without needing the password:
+
+   - too many wrong codes and the board ignores every tap, right or wrong,
+     for a while — a **soft lock**, one byte of tens of seconds, a minute by
+     default and forty at most;
+   - too many soft locks in a row and it ignores taps until the password is
+     given — a **hard lock**, which also stops the power-on macro;
+   - a code that works clears both counts, so a guesser gets at most
+     soft × hard tries, and the app shows that figure and the odds;
+   - a record of hard locks lifted, for information only.
+
+   It needs a password and is off without one, whatever the settings say,
+   since the password is the only thing that lifts a hard lock. Everything is
+   in EEPROM at 0x1EC–0x1F1, the counters stored inverted so an erased chip
+   counts zero. Lock state is never stored: it is worked out from the counts
+   each time it is wanted, so it cannot disagree with them.
+
+   Decisions worth keeping:
+
+   - **A wrong password feeds the lockout, but the password is never refused
+     for it.** Marco's line: a lockout on the password itself is a denial of
+     service waiting to happen, since it is what lifts a hard lock. Its
+     defence is its length. The one-second wait after a wrong answer stays,
+     as a rate limit that holds up nobody but whoever is asking.
+   - **A miss is counted before anything shows it**, so pulling the plug at
+     the first blink saves nothing; and the soft lock is counted before the
+     miss that causes it, so a plug pulled between the two writes costs the
+     guesser rather than helping them. A hit writes only when there is a count
+     to clear, so ordinary use costs no wear.
+   - **No clock survives a replug**, so a soft lock found at power-up starts
+     its whole wait again.
+   - **The window's blink wins over both lock patterns**, because holding the
+     pad on a locked board is how the owner lets the app in to lift it.
+
+   What it does not stop is a laptop: micronucleus listens on every plug-in.
+   The lockout is against tapping, which the README now says plainly.
+6. **A security section in the README**, for whoever wants the table really
+   protected. Marco's summary: real security means programming the **lock
+   bits** *and* leaving **EESAVE unprogrammed**, so that any attempt to erase
+   the chip -- the only way past the lock bits -- erases the EEPROM with it.
+   Both need a programmer rather than micronucleus; recommend DigiISP, or any
+   other. Until then the lockout is against tapping, not against a laptop.
+7. **Reboot into the bootloader**, a command Marco wants for upgrades and
    DigiISP already has as `0x41`. Twenty bytes: enable the watchdog and spin.
 
    **It must sit behind the same window as READ and WRITE**, and for a sharper

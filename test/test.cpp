@@ -234,6 +234,9 @@ int main(void)
     EE[0] = HDR_MAKE(1, 0);
     for (uint16_t a = 1; a < (uint16_t)(size_t)TABLE_TOP; a++) EE[a] = K('z');
     for (uint16_t a = (uint16_t)(size_t)TABLE_TOP; a < 512; a++) EE[a] = K('q');
+    EE[(size_t)LOCK_SOFT] = 0xFF;   /* or the lockout, reading all those q's
+                                       as a password and a pile of wrong
+                                       codes, would rightly refuse to play */
     play(".");
     CHECK(strstr(typed, "<00/14>") == NULL,          /* K('q'), the byte above */
           "nothing above the table may be typed: ...\"%s\"", typed + typedn - 21);
@@ -502,11 +505,28 @@ int main(void)
     unlocked = 0;
     CHECK(!hidUnlocked(), "which locks it");
     CHECK(!hidUnlock((const uint8_t *)"abd", 3), "a wrong one is refused");
+    fake_ms += PASS_PAUSE_MS;
     CHECK(!hidUnlocked(), "and leaves it locked");
     CHECK(!hidUnlock((const uint8_t *)"ab", 2), "a prefix is not enough");
+    fake_ms += PASS_PAUSE_MS;
     CHECK(!hidUnlock((const uint8_t *)"abcd", 4), "nor is something longer");
+    fake_ms += PASS_PAUSE_MS;
     CHECK(hidUnlock((const uint8_t *)"abc", 3), "the right one gets in");
     CHECK(hidUnlocked(), "and stays in, for the session");
+
+    printf("19b2. a wrong answer costs a second, without stopping the board\n");
+    /* It used to wait right there, inside the USB callback, which polled USB
+       from inside USB and crashed the board. Now the next answer is turned
+       away unseen until the second is up. */
+    unlocked = 0;
+    CHECK(!hidUnlock((const uint8_t *)"abd", 3), "a wrong one");
+    CHECK(!hidUnlock((const uint8_t *)"abc", 3),
+          "then even the right one is turned away for a second");
+    CHECK(!hidUnlocked(), "and lets nobody in");
+    fake_ms += PASS_PAUSE_MS / 2;
+    CHECK(!hidUnlock((const uint8_t *)"abc", 3), "half a second is not enough");
+    fake_ms += PASS_PAUSE_MS;
+    CHECK(hidUnlock((const uint8_t *)"abc", 3), "after a second it is heard");
 
     printf("19c. ...and how it goes away again\n");
     hidSetPass(0, 0);
@@ -527,6 +547,150 @@ int main(void)
     hidSetPass(0, 0);
     unlocked = 0;
 
+    /* ---- the lockout ---- */
+
+    /* A wrong code, a right one, and the soft lock's clock run through. */
+    auto miss  = [&]() { return play("-----"); };   /* never in these tables */
+    auto serve = [&]() {
+        for (int i = 0; i < 300; i++) { fake_ms += 1000; loop(); }
+    };
+    auto lockout = [&](uint8_t soft, uint8_t hard, uint8_t wait) {
+        EE[(size_t)LOCK_SOFT] = soft;
+        EE[(size_t)LOCK_HARD] = hard;
+        EE[(size_t)LOCK_WAIT] = wait;
+    };
+
+    printf("21. no lockout on an erased chip, nor without a password\n");
+    /* The password is the only thing that lifts a hard lock, so without one
+       the lockout must not run whatever the settings say. */
+    table_reset();
+    add(".", { K('a') });
+    unlocked = 0;
+    for (int i = 0; i < 10; i++) miss();
+    CHECK(!hidLockState(), "an erased chip must never lock");
+    CHECK(EE[(size_t)LOCK_MISSES] == 0xFF, "nor even count");
+    lockout(1, 1, 1);
+    for (int i = 0; i < 10; i++) miss();
+    CHECK(!hidLockState(), "no password, no lockout, whatever the settings say");
+
+    printf("21b. too many wrong codes and every tap is ignored, right or wrong\n");
+    hidSetPass((const uint8_t *)"secret", 6);
+    unlocked = 0;
+    lockout(2, 3, 1);                           /* ten seconds */
+    miss();
+    CHECK(!hidLockState(), "one wrong code of two is allowed");
+    CHECK(count_of(LOCK_MISSES) == 1, "and counted, %d", count_of(LOCK_MISSES));
+    miss();
+    CHECK(hidLockState() == DM_ST_SOFTLOCK, "the second locks it");
+    CHECK(count_of(LOCK_SOFTS) == 1, "and counts as a soft lock");
+    CHECK(play(".")[0] == 0, "a right code must type nothing now: \"%s\"", typed);
+
+    printf("21c. ...until the wait is served\n");
+    loop();                                     /* the clock starts */
+    fake_ms += 9000; loop();
+    CHECK(hidLockState() == DM_ST_SOFTLOCK, "not before ten seconds");
+    fake_ms += 1100; loop();
+    CHECK(!hidLockState(), "and over after them");
+    CHECK(!strcmp(play("."), "<00/04>"), "taps work again: \"%s\"", typed);
+    CHECK(count_of(LOCK_SOFTS) == 0, "and a right code clears the run of locks");
+
+    printf("21d. unplugging does not shorten the wait\n");
+    /* No clock runs while it is unplugged, so a soft lock found at power-up
+       has to start its whole wait again. */
+    miss(); miss();
+    loop();
+    fake_ms += 8000; loop();
+    lock_left = 0;                              /* RAM gone: a replug */
+    loop();
+    fake_ms += 8000; loop();
+    CHECK(hidLockState() == DM_ST_SOFTLOCK, "the wait must start again");
+    fake_ms += 2100; loop();
+    CHECK(!hidLockState(), "and end ten seconds after the replug");
+
+    printf("21e. soft locks in a row become a hard one\n");
+    lock_clear();
+    for (int n = 0; n < 2; n++) { miss(); miss(); serve(); }
+    CHECK(!hidLockState(), "two soft locks of three is still soft");
+    miss(); miss();
+    CHECK(hidLockState() == DM_ST_HARDLOCK, "the third is hard");
+    serve();
+    CHECK(hidLockState() == DM_ST_HARDLOCK, "and no amount of waiting lifts it");
+    CHECK(play(".")[0] == 0, "taps still mean nothing: \"%s\"", typed);
+
+    printf("21f. a hard lock stops the power-on macro too\n");
+    /* Or a thief would only have to plug it in again. */
+    EE[(size_t)AUTO_ADDR] = HDR_MAKE(1, 0);
+    CHECK(play_at_power_on()[0] == 0, "nothing may type itself: \"%s\"", typed);
+
+    printf("21g. the password lifts it, and is never refused for the lock\n");
+    CHECK(!hidUnlock((const uint8_t *)"wrong", 5), "a wrong one is still wrong");
+    fake_ms += PASS_PAUSE_MS;
+    CHECK(hidLockState() == DM_ST_HARDLOCK, "and lifts nothing");
+    CHECK(hidUnlock((const uint8_t *)"secret", 6), "the right one gets in");
+    CHECK(!hidLockState(), "and lifts the lock");
+    CHECK(count_of(LOCK_CLEARED) == 1, "which is counted, %d",
+          count_of(LOCK_CLEARED));
+    CHECK(!strcmp(play_at_power_on(), "<00/04>"), "the power-on macro is back");
+    EE[(size_t)AUTO_ADDR] = 0xFF;
+
+    printf("21h. a wrong password counts as a wrong code\n");
+    unlocked = 0;
+    lock_clear();
+    hidUnlock((const uint8_t *)"guess", 5);
+    CHECK(count_of(LOCK_MISSES) == 1, "one wrong answer, one miss");
+    hidUnlock((const uint8_t *)"guess", 5);
+    CHECK(count_of(LOCK_MISSES) == 1,
+          "one turned away within the second is not even counted");
+    fake_ms += PASS_PAUSE_MS;
+    hidUnlock((const uint8_t *)"guess", 5);
+    CHECK(hidLockState() == DM_ST_SOFTLOCK, "and two of them lock the taps");
+    fake_ms += PASS_PAUSE_MS;
+    CHECK(hidUnlock((const uint8_t *)"secret", 6),
+          "but the password itself is never shut out");
+    CHECK(!hidLockState(), "and giving it ends the soft lock");
+    CHECK(count_of(LOCK_CLEARED) == 1,
+          "only a hard lock lifted is counted as one");
+
+    printf("21i. the wait is tens of seconds, and nonsense means a minute\n");
+    for (uint8_t w : { (uint8_t)0, (uint8_t)241, (uint8_t)0xFF }) {
+        lock_clear();
+        lockout(1, 0xFF, w);
+        miss(); loop();
+        fake_ms += 59000; loop();
+        CHECK(hidLockState() == DM_ST_SOFTLOCK, "%d: still waiting at 59 s", w);
+        fake_ms += 1100; loop();
+        CHECK(!hidLockState(), "%d: done after a minute", w);
+    }
+    lock_clear();
+    lockout(1, 0xFF, 240);
+    miss(); loop();
+    /* Stepped a second at a time, as the board would see it: its clock is
+       sixteen bits of milliseconds, so one forty-minute jump would wrap.
+       The stub's millis() also ticks on every call, which over this many
+       passes adds a few seconds -- hence the margin either side. */
+    for (int i = 0; i < 2370; i++) { fake_ms += 1000; loop(); }
+    CHECK(hidLockState() == DM_ST_SOFTLOCK, "240 is forty minutes");
+    for (int i = 0; i < 30; i++) { fake_ms += 1000; loop(); }
+    CHECK(!hidLockState(), "and not much more");
+
+    printf("21j. with no hard threshold, soft locks never become hard\n");
+    lockout(1, 0xFF, 1);
+    lock_clear();
+    for (int n = 0; n < 5; n++) { miss(); serve(); }
+    CHECK(!hidLockState(), "0xFF means never");
+    CHECK(count_of(LOCK_SOFTS) == 5, "though they are still counted");
+
+    printf("21k. a new password starts the counts again\n");
+    miss();
+    hidSetPass((const uint8_t *)"other", 5);
+    CHECK(count_of(LOCK_MISSES) == 0 && count_of(LOCK_SOFTS) == 0,
+          "nothing left over from before");
+    CHECK(count_of(LOCK_CLEARED) == 1, "except the record of hard locks lifted");
+    hidSetPass(0, 0);
+    lockout(0xFF, 0xFF, 0xFF);
+    memset(EE + (size_t)LOCK_MISSES, 0xFF, 3);
+    unlocked = 0;
+
     printf("20. the reserved bytes are where the map says\n");
     /* The table stops 32 bytes below the end; the app is told the same
        number, so if this changes both must. */
@@ -540,6 +704,9 @@ int main(void)
     CHECK(DM_PASS_ADDR + DM_PASS_LEN == 512, "which ends where the EEPROM does");
     CHECK(DM_SERIAL_ADDR >= (size_t)TABLE_TOP,
           "and the serial number, which the table must never reach");
+    CHECK((size_t)LOCK_SOFT >= DM_SERIAL_ADDR + 4 &&
+          (size_t)LOCK_CLEARED < (size_t)AUTO_ADDR,
+          "the lockout sits between the serial and the power-on byte");
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "all checks passed");
     return fails != 0;

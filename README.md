@@ -11,16 +11,16 @@ nothing on the device itself beyond reading and writing its own EEPROM.
 Sibling of [DigiMacroCDC](../DigiMacroCDC), which keeps an on-device CDC command
 line instead. That one is finished and in use.
 
-## Status: working, less the lockout
+## Status: working
 
 Tap a code, the board types the macro; touch the pad again to stop it. One
 macro can be nominated to type itself when the board is plugged in, and a
 macro can carry on with another, including itself. Hold the pad four seconds and
 `web/app.html` may read and write the table for the next half minute, behind
-an optional password. What is left is the lockout that should stand behind
-that password.
+an optional password, and wrong codes can lock the board out. Next is
+upgrading the firmware from the same page.
 
-**4694 bytes of the 6650** the stock bootloader leaves, and 155 of RAM.
+**5068 bytes of the 6650** the stock bootloader leaves, and 158 of RAM.
 
 ### It never stops being a keyboard
 
@@ -87,18 +87,77 @@ needed to read or write, and neither is needed if no password is set.
 
 It does not gate *playing* a macro. A device that wants a password before it
 will type is a device nobody would carry, and the answer to a stolen board
-typing for strangers is the lockout, which is still to come.
+typing for strangers is the lockout, below.
 
-A wrong answer costs a second, which over a channel that could otherwise be
-asked thousands of times a second is most of what a short password has going
-for it. The comparison runs to the end whatever happens, so its timing says
-nothing about how much of the answer was right. The unlock lasts as long as
+A wrong answer costs a second, and with the lockout on it counts as a wrong
+code. That is all: the password is never refused for being locked, because it
+is what lifts a hard lock, and a limit on it is the one lock that can shut the
+owner out too. Its defence against guessing is its own length — twelve
+characters is plenty even at thousands of guesses a second. The comparison
+runs to the end whatever happens, so its timing says nothing about how much of
+the answer was right. The unlock lasts as long as
 the window and lives in RAM, so unplugging the board locks it again.
 
 **The hold survives, with a different job.** It used to change what the device
 was; now it opens a window during which the table may be read and written. That
 is the part a web page cannot do for itself, and on a board with no password
 it is the only thing between a hostile page and the macros.
+
+### The lockout
+
+Also optional, and it needs the password, since giving the password is the
+only way to lift a hard lock. Two stages, so that the owner can fumble a code
+without needing the app:
+
+- **Soft lock.** After a set number of wrong codes, the board ignores every
+  tap, right or wrong, for a set time: a minute by default, up to forty.
+- **Hard lock.** After a set number of soft locks in a row, it ignores taps
+  until the password is given in the app. The power-on macro stops too, or a
+  thief would only have to plug the board in again.
+
+A code that works clears both counts. So someone guessing gets at most *wrong
+codes × soft locks* tries before the board stops listening, which at 1 and 3
+is three, out of 62 codes. The app works out those odds for the settings you
+choose.
+
+Everything is kept in EEPROM, so unplugging the board gets nobody anywhere.
+The board has no clock to tell it how long it was unplugged, so a soft lock
+found at power-up starts its whole wait again. A wrong code is counted
+*before* the three blinks that report it, so pulling the plug as soon as the
+blinks start saves nothing. A code that matches writes nothing unless there
+is a count to clear, so ordinary use causes no EEPROM wear. The hold still
+opens the window while the board is locked, because that is how the app gets
+in to lift the lock.
+
+What it does not stop is someone with a laptop. Micronucleus listens on every
+plug-in and can flash a sketch that reads the EEPROM out, lockout or not; the
+lockout is against someone *tapping*. Closing the laptop route needs the lock
+bits and no bootloader, or the self-wiping bootloader `PLAN.md` describes.
+
+| EEPROM | |
+|---|---|
+| `0x1EC` | wrong codes before a soft lock; 0 or `0xFF` for no lockout |
+| `0x1ED` | soft locks in a row before a hard lock; 0 or `0xFF` for never |
+| `0x1EE` | a soft lock's length in tens of seconds, 1–240; anything else is 6 |
+| `0x1EF` | wrong codes so far |
+| `0x1F0` | soft locks in a row so far |
+| `0x1F1` | hard locks lifted with the password, ever |
+
+The three counters are stored inverted, so an erased byte reads as zero.
+
+## What the LED says
+
+| LED | means |
+|---|---|
+| off | idle, and also while you tap a code, so it does not spell the code out for anyone watching |
+| on, steady | a macro is typing; touch the pad to stop it |
+| three quick blinks | the code matched nothing |
+| slow blink, once a second | the window is open: the app may read and write the table for half a minute |
+| a short blip every two seconds | soft lock: too many wrong codes, so every tap is ignored until the wait is over |
+| fast flicker, eight times a second | hard lock: every tap is ignored until the password is given in the app |
+
+The window's blink wins over both locks, so you can see the hold took while
+the board is locked.
 
 ## The table
 
@@ -165,7 +224,7 @@ One feature report on the vendor collection, both ways:
 
 | | |
 |---|---|
-| `0x40` INFO | magic `DM`, protocol, firmware, EEPROM size, window open? |
+| `0x40` INFO | magic `DM`, protocol, firmware, EEPROM size, and a state byte: window open, password set, unlocked, soft lock, hard lock |
 | `0x60` READ | address and count in, data back |
 | `0x61` WRITE | address, count and data in |
 | `0x62` UNLOCK | the password, if the board has one |

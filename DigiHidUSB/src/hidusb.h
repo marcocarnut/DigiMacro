@@ -45,6 +45,8 @@
 #define DM_ST_OPEN          0x01    /* somebody held the pad recently */
 #define DM_ST_PASSWORD      0x02    /* a password is stored */
 #define DM_ST_UNLOCKED      0x04    /* ...and has been given this session */
+#define DM_ST_SOFTLOCK      0x08    /* too many wrong codes: taps ignored */
+#define DM_ST_HARDLOCK      0x10    /* ...until the password is given */
 
 /* Twelve bytes at the top of the EEPROM, zero-padded, 0xFF for none. The
  * firmware's map owns this address; it is here because guarding this channel
@@ -75,7 +77,7 @@
 #define DM_MAGIC0           'D'
 #define DM_MAGIC1           'M'
 #define DM_PROTOCOL_VERSION 2       /* 1 was the WebUSB vendor-class one */
-#define DM_FW_VERSION       1
+#define DM_FW_VERSION       2
 
 #ifdef __cplusplus
 extern "C" {
@@ -101,6 +103,7 @@ uint8_t hidPassSet(void);
 uint8_t hidUnlocked(void);
 uint8_t hidUnlock(const uint8_t *p, uint8_t n);
 void    hidSetPass(const uint8_t *p, uint8_t n);
+uint8_t hidLockState(void);     /* 0, DM_ST_SOFTLOCK or DM_ST_HARDLOCK */
 
 void    hidKey(uint8_t modifier, uint8_t key);
 void    hidTypeChar(char c, uint8_t mod);

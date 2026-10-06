@@ -75,6 +75,8 @@
   details table { margin-top: .8rem; max-width: 40rem; }
   details td { padding: .15rem .8rem .15rem 0; }
   details td:first-child { font-family: ui-monospace, monospace; white-space: nowrap; }
+  .pick input[type=number] { width: 5rem; }
+  #lockstate:empty, #lockodds:empty, #lockcount:empty { display: none; }
   kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line);
         border-bottom-width: 2px; border-radius: .25rem; padding: 0 .3rem; }
 </style>
@@ -164,6 +166,30 @@
   </p>
 </details>
 
+<details id="lock">
+  <summary data-t="lock-summary">Lockout</summary>
+  <p class="dim" style="max-width:40rem" data-t="lock-why"></p>
+  <p id="lockstate" class="bad" style="max-width:40rem"></p>
+  <p class="bar">
+    <label class="pick"><input id="lockon" type="checkbox">
+      <span data-t="lock-enable"></span></label>
+  </p>
+  <p class="bar">
+    <label class="pick"><span data-t="lock-soft"></span>
+      <input id="locksoft" type="number" min="1" max="254" value="3"></label>
+    <label class="pick"><span data-t="lock-wait"></span>
+      <input id="lockwait" type="number" min="10" max="2400" step="10" value="60"></label>
+    <label class="pick"><span data-t="lock-hard"></span>
+      <input id="lockhard" type="number" min="0" max="254" value="3"></label>
+  </p>
+  <p id="lockodds" class="dim" style="max-width:40rem"></p>
+  <p id="lockcount" class="dim" style="max-width:40rem"></p>
+  <p class="bar">
+    <button id="lockread" data-t="lock-read">Read</button>
+    <button id="locksave" data-t="lock-save">Save</button>
+  </p>
+</details>
+
 <details>
   <summary data-t="ref-summary">What can go in a macro</summary>
   <table>
@@ -202,6 +228,13 @@ const CHUNK   = VND_LEN - DATA_AT;
 const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61;
 const F_UNLOCK = 0x62, F_SETPASS = 0x63, F_REFUSED = 0xEE;
 const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
+const ST_SOFTLOCK = 0x08, ST_HARDLOCK = 0x10;
+
+/* The lockout's six bytes, in the firmware's map: three settings, then three
+   counters stored inverted so that an erased byte is a zero. */
+const LOCK_ADDR = 0x1EC;
+const LOCK_LEN  = 6;
+const LOCK_OFF  = 0xFF;         /* a threshold of 0 or 0xFF is no threshold */
 
 
 let dev = null, eeSize = 512;
@@ -339,6 +372,7 @@ function draw() {
   m.className = 'meter' + (st.error ? ' full' : '');
   $('write').disabled = !dev || !st.ok;
   drawAuto();
+  drawLock();                   /* the odds depend on how many codes are used */
 }
 
 $('list').addEventListener('input', e => {
@@ -406,6 +440,8 @@ async function connect(mayAsk) {
     state_byte = b[7];
     connected(true, 'connected', { fw: b[4], proto: b[3] });
     say(t('connected-say'), 'ok');
+    if (state_byte & ST_HARDLOCK) say(t('lock-state-hard'), 'bad');
+    else if (state_byte & ST_SOFTLOCK) say(t('lock-state-soft'), 'bad');
     if (!(state_byte & ST_OPEN)) say(t('hold-to-open'), 'dim');
     drawSecurity();
   } catch (e) {
@@ -451,6 +487,7 @@ $('read').onclick = async () => {
     }
     macros = got;
     auto = (await eeRead(AUTO_ADDR, 1))[0];
+    lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
     draw();
     say(t('read-ok', { n: got.length }), 'ok');
     if (auto !== AUTO_NONE && $('auto').value === '')
@@ -498,9 +535,11 @@ function drawSecurity() {
   const open = !!(state_byte & ST_UNLOCKED);
   $('secwhy').textContent = t(has ? (open ? 'sec-unlocked' : 'sec-locked')
                                   : 'sec-none');
+  const hard = !!(state_byte & ST_HARDLOCK);
   $('clearpass').style.display = has ? '' : 'none';
-  $('unlock').style.display = has && !open ? '' : 'none';
+  $('unlock').style.display = has && (!open || hard) ? '' : 'none';
   $('setpass').textContent = t(has ? 'change-password' : 'set-password');
+  drawLock();
 }
 
 async function refreshState() {
@@ -516,7 +555,9 @@ const bytesOf = s => new TextEncoder().encode(s).slice(0, 12);
    a real password field rather than a prompt box, and the section opens
    itself when the board turns out to want one. */
 async function unlock() {
-  if (!(state_byte & ST_PASSWORD) || (state_byte & ST_UNLOCKED)) return true;
+  const hard = !!(state_byte & ST_HARDLOCK);
+  if (!(state_byte & ST_PASSWORD) || ((state_byte & ST_UNLOCKED) && !hard))
+    return true;
 
   const given = $('passval').value;
   if (!given) {
@@ -525,14 +566,21 @@ async function unlock() {
     say(t('needs-password'), 'bad');
     return false;
   }
+  /* The board answers "no" the same way to a shut window and to a wrong
+     password, so ask which before saying which. Calling a shut window a wrong
+     password sends the owner off doubting the one thing they had right. */
+  if (!(state_byte & ST_OPEN)) { say(t('refused'), 'bad'); return false; }
   try {
     await ask(F_UNLOCK, 0, bytesOf(given).length, bytesOf(given));
   } catch (e) {
-    if (e.message === 'REFUSED') { say(t('wrong-password'), 'bad'); return false; }
-    throw e;
+    if (e.message !== 'REFUSED') throw e;
+    await refreshState();
+    say(t(state_byte & ST_OPEN ? 'wrong-password' : 'refused'), 'bad');
+    return false;
   }
   $('passval').value = '';
   await refreshState();
+  if (hard) say(t('lock-lifted'), 'ok');
   return true;
 }
 
@@ -577,6 +625,103 @@ $('clearpass').onclick = async () => {
     await ask(F_SETPASS, 0, 0, null);
     await refreshState();
     say(t('password-cleared'), 'ok');
+  } catch (e) {
+    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
+  }
+};
+
+/* ---- the lockout ----------------------------------------------------
+ *
+ * Settings and counters are plain EEPROM bytes, read and written like the
+ * table: the firmware only ever counts and checks. It needs a password, which
+ * is the only thing that lifts a hard lock, so it cannot be switched on
+ * without one -- and the firmware ignores it without one in any case.
+ */
+let lockCounts = null;          /* misses, soft locks in a row, hard locks
+                                   lifted -- as last read, or null */
+
+function lockRead(b) {
+  const on = b[0] !== 0 && b[0] !== LOCK_OFF;
+  $('lockon').checked = on;
+  if (on) $('locksoft').value = b[0];
+  $('lockhard').value = b[1] === LOCK_OFF ? 0 : b[1];
+  $('lockwait').value = (b[2] >= 1 && b[2] <= 240 ? b[2] : 6) * 10;
+  lockCounts = { misses: 255 - b[3], softs: 255 - b[4], cleared: 255 - b[5] };
+  drawLock();
+}
+
+/* What the settings would let through, in the page's own numbers. */
+function lockSettings() {
+  const soft = parseInt($('locksoft').value, 10);
+  const hard = parseInt($('lockhard').value, 10);
+  const secs = parseInt($('lockwait').value, 10);
+  const ok = soft >= 1 && soft <= 254 && hard >= 0 && hard <= 254
+          && secs >= 10 && secs <= 2400 && secs % 10 === 0;
+  return { ok, soft, hard, tens: secs / 10 };
+}
+
+const fmtWait = tens => tens < 6 ? `${tens * 10} s`
+  : tens % 6 ? `${Math.floor(tens / 6)} min ${(tens % 6) * 10} s`
+  : `${tens / 6} min`;
+
+function drawLock() {
+  const has = !!(state_byte & ST_PASSWORD);
+  const on = $('lockon').checked;
+  $('lockon').disabled = !has;
+  for (const id of ['locksoft', 'lockwait', 'lockhard'])
+    $(id).disabled = !on || !has;
+
+  $('lockstate').textContent =
+      state_byte & ST_HARDLOCK ? t('lock-state-hard')
+    : state_byte & ST_SOFTLOCK ? t('lock-state-soft')
+    : !has ? t('lock-needs-password') : '';
+  $('lockstate').className = has ? 'bad' : 'dim';
+
+  const s = lockSettings();
+  const n = macros.filter(m => m.code).length;
+  $('lockodds').textContent = !on || !has ? ''
+    : !s.ok ? t('lock-bad')
+    : t(s.hard ? 'lock-odds' : 'lock-odds-nohard', {
+        tries: s.soft * s.hard, soft: s.soft, wait: fmtWait(s.tens), n,
+        pct: Math.round(n * 100 / 62) });
+  $('lockcount').textContent = lockCounts ? t('lock-counts', lockCounts) : '';
+}
+
+for (const id of ['lockon', 'locksoft', 'lockwait', 'lockhard'])
+  $(id).addEventListener('input', drawLock);
+
+$('lockread').onclick = async () => {
+  fresh();
+  try {
+    await refreshState();
+    if (!(await unlock())) return;
+    lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
+    say(t('lock-read-ok'), 'ok');
+  } catch (e) {
+    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
+  }
+};
+
+/* Saving starts the counts again from zero, so that new settings are not
+   judged by what the old ones let happen. The record of hard locks lifted is
+   left alone: it is history, not state. */
+$('locksave').onclick = async () => {
+  fresh();
+  const on = $('lockon').checked, s = lockSettings();
+  if (on && !s.ok) { say(t('lock-bad'), 'bad'); return; }
+  try {
+    await refreshState();
+    if (on && !(state_byte & ST_PASSWORD)) {
+      say(t('lock-needs-password'), 'bad'); return;
+    }
+    if (!(await unlock())) return;
+    const bytes = on
+      ? [s.soft, s.hard || LOCK_OFF, s.tens, 0xFF, 0xFF]
+      : [LOCK_OFF, LOCK_OFF, LOCK_OFF, 0xFF, 0xFF];
+    await eeWrite(LOCK_ADDR, Uint8Array.from(bytes));
+    lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
+    await refreshState();
+    say(t(on ? 'lock-saved' : 'lock-off-saved'), 'ok');
   } catch (e) {
     say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
   }

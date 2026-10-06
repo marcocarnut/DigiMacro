@@ -67,13 +67,52 @@ en: {
   'unlock-to-change': 'Press Unlock with the current password first, then type '
                   + 'the new one and press Change.',
   'wrong-password': 'That is not the password. The board waits a second after '
-                  + 'each wrong answer, which is most of what a short password '
-                  + 'has going for it.',
+                  + 'each wrong answer, and with the lockout on it counts as a '
+                  + 'wrong code.',
   'password-empty': 'Type a password first, or use Remove it.',
   'password-set':   'Password set. It is asked for once per session, and the '
                   + 'board still types its macros without it.',
   'password-cleared': 'Password removed. The board is open to anyone who can '
                   + 'hold the pad.',
+  'lock-summary':   'Lockout',
+  'lock-why':       'Wrong codes count. After too many the board ignores every '
+                  + 'tap, right or wrong, for a while — a soft lock, which ends '
+                  + 'by itself and which unplugging does not shorten. After too '
+                  + 'many soft locks in a row it ignores taps until the password '
+                  + 'is given here — a hard lock. A code that works clears both '
+                  + 'counts, so a slip of the finger costs a pause, not a trip to '
+                  + 'the app. A wrong password counts as a wrong code, but the '
+                  + 'password itself is never shut out.',
+  'lock-enable':    'Lock out wrong codes',
+  'lock-soft':      'wrong codes before a pause',
+  'lock-wait':      'pause, in seconds',
+  'lock-hard':      'pauses in a row before a hard lock (0: never)',
+  'lock-read':      'Read',
+  'lock-save':      'Save',
+  'lock-needs-password': 'The lockout needs a password, since giving it is the '
+                  + 'only way to lift a hard lock. Set one above first.',
+  'lock-state-soft': 'The board is pausing after too many wrong codes. It '
+                  + 'ignores every tap until the pause is over, and unplugging '
+                  + 'it starts the pause again.',
+  'lock-state-hard': 'The board is locked hard and ignores every tap. Hold the '
+                  + 'pad for four seconds, type the password in the Password '
+                  + 'section and press Unlock.',
+  'lock-odds':      'Someone guessing gets at most {tries} codes before the '
+                  + 'board locks hard, and waits {wait} after every {soft}. '
+                  + 'With {n} of the 62 codes in use, each guess has about a '
+                  + '{pct}% chance.',
+  'lock-odds-nohard': 'With no hard lock, someone guessing gets {soft} codes '
+                  + 'every {wait}, for as long as they keep at it. With {n} of '
+                  + 'the 62 codes in use, each guess has about a {pct}% chance.',
+  'lock-bad':       'Wrong codes before a pause must be 1 to 254, pauses in a '
+                  + 'row 0 to 254, and the pause 10 to 2400 seconds in steps '
+                  + 'of ten.',
+  'lock-counts':    'Wrong codes now: {misses}. Pauses in a row: {softs}. Hard '
+                  + 'locks lifted with the password, ever: {cleared}.',
+  'lock-read-ok':   'Lockout settings read from the board.',
+  'lock-saved':     'Lockout saved. Its counts start again from zero.',
+  'lock-off-saved': 'Lockout off. Wrong codes cost nothing now.',
+  'lock-lifted':    'Hard lock lifted.',
   'ref-summary':    'What can go in a macro',
   'ref-anything':   'typed as itself',
   'ref-escapes':    'newline, tab, backslash',
@@ -91,7 +130,7 @@ en: {
                   + 'quarter of a second is a dot, longer is a dash, and '
                   + '700 ms of silence ends it. Sixty-two codes exist, so a '
                   + 'table that uses many of them is easier to guess — which '
-                  + 'is what the lockout, still to be built, is for.',
+                  + 'is what the lockout is for.',
   'ref-packed':     'Macros are packed end to end, so the only limit is 497 '
                   + 'bytes in total: two bytes of overhead each, one byte per '
                   + 'keystroke, two per pause or repeat.',
@@ -219,13 +258,56 @@ pt: {
   'unlock-to-change': 'Clique em Destravar com a senha atual primeiro, depois '
                   + 'digite a nova e clique em Trocar.',
   'wrong-password': 'Essa não é a senha. A placa espera um segundo a cada '
-                  + 'resposta errada, que é quase tudo o que uma senha curta '
-                  + 'tem a seu favor.',
+                  + 'resposta errada, e com o bloqueio ligado ela conta como '
+                  + 'código errado.',
   'password-empty': 'Digite uma senha primeiro, ou use Remover.',
   'password-set':   'Senha definida. É pedida uma vez por sessão, e a placa '
                   + 'continua digitando as macros sem ela.',
   'password-cleared': 'Senha removida. A placa está aberta a quem conseguir '
                   + 'segurar o sensor.',
+  'lock-summary':   'Bloqueio',
+  'lock-why':       'Códigos errados contam. Depois de muitos, a placa ignora '
+                  + 'todo toque, certo ou errado, por um tempo — um bloqueio '
+                  + 'leve, que acaba sozinho e que desconectar não encurta. '
+                  + 'Depois de muitos bloqueios leves seguidos, ela ignora os '
+                  + 'toques até a senha ser dada aqui — um bloqueio forte. Um '
+                  + 'código que funciona zera as duas contagens, então um '
+                  + 'deslize do dedo custa uma pausa, não uma ida ao aplicativo. '
+                  + 'Uma senha errada conta como código errado, mas a senha em '
+                  + 'si nunca fica bloqueada.',
+  'lock-enable':    'Bloquear códigos errados',
+  'lock-soft':      'códigos errados antes de uma pausa',
+  'lock-wait':      'pausa, em segundos',
+  'lock-hard':      'pausas seguidas antes do bloqueio forte (0: nunca)',
+  'lock-read':      'Ler',
+  'lock-save':      'Salvar',
+  'lock-needs-password': 'O bloqueio precisa de uma senha, porque dá-la é o '
+                  + 'único jeito de desfazer um bloqueio forte. Defina uma acima '
+                  + 'primeiro.',
+  'lock-state-soft': 'A placa está em pausa depois de códigos errados demais. '
+                  + 'Ela ignora todo toque até a pausa acabar, e desconectá-la '
+                  + 'recomeça a pausa.',
+  'lock-state-hard': 'A placa está em bloqueio forte e ignora todo toque. '
+                  + 'Segure o sensor por quatro segundos, digite a senha na '
+                  + 'seção Senha e clique em Destravar.',
+  'lock-odds':      'Quem tentar adivinhar tem no máximo {tries} códigos antes '
+                  + 'do bloqueio forte, e espera {wait} a cada {soft}. Com {n} '
+                  + 'dos 62 códigos em uso, cada tentativa tem cerca de {pct}% '
+                  + 'de chance.',
+  'lock-odds-nohard': 'Sem bloqueio forte, quem tentar adivinhar tem {soft} '
+                  + 'códigos a cada {wait}, pelo tempo que insistir. Com {n} '
+                  + 'dos 62 códigos em uso, cada tentativa tem cerca de {pct}% '
+                  + 'de chance.',
+  'lock-bad':       'Códigos errados antes de uma pausa devem ser de 1 a 254, '
+                  + 'pausas seguidas de 0 a 254, e a pausa de 10 a 2400 '
+                  + 'segundos, de dez em dez.',
+  'lock-counts':    'Códigos errados agora: {misses}. Pausas seguidas: '
+                  + '{softs}. Bloqueios fortes desfeitos com a senha, desde '
+                  + 'sempre: {cleared}.',
+  'lock-read-ok':   'Configuração de bloqueio lida da placa.',
+  'lock-saved':     'Bloqueio salvo. As contagens recomeçam do zero.',
+  'lock-off-saved': 'Bloqueio desligado. Códigos errados não custam mais nada.',
+  'lock-lifted':    'Bloqueio forte desfeito.',
   'ref-summary':    'O que pode entrar numa macro',
   'ref-anything':   'digitado como está',
   'ref-escapes':    'nova linha, tabulação, barra invertida',
@@ -244,7 +326,7 @@ pt: {
                   + 'traço, e 700 ms de silêncio encerram o código. Existem '
                   + 'sessenta e dois códigos, então uma tabela que use muitos '
                   + 'deles é mais fácil de adivinhar — que é para isso que '
-                  + 'serve o bloqueio, ainda por construir.',
+                  + 'serve o bloqueio.',
   'ref-packed':     'As macros ficam empacotadas uma após a outra, então o '
                   + 'único limite são 497 bytes no total: dois bytes de '
                   + 'cabeçalho cada, um byte por tecla, dois por pausa ou '

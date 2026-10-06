@@ -23,11 +23,17 @@ en: {
   'th-code':        'Code',
   'th-types':       'Types',
   'ph-types':       'what this code types',
-  'add-macro':      'Add a macro',
+  'add-macro':      '+ Add a macro',
   'load-example':   'Load the example',
+  'reload-table':   'Reload the table from the board',
+  'table-reloaded': 'The table as the board holds it.',
+  startup:          'Startup',
+  'startup-why':    'One macro can type itself when the board is plugged in, '
+                  + 'once the computer is ready for it. "Write to the board", '
+                  + 'at the top, saves this along with the table.',
   budget:           '{n} of {max} bytes',
   keys:             'Keys',
-  'on-plug':        'when plugged in',
+  'on-plug':        'when plugged in, type',
   nothing:          'nothing',
   'auto-dangling':  'The macro this board typed on power-up is not in the '
                   + 'table any more, so it will type nothing. Choose another, '
@@ -47,8 +53,7 @@ en: {
                   + 'out, and plenty of macros are not secret. Set one if the '
                   + 'table is worth protecting from somebody holding the '
                   + 'board.',
-  'set-password':   'Set',
-  'change-password':'Change',
+  save:             'Save',
   'clear-password': 'Remove it',
   'ph-password':    'a new password, up to 12 characters',
   'ph-gate-password': 'password',
@@ -68,10 +73,11 @@ en: {
   'sec-has':        'This board has a password. Change it here, or remove it '
                   + 'to make the board open to anyone who can hold the pad.',
   'board-left':     'the board was unplugged',
-  'read-none':      'The board has no macros on it yet. Add some, and Write '
-                  + 'puts them there.',
-  'sample-say':     'An example of each thing a macro can do. Write puts it on '
-                  + 'the board, over what is there now.',
+  'read-none':      'The board has no macros on it yet. Add some, and "Write '
+                  + 'to the board", at the top, puts them there.',
+  'sample-say':     'An example of each thing a macro can do. "Write to the '
+                  + 'board", at the top, puts it on the board over what is '
+                  + 'there now.',
   unlock:           'Unlock',
   'wrong-password': 'That is not the password. Try again in a second; with the '
                   + 'lockout on, each wrong one counts as a wrong code.',
@@ -93,7 +99,6 @@ en: {
   'lock-soft':      'wrong codes before a pause',
   'lock-wait':      'pause, in seconds',
   'lock-hard':      'pauses in a row before a hard lock (0: never)',
-  'lock-save':      'Save',
   'lock-needs-password': 'The lockout needs a password, since giving it is the '
                   + 'only way to lift a hard lock. Set one above first.',
   'lock-state-soft': 'The board is pausing after too many wrong codes. It '
@@ -203,11 +208,17 @@ pt: {
   'th-code':        'Código',
   'th-types':       'Digita',
   'ph-types':       'o que este código digita',
-  'add-macro':      'Adicionar macro',
+  'add-macro':      '+ Adicionar macro',
   'load-example':   'Carregar o exemplo',
+  'reload-table':   'Recarregar a tabela da placa',
+  'table-reloaded': 'A tabela como está na placa.',
+  startup:          'Inicialização',
+  'startup-why':    'Uma macro pode se digitar sozinha quando a placa é '
+                  + 'conectada, assim que o computador estiver pronto. "Mandar '
+                  + 'para a placa", lá em cima, salva isto junto com a tabela.',
   budget:           '{n} de {max} bytes',
   keys:             'Teclas',
-  'on-plug':        'ao conectar',
+  'on-plug':        'ao conectar, digitar',
   nothing:          'nada',
   'auto-dangling':  'A macro que esta placa digitava ao ligar não está mais na '
                   + 'tabela, então ela não digitará nada. Escolha outra, ou '
@@ -219,15 +230,14 @@ pt: {
   repeat:           'repetir',
   'pad-hint':       'Insere no cursor da macro que você estava editando. Um '
                   + 'modificador fica pressionado até a próxima tecla.',
-  write:            'Gravar na placa',
+  write:            'Mandar para a placa',
 
   'sec-summary':    'Senha',
   'sec-none':       'Esta placa não tem senha, que é o normal e está ótimo: '
                   + 'segurar o sensor é o que mantém uma página web de fora, e '
                   + 'muitas macros não são secretas. Defina uma se a tabela '
                   + 'merecer proteção contra quem estiver com a placa na mão.',
-  'set-password':   'Definir',
-  'change-password':'Trocar',
+  save:             'Salvar',
   'clear-password': 'Remover',
   'ph-password':    'uma senha nova, até 12 caracteres',
   'ph-gate-password': 'senha',
@@ -248,10 +258,11 @@ pt: {
   'sec-has':        'Esta placa tem senha. Troque-a aqui, ou remova-a para '
                   + 'deixar a placa aberta a quem conseguir segurar o sensor.',
   'board-left':     'a placa foi desconectada',
-  'read-none':      'A placa ainda não tem macros. Adicione algumas, e Gravar '
-                  + 'as coloca nela.',
-  'sample-say':     'Um exemplo de cada coisa que uma macro sabe fazer. Gravar '
-                  + 'o coloca na placa, por cima do que houver.',
+  'read-none':      'A placa ainda não tem macros. Adicione algumas, e "Mandar '
+                  + 'para a placa", lá em cima, as coloca nela.',
+  'sample-say':     'Um exemplo de cada coisa que uma macro sabe fazer. "Mandar '
+                  + 'para a placa", lá em cima, o coloca na placa por cima do '
+                  + 'que houver.',
   unlock:           'Destravar',
   'wrong-password': 'Essa não é a senha. Tente de novo daqui a um segundo; com '
                   + 'o bloqueio ligado, cada uma errada conta como código errado.',
@@ -274,7 +285,6 @@ pt: {
   'lock-soft':      'códigos errados antes de uma pausa',
   'lock-wait':      'pausa, em segundos',
   'lock-hard':      'pausas seguidas antes do bloqueio forte (0: nunca)',
-  'lock-save':      'Salvar',
   'lock-needs-password': 'O bloqueio precisa de uma senha, porque dá-la é o '
                   + 'único jeito de desfazer um bloqueio forte. Defina uma acima '
                   + 'primeiro.',

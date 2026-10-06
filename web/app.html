@@ -85,6 +85,8 @@
   .form .check { grid-column: 1 / -1; display: flex; gap: .45rem;
                  align-items: center; }
   .form input[type=number] { width: 100%; }
+  .headbar { margin: 2.2rem 0 .7rem; }
+  .headbar h2 { margin: 0; }
   kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line);
         border-bottom-width: 2px; border-radius: .25rem; padding: 0 .3rem; }
 </style>
@@ -96,9 +98,6 @@
     <p data-t="tagline">Tap a code, type a macro.</p>
   </div>
   <span class="spacer"></span>
-  <label class="pick"><span data-t="keyboard">keyboard</span>
-    <select id="layout"></select>
-  </label>
   <label class="pick"><span data-t="language">language</span>
     <select id="lang"></select>
   </label>
@@ -107,8 +106,11 @@
 <div class="bar">
   <button id="connect" class="primary" data-t="connect">Connect</button>
   <span id="who" class="dim"></span>
+  <span class="spacer"></span>
+  <button id="write" class="primary" data-t="write" hidden>Write to the board</button>
 </div>
 <p class="note" id="connect-note"></p>
+<p class="note" id="write-note"></p>
 
 <!-- Connected, and not in yet: the hold, and the password if there is one. -->
 <section id="gate" hidden>
@@ -124,7 +126,13 @@
 
 <!-- In: everything the board holds. -->
 <section id="board" hidden>
-<h2 data-t="macros">Macros</h2>
+<div class="bar headbar">
+  <h2 data-t="macros">Macros</h2>
+  <span class="spacer"></span>
+  <label class="pick"><span data-t="keyboard">keyboard</span>
+    <select id="layout"></select>
+  </label>
+</div>
 <table>
   <thead><tr><th style="width:7.5rem" data-t="th-code">Code</th>
              <th data-t="th-types">Types</th>
@@ -132,19 +140,14 @@
   <tbody id="list"></tbody>
 </table>
 
-<p class="bar" style="margin-top:1rem">
-  <label class="pick"><span data-t="on-plug">when plugged in</span>
-    <select id="auto"></select>
-  </label>
-</p>
-
 <div class="bar" style="margin-top:1rem">
-  <button id="add" data-t="add-macro">Add a macro</button>
-  <button id="sample" data-t="load-example">Load the example</button>
+  <button id="add" data-t="add-macro">+ Add a macro</button>
+  <button id="sample"></button>
   <span class="spacer"></span>
   <span id="budget" class="dim"></span>
   <span class="meter" id="meter"><i style="width:0"></i></span>
 </div>
+<p class="note" id="table-note"></p>
 
 <h2 data-t="keys">Keys</h2>
 <div class="pad" id="pad">
@@ -170,17 +173,22 @@
 </div>
 <p class="hint" data-t="pad-hint"></p>
 
-<div class="bar" style="margin-top:1.4rem">
-  <button id="write" class="primary" data-t="write">Write to the board</button>
-</div>
-<p class="note" id="write-note"></p>
+<h2 data-t="startup">Startup</h2>
+<p class="dim prose" data-t="startup-why"></p>
+<p class="bar">
+  <label class="pick"><span data-t="on-plug">when plugged in, type</span>
+    <select id="auto"></select>
+  </label>
+</p>
+<p class="note" id="auto-note"></p>
+
 
 <h2 data-t="sec-summary">Password</h2>
 <p class="dim prose" id="secwhy"></p>
 <div class="bar">
   <input id="passval" type="password" size="30" spellcheck="false"
          autocomplete="new-password" data-ph="ph-password">
-  <button id="setpass" data-t="set-password">Set</button>
+  <button id="setpass" data-t="save">Save</button>
   <button id="clearpass" data-t="clear-password">Remove it</button>
 </div>
 <p class="note" id="pass-note"></p>
@@ -201,7 +209,7 @@
 <p id="lockodds" class="dim prose"></p>
 <p id="lockcount" class="dim prose"></p>
 <div class="bar">
-  <button id="locksave" data-t="lock-save">Save</button>
+  <button id="locksave" data-t="save">Save</button>
 </div>
 <p class="note" id="lock-note"></p>
 
@@ -302,8 +310,17 @@ async function ask(cmd, addr = 0, count = 0, data = null) {
   return b;
 }
 
-const eeRead = async (addr, len) =>
-  (await ask(F_READ, addr, len)).slice(DATA_AT, DATA_AT + len);
+/* In chunks, as writing is: a report carries 32 bytes of data, so a longer
+   read asked for in one go comes back short. Verifying a write that way once
+   read a whole table as a mismatch at byte 32. */
+async function eeRead(addr, len) {
+  const out = new Uint8Array(len);
+  for (let i = 0; i < len; i += CHUNK) {
+    const n = Math.min(CHUNK, len - i);
+    out.set((await ask(F_READ, addr + i, n)).slice(DATA_AT, DATA_AT + n), i);
+  }
+  return out;
+}
 const eeWrite = (addr, bytes) => ask(F_WRITE, addr, bytes.length, bytes);
 
 /* ---- the editor ---------------------------------------------------- */
@@ -374,8 +391,9 @@ function draw() {
   m.firstElementChild.style.width =
     Math.min(100, st.total * 100 / TABLE_TOP) + '%';
   m.className = 'meter' + (st.error ? ' full' : '');
-  $('write').disabled = !dev || !st.ok || busy;
   drawAuto();
+  drawWrite(st);
+  drawSample();
   drawLock();                   /* the odds depend on how many codes are used */
 }
 
@@ -391,7 +409,7 @@ $('list').addEventListener('input', e => {
     Math.min(100, st.total * 100 / TABLE_TOP) + '%';
   $('meter').className = 'meter' + (st.error ? ' full' : '');
   e.target.classList.toggle('bad', !!st.each[i].error && f === 'text');
-  $('write').disabled = !dev || !st.ok || busy;
+  drawWrite(st);
 });
 $('list').addEventListener('change', draw);
 $('list').addEventListener('click', e => {
@@ -412,12 +430,48 @@ $('add').onclick = () => {
 
 $('auto').onchange = () => {
   auto = $('auto').value === '' ? AUTO_NONE : Number($('auto').value);
+  drawWrite();
 };
 
+/* Write is offered only when there is something to write: what is on screen,
+   encoded, differs from what was last read from or written to the board.
+   Compared as bytes rather than text, so retyping a macro the same way is no
+   change, and changing the keyboard layout is one when it changes the bytes. */
+let saved = null;               /* table bytes and power-on byte, as on board */
+
+function snapshot() {
+  try { return encodeTable(macros).join(',') + '/' + auto; }
+  catch (e) { return null; }
+}
+
+function drawWrite(st = state()) {
+  const changed = st.ok && saved !== null && snapshot() !== saved;
+  $('write').disabled = !dev || busy || !changed;
+}
+
+/* One button, two jobs: the example replaces the table on screen, and then
+   the same button brings back what the board holds, so trying the example
+   never strands anybody's own macros. Neither touches the board itself until
+   Write. */
+let onSample = false;
+
+function drawSample() {
+  $('sample').textContent = t(onSample ? 'reload-table' : 'load-example');
+}
+
 $('sample').onclick = () => {
-  macros = sampleRows();
-  draw();
-  note('write-note', t('sample-say'), 'dim');
+  if (!onSample) {
+    macros = sampleRows();
+    onSample = true;
+    draw();
+    note('table-note', t('sample-say'), 'dim');
+    return;
+  }
+  run('table-note', async () => {
+    note('table-note', t('gate-reading'), 'dim');
+    const got = await readTable();
+    note('table-note', got ? t('table-reloaded') : t('read-none'), 'dim');
+  });
 };
 
 /* ---- connect, and the way in ----------------------------------------
@@ -444,6 +498,7 @@ function show(s) {
   $('connect').hidden = s !== 'none';
   $('gate').hidden = s !== 'gate';
   $('board').hidden = s !== 'board';
+  $('write').hidden = s !== 'board';
 }
 
 /* `ask` is whether we may put the picker up, which needs a real click behind
@@ -579,23 +634,30 @@ $('gatepass').addEventListener('keydown', e => {
   if (e.key === 'Enter') givePassword();
 });
 
+/* The table and the power-on macro, as the board holds them. How many
+   macros there were, so a caller can say when there were none. */
+async function readTable() {
+  const got = decodeTable(await eeRead(0, TABLE_TOP));
+  macros = got.length ? got : [{ code: '.', text: '' }];
+  auto = (await eeRead(AUTO_ADDR, 1))[0];
+  onSample = false;
+  saved = snapshot();
+  draw();
+  note('auto-note', auto !== AUTO_NONE && $('auto').value === ''
+                    ? t('auto-dangling') : '', 'dim');
+  return got.length;
+}
+
 /* Everything at once: the table, the power-on macro and the lockout. */
 async function enterBoard() {
   note('gate-note', t('gate-reading'), 'dim');
-  const ee = new Uint8Array(TABLE_TOP);
-  for (let a = 0; a < TABLE_TOP; a += CHUNK)
-    ee.set(await eeRead(a, Math.min(CHUNK, TABLE_TOP - a)), a);
-  const got = decodeTable(ee);
-  macros = got.length ? got : [{ code: '.', text: '' }];
-  auto = (await eeRead(AUTO_ADDR, 1))[0];
-  lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
-  for (const id of ['write-note', 'pass-note', 'lock-note']) note(id, '');
+  for (const id of ['table-note', 'auto-note', 'write-note', 'pass-note',
+                    'lock-note']) note(id, '');
   show('board');
-  draw();
+  const got = await readTable();
+  lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
   drawSecurity();
-  if (!got.length) note('write-note', t('read-none'), 'dim');
-  else if (auto !== AUTO_NONE && $('auto').value === '')
-    note('write-note', t('auto-dangling'), 'dim');
+  if (!got) note('table-note', t('read-none'), 'dim');
 }
 
 /* What every action does first: the window, waited for if it has lapsed, and
@@ -625,7 +687,7 @@ async function access(noteId) {
 
 /* An action: one at a time, its buttons quiet while it runs, and whatever
    happens said beside the button that started it. */
-const ACTION_BUTTONS = ['write', 'setpass', 'clearpass', 'locksave'];
+const ACTION_BUTTONS = ['write', 'sample', 'setpass', 'clearpass', 'locksave'];
 
 async function run(noteId, fn) {
   if (busy || !dev) return;
@@ -638,8 +700,11 @@ async function run(noteId, fn) {
     note(noteId, e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
   } finally {
     busy = false;
-    ACTION_BUTTONS.forEach(id => $(id).disabled = false);
-    draw();                     /* Write also wants the macros to be valid */
+    $('sample').disabled = false;
+    $('clearpass').disabled = false;
+    draw();                     /* Write, and Save twice: each enables itself
+                                   only when it has something to save */
+    drawSecurity();
   }
 }
 
@@ -662,6 +727,10 @@ $('write').onclick = () => {
       return;
     }
     await eeWrite(AUTO_ADDR, Uint8Array.from([auto]));
+    onSample = false;           /* what is on screen is on the board now */
+    saved = snapshot();
+    note('table-note', '');
+    note('auto-note', '');
     note('write-note', t('write-ok', { n: bytes.length }), 'ok');
   });
 };
@@ -677,7 +746,7 @@ function drawSecurity() {
   const has = !!(state_byte & ST_PASSWORD);
   $('secwhy').textContent = t(has ? 'sec-has' : 'sec-none');
   $('clearpass').hidden = !has;
-  $('setpass').textContent = t(has ? 'change-password' : 'set-password');
+  $('setpass').disabled = busy || !$('passval').value;
   drawLock();
 }
 
@@ -689,6 +758,8 @@ async function refreshState() {
 }
 
 const bytesOf = s => new TextEncoder().encode(s).slice(0, 12);
+
+$('passval').addEventListener('input', drawSecurity);
 
 $('setpass').onclick = () => {
   const given = $('passval').value;
@@ -727,7 +798,16 @@ function lockRead(b) {
   $('lockhard').value = b[1] === LOCK_OFF ? 0 : b[1];
   $('lockwait').value = (b[2] >= 1 && b[2] <= 240 ? b[2] : 6) * 10;
   lockCounts = { misses: 255 - b[3], softs: 255 - b[4], cleared: 255 - b[5] };
+  lockSaved = String(lockWanted());
   drawLock();
+}
+
+/* The three setting bytes the form stands for, or null if it makes no sense. */
+let lockSaved = null;
+function lockWanted() {
+  if (!$('lockon').checked) return [LOCK_OFF, LOCK_OFF, LOCK_OFF];
+  const s = lockSettings();
+  return s.ok ? [s.soft, s.hard || LOCK_OFF, s.tens] : null;
 }
 
 /* What the settings would let through, in the page's own numbers. */
@@ -747,6 +827,9 @@ const fmtWait = tens => tens < 6 ? `${tens * 10} s`
 function drawLock() {
   const has = !!(state_byte & ST_PASSWORD);
   const on = $('lockon').checked;
+  const want = lockWanted();
+  $('locksave').disabled = busy || !want || String(want) === lockSaved
+                         || (on && !has);
   $('lockon').disabled = !has;
   for (const id of ['locksoft', 'lockwait', 'lockhard'])
     $(id).disabled = !on || !has;

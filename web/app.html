@@ -87,6 +87,15 @@
   .form input[type=number] { width: 100%; }
   .headbar { margin: 2.2rem 0 .7rem; }
   .headbar h2 { margin: 0; }
+  progress { width: 22rem; max-width: 100%; height: .6rem; }
+  button.link { border: none; background: none; padding: 0; font: inherit;
+                color: var(--accent); text-decoration: underline;
+                cursor: pointer; }
+  dialog { max-width: 38rem; width: calc(100% - 2rem); border-radius: .6rem;
+           border: 1px solid var(--line); background: var(--bg);
+           color: var(--fg); padding: 1.2rem 1.4rem 1.4rem; }
+  dialog::backdrop { background: #0007; }
+  dialog h2 { margin-top: 0; }
   kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line);
         border-bottom-width: 2px; border-radius: .25rem; padding: 0 .3rem; }
 </style>
@@ -237,8 +246,28 @@
 </section>
 </main>
 
+<!-- Opened from the status line, where the firmware version is. -->
+<dialog id="fwdialog">
+  <h2 data-t="fw-summary">Firmware</h2>
+  <p id="fwwhy" class="prose"></p>
+  <p class="dim prose" data-t="fw-how"></p>
+  <div class="form">
+    <label class="check"><input id="fwboot" type="checkbox" checked>
+      <span data-t="fw-boot"></span></label>
+  </div>
+  <div class="bar">
+    <button id="fwupdate" class="primary" data-t="fw-update">Update the firmware</button>
+    <button id="fwcontinue" class="primary" data-t="fw-continue" hidden>Continue</button>
+    <progress id="fwbar" max="1" value="0" hidden></progress>
+    <span class="spacer"></span>
+    <button id="fwclose" data-t="close">Close</button>
+  </div>
+  <p class="note" id="fw-note"></p>
+</dialog>
+
 <script src="i18n.js"></script>
 <script src="table.js"></script>
+<script src="micronucleus.js"></script>
 <script>
 /* The device never stops being a keyboard. The app reaches it through a second
    top-level collection on a vendor usage page, which is the one kind WebHID
@@ -251,6 +280,7 @@ const DATA_AT = 4;              /* command, address low, address high, count */
 const CHUNK   = VND_LEN - DATA_AT;
 const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61;
 const F_UNLOCK = 0x62, F_SETPASS = 0x63, F_REFUSED = 0xEE;
+const F_REBOOT = 0x41;
 const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
 const ST_SOFTLOCK = 0x08, ST_HARDLOCK = 0x10;
 
@@ -282,9 +312,30 @@ function who(key, params, cls) {
   whoKey = key; whoParams = params || {}; whoCls = cls || 'dim';
   renderWho();
 }
+/* "connected" has the firmware's standing in the middle of it -- "(latest)",
+   or "(update…)" as a link to the dialog -- so it is put together from the
+   pieces either side of a marker rather than set as one string. */
 function renderWho() {
-  $('who').textContent = whoKey ? t(whoKey, whoParams) : '';
-  $('who').className = whoCls;
+  const el = $('who');
+  el.className = whoCls;
+  el.textContent = '';
+  if (!whoKey) return;
+  if (whoKey !== 'connected') { el.textContent = t(whoKey, whoParams); return; }
+  const [before, after] = t('connected', { ...whoParams, state: '\u0000' }).split('\u0000');
+  el.append(before);
+  if (fwHere !== null) {
+    el.append(' ');
+    if (fwOnBoard < fwHere && stage === 'board') {
+      const b = document.createElement('button');
+      b.className = 'link';
+      b.textContent = t('fw-link-update');
+      b.onclick = openFirmware;
+      el.append(b);
+    } else {
+      el.append(t(fwOnBoard < fwHere ? 'fw-link-available' : 'fw-link-latest'));
+    }
+  }
+  el.append(after);
 }
 
 /* ---- the device ---------------------------------------------------- */
@@ -499,14 +550,20 @@ function show(s) {
   $('gate').hidden = s !== 'gate';
   $('board').hidden = s !== 'board';
   $('write').hidden = s !== 'board';
+  renderWho();
 }
 
 /* `ask` is whether we may put the picker up, which needs a real click behind
    it. The device coming back on its own has no click, so it takes what the
    origin was already given and stops there rather than failing noisily. */
+let connecting = false;          /* the connect event and a retry can race */
+
 async function connect(mayAsk) {
-  note('connect-note', '');
+  if (dev || connecting) return;
+  if (mayAsk) note('connect-note', '');   /* a board coming back by itself
+                                              keeps what the upgrade said */
   if (!navigator.hid) { note('connect-note', t('no-webhid'), 'bad'); return; }
+  connecting = true;
   try {
     /* A device this origin already knows comes back without the picker. */
     const known = await navigator.hid.getDevices();
@@ -523,8 +580,11 @@ async function connect(mayAsk) {
       note('connect-note', t('wrong-magic'), 'bad'); dev = null; return;
     }
     eeSize = b[5] | (b[6] << 8);
+    fwOnBoard = b[4];
     state_byte = b[7];
     who('connected', { fw: b[4], proto: b[3] }, 'ok');
+    note('connect-note', '');           /* whatever the last connection, or
+                                           an upgrade, had to say is done */
     show('gate');
     gate();
   } catch (e) {
@@ -536,6 +596,8 @@ async function connect(mayAsk) {
     if (navigator.userAgent.includes('Linux') && /open/i.test(e.message))
       note('connect-note', t('connect-failed', { msg: e.message }) + ' '
                            + t('udev-hint'), 'bad');
+  } finally {
+    connecting = false;
   }
 }
 
@@ -544,6 +606,7 @@ $('connect').onclick = () => connect(true);
 navigator.hid?.addEventListener('disconnect', ev => {
   if (dev && ev.device !== dev) return;
   dev = null;
+  if (upgrading) return;        /* expected: the upgrade carries on */
   password = null;              /* the next plug-in asks again */
   $('gatepass').value = '';
   show('none');
@@ -551,7 +614,7 @@ navigator.hid?.addEventListener('disconnect', ev => {
 });
 
 navigator.hid?.addEventListener('connect', ev => {
-  if (dev || ev.device.vendorId !== 0x16c0) return;
+  if (dev || upgrading || ev.device.vendorId !== 0x16c0) return;
   connect(false);               /* no click behind this, so no picker */
 });
 
@@ -687,7 +750,8 @@ async function access(noteId) {
 
 /* An action: one at a time, its buttons quiet while it runs, and whatever
    happens said beside the button that started it. */
-const ACTION_BUTTONS = ['write', 'sample', 'setpass', 'clearpass', 'locksave'];
+const ACTION_BUTTONS = ['write', 'sample', 'setpass', 'clearpass', 'locksave',
+                        'fwupdate', 'fwclose'];
 
 async function run(noteId, fn) {
   if (busy || !dev) return;
@@ -702,6 +766,8 @@ async function run(noteId, fn) {
     busy = false;
     $('sample').disabled = false;
     $('clearpass').disabled = false;
+    $('fwupdate').disabled = false;
+    $('fwclose').disabled = false;
     draw();                     /* Write, and Save twice: each enables itself
                                    only when it has something to save */
     drawSecurity();
@@ -748,6 +814,7 @@ function drawSecurity() {
   $('clearpass').hidden = !has;
   $('setpass').disabled = busy || !$('passval').value;
   drawLock();
+  drawFirmware();
 }
 
 async function refreshState() {
@@ -871,6 +938,156 @@ $('locksave').onclick = () => {
     await refreshState();
     note('lock-note', t(on ? 'lock-saved' : 'lock-off-saved'), 'ok');
   });
+};
+
+/* ---- updating the firmware ------------------------------------------
+ *
+ * The board reboots into Micronucleus, which is a different USB device on a
+ * different web API: plain vendor class, so WebUSB rather than WebHID, with a
+ * picker of its own. Picking it needs a click no more than a few seconds old,
+ * and the bootloader gives up and goes back to the old firmware about six
+ * seconds after it starts -- so the click has to find the board ready, with
+ * the window open and the password given. If it does not, this click gets it
+ * ready and the next one does the update.
+ *
+ * Micronucleus does not touch the EEPROM, so the table, the password and the
+ * serial number all survive.
+ */
+let fwOnBoard = 0;              /* what INFO said the board runs */
+let fwHere = null;              /* what web/firmware/ holds, once fetched */
+let upgrading = false;
+
+/* The first firmware that can reboot itself into the bootloader. Anything
+   older ignores the request, so it has to be updated the old way once. */
+const FW_FIRST_REBOOT = 3;
+
+fetch('firmware/digimacro.json').then(r => r.json())
+  .then(j => { fwHere = j.fw; drawFirmware(); }).catch(() => {});
+
+function drawFirmware() {
+  const tooOld = fwOnBoard < FW_FIRST_REBOOT;
+  $('fwwhy').textContent = fwHere === null ? t('fw-none-here', { on: fwOnBoard })
+    : t(fwOnBoard < fwHere ? 'fw-newer' : 'fw-same', { on: fwOnBoard, here: fwHere })
+      + (tooOld ? ' ' + t('fw-too-old') : '');
+  $('fwwhy').className = 'prose' + (fwHere !== null && fwOnBoard < fwHere ? ' ok' : ' dim');
+  $('fwupdate').disabled = busy || fwHere === null || tooOld;
+  renderWho();
+}
+
+function openFirmware() {
+  note('fw-note', '');
+  drawFirmware();
+  $('fwdialog').showModal();
+}
+$('fwclose').onclick = () => $('fwdialog').close();
+/* Not while an update runs: the board is half way to somewhere. */
+$('fwdialog').addEventListener('cancel', e => { if (busy) e.preventDefault(); });
+
+async function fetchText(url) {
+  const r = await fetch(url, { cache: 'no-cache' });
+  if (!r.ok) throw new Error(`${url}: ${r.status}`);
+  return r.text();
+}
+
+/* A click on Continue, for when the picker needs one and the last click has
+   gone stale. */
+function nextClick() {
+  $('fwcontinue').hidden = false;
+  return new Promise(res => {
+    $('fwcontinue').onclick = () => { $('fwcontinue').hidden = true; res(); };
+  });
+}
+
+async function writeVia(m, app, what) {
+  const bar = $('fwbar');
+  const image = m.prepare(app);
+  bar.hidden = false; bar.value = 0;
+  note('fw-note', t('fw-erasing', { what }), 'dim');
+  await m.erase();
+  note('fw-note', t('fw-writing', { what }), 'dim');
+  await m.write(image, f => bar.value = f);
+  bar.hidden = true;
+  await m.run();
+}
+
+$('fwupdate').onclick = async () => {
+  if (busy || !dev || fwHere === null) return;
+  if (!navigator.usb) { note('fw-note', t('fw-no-webusb'), 'bad'); return; }
+
+  /* Ready? If not, this click only gets it ready. */
+  const s = await refreshState();
+  if (!(s & ST_OPEN)) {
+    run('fw-note', async () => note('fw-note', t('fw-ready'), 'ok'));
+    return;
+  }
+
+  busy = true;
+  ACTION_BUTTONS.forEach(id => $(id).disabled = true);
+  const upgradeBoot = $('fwboot').checked;
+  let done = false;
+  try {
+    /* Both fetched before anything changes on the board. */
+    const app = parseIntelHex(await fetchText('firmware/digimacro.hex'), 8192);
+    const upgrader = upgradeBoot ? parseIntelHex(await fetchText(
+      'firmware/micronucleus-2.6-t85_default-upgrade.hex'), 8192) : null;
+
+    await access('fw-note');            /* the window is open: at most an unlock */
+    upgrading = true;
+    who('fw-who', {}, 'dim');
+    note('fw-note', t('fw-rebooting'), 'dim');
+    try { await ask(F_REBOOT); }
+    catch (e) { if (e.message === 'REFUSED') throw e; /* gone before it answered */ }
+
+    /* The bootloader enumerates within a second, and the picker still counts
+       as opened by the click: Chrome allows about five. */
+    await sleep(1500);
+    note('fw-note', t('fw-pick'), 'dim');
+    let m = await Micronucleus.request();
+    if (!m) throw new Error(t('fw-no-bootloader'));
+    m.checkChip();
+    note('fw-note', t('fw-found', { version: m.info.version }), 'dim');
+
+    if (upgrader && !m.current) {
+      await writeVia(m, upgrader, 'Micronucleus 2.6');
+      await sleep(2500);                /* it rewrites itself, then reboots into
+                                           the new one, which waits: there is
+                                           no application to time out into */
+      note('fw-note', t('fw-pick-again'), 'ok');
+      await nextClick();
+      m = await Micronucleus.request();
+      if (!m) throw new Error(t('fw-no-bootloader-again'));
+      m.checkChip();
+    }
+
+    await writeVia(m, app, `DigiMacro ${fwHere}`);
+    done = true;
+  } catch (e) {
+    note('fw-note', e.message === 'REFUSED' ? t('refused')
+                  : t('fw-failed', { msg: e.message }), 'bad');
+    if (navigator.userAgent.includes('Linux') && /access|open/i.test(e.message))
+      note('fw-note', t('fw-failed', { msg: e.message }) + ' ' + t('fw-udev'), 'bad');
+  } finally {
+    $('fwbar').hidden = true;
+    $('fwcontinue').hidden = true;
+    busy = false;
+    ACTION_BUTTONS.forEach(id => $(id).disabled = false);
+    draw();
+    drawSecurity();
+    if (upgrading) {
+      /* The board left, so it is a new connection when it comes back: the
+         hold and the password again, as after any replug. */
+      upgrading = false;
+      password = null;
+      dev = null;
+      show('none');
+      who('board-left', {}, 'dim');
+      if (done) {
+        $('fwdialog').close();
+        note('connect-note', t('fw-done', { fw: fwHere }), 'ok');
+      }
+      setTimeout(() => connect(false), done ? 1500 : 0);
+    }
+  }
 };
 
 /* ---- what language to say it in ------------------------------------- */

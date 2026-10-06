@@ -15,6 +15,10 @@
 #               is actually doing: raw, average, touched?, press open?
 #   isp         build for a chip with no bootloader: all 8192 bytes, and a
 #               .hex to feed to a programmer
+#   release     the firmware as it ships, copied into web/firmware/ with its
+#               version, which is what the app's "Update the firmware" writes.
+#               Commit the result: the page carries it, so serving the page
+#               needs no AVR toolchain.
 #
 #   spikehid    build spikehid/ instead -- the second spike: a keyboard that
 #               stays a keyboard, with a vendor collection WebHID can reach
@@ -30,6 +34,7 @@ FQBN="digistump:avr:digispark-tiny:clock=clock165"
 SKETCH=.
 ISP=0
 DO_UPLOAD=0
+RELEASE=0
 BUTTON=0
 RC=0
 LEDECHO=0
@@ -44,9 +49,14 @@ for a in "$@"; do
         touchdebug) TOUCHDEBUG=1 ;;
         isp)       ISP=1 ;;
         upload)    DO_UPLOAD=1 ;;
+        release)   RELEASE=1 ;;
         *)         echo "unknown argument: $a" >&2; exit 1 ;;
     esac
 done
+
+if [ "$RELEASE" = 1 ] && { [ "$SKETCH" != . ] || [ "$ISP$BUTTON$RC$LEDECHO$TOUCHDEBUG" != 00000 ]; }; then
+    echo "release is the stock firmware, so it takes no other options" >&2; exit 1
+fi
 
 if [ "$RC" = 1 ] && [ "$BUTTON" = 1 ]; then
     echo "rc is about the pad, so it does not go with button" >&2; exit 1
@@ -80,6 +90,15 @@ if [ "$ISP" = 1 ]; then
     echo "Keep the fuses as they are, and check EESAVE (high fuse bit 3): left"
     echo "unprogrammed, as a Digispark ships, a chip erase takes the macro"
     echo "table and the password with it on every reflash."
+fi
+
+if [ "$RELEASE" = 1 ]; then
+    FW=$(sed -n 's/^#define DM_FW_VERSION *\([0-9]*\).*/\1/p' DigiHidUSB/src/hidusb.h)
+    mkdir -p web/firmware
+    cp "$BUILD/DigiMacro.ino.hex" web/firmware/digimacro.hex
+    printf '{ "fw": %s }\n' "$FW" > web/firmware/digimacro.json
+    echo
+    echo "Firmware $FW is in web/firmware/; commit it, and the app offers it."
 fi
 
 if [ "$DO_UPLOAD" = 1 ]; then

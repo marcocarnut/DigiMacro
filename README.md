@@ -17,10 +17,10 @@ Tap a code, the board types the macro; touch the pad again to stop it. One
 macro can be nominated to type itself when the board is plugged in, and a
 macro can carry on with another, including itself. Hold the pad four seconds and
 `web/app.html` may read and write the table for the next half minute, behind
-an optional password, and wrong codes can lock the board out. Next is
-upgrading the firmware from the same page.
+an optional password, and wrong codes can lock the board out. The same page
+updates the firmware.
 
-**5068 bytes of the 6650** the stock bootloader leaves, and 158 of RAM.
+**5188 bytes of the 6650** the stock bootloader leaves, and 164 of RAM.
 
 ### It never stops being a keyboard
 
@@ -225,6 +225,7 @@ One feature report on the vendor collection, both ways:
 | | |
 |---|---|
 | `0x40` INFO | magic `DM`, protocol, firmware, EEPROM size, and a state byte: window open, password set, unlocked, soft lock, hard lock |
+| `0x41` REBOOT | into the bootloader, for a firmware update |
 | `0x60` READ | address and count in, data back |
 | `0x61` WRITE | address, count and data in |
 | `0x62` UNLOCK | the password, if the board has one |
@@ -316,6 +317,42 @@ changed at the top right. `web/i18n.js` holds both, the encoder's error
 messages included, and a test checks that neither language has a string the
 other lacks.
 
+## Updating the firmware
+
+The app does it. The status line at the top shows the board's firmware
+version, followed by **(latest)**, or by **(update…)** when the page carries
+something newer; that opens a dialog with the update in it. The board restarts
+into its bootloader, Micronucleus, and the browser asks you to pick it. That is a second picker because the bootloader is a different kind of USB
+device, plain vendor class rather than HID, reached over WebUSB. The macros,
+the password, the lockout and the serial number all live in EEPROM, which
+Micronucleus leaves alone, so they survive the update.
+
+- **Pick it within a few seconds.** The bootloader waits about six and then
+  goes back to the old firmware, so the click that starts an update has to
+  find the window already open. If it is not, that click asks for the hold,
+  and the next click does the update.
+- **An old Micronucleus is replaced first.** Digisparks often ship with 1.x.
+  With the box ticked, which is the default, the app installs the upstream
+  2.6 upgrader, has you pick the new bootloader again (it waits for you this
+  time), and then writes the firmware.
+- **Linux** needs the Micronucleus line in `web/60-digimacro.rules`.
+- **Windows** needs a driver for the bootloader once: run
+  [Zadig](https://zadig.akeo.ie/) while the board is in Micronucleus, and
+  install WinUSB for it. The keyboard itself needs nothing.
+
+The REBOOT command sits behind the window and the password like everything
+else, and for a sharper reason than the table does: a board in its bootloader
+can be flashed with anything, including a sketch that reads the table out.
+
+A new firmware reaches the app through `./build.sh release`, which copies the
+build and its version number into `web/firmware/`. Commit that, and the page
+offers it to every board running something older. The page carries the files
+itself, so serving it needs no AVR toolchain.
+
+The uploader is DigiISP's, ported to plain JavaScript in `web/micronucleus.js`.
+It speaks Micronucleus 1.x and 2.x, and lays the firmware out the way the
+upstream tool does. DigiISP has run the 1.x → 2.6 upgrade on hardware.
+
 ## Testing
 
 ```
@@ -328,7 +365,9 @@ from reaching the password, the morse decoding from the input pin, both ways of
 reading the pad, and the sample table the loader flashes; then the app's macro
 language on its own, the two languages against each other, and — across the
 language boundary — a table encoded by `web/table.js` played through the
-firmware. Seven suites, about a second.
+firmware. Then the firmware the app ships, laid out for the bootloader, with
+both jumps decoded and followed to where they land. Eight suites, about a
+second.
 
 ## Running the app
 
@@ -349,7 +388,8 @@ raw protocol page and the notes on reading the pad.
 | `test/` | host build of the real sketch against stub hardware |
 | `tools/loadtable/` | writes a sample table into EEPROM, without a browser |
 | `spikehid/` | the sketch that derisked the vendor collection |
-| `web/` | `app.html` is the editor, `hid.html` the raw protocol tool, `table.js` and `i18n.js` what they share |
+| `web/` | `app.html` is the editor, `hid.html` the raw protocol tool, `table.js` and `i18n.js` what they share, `micronucleus.js` the uploader |
+| `web/firmware/` | what the app installs: the released firmware, and the Micronucleus 2.6 upgrader |
 | `PLAN.md` | design, decisions and what comes next |
 
 [DigiISP](../DigiISP) solved the BOS and MS OS 2.0 work that the WebUSB

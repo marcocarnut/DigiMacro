@@ -59,6 +59,12 @@ grandparent, and a rule written with `ATTR` matches nothing and says nothing.
 Windows needs none of this: HID devices are openable as they are, which is the
 same reason WebHID wants no MS OS 2.0 descriptor.
 
+**Updating the firmware is the exception, on both.** The board restarts into
+Micronucleus, which is plain USB rather than HID, so the app reaches it over
+WebUSB. On Linux that needs the rule's last line; on Windows it needs a driver
+once, WinUSB installed with [Zadig](https://zadig.akeo.ie/) while the board is
+in its bootloader.
+
 ## The spike
 
 `spikehid/` is what showed the mode switch was not needed. Flash it with

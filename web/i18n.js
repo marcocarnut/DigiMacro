@@ -126,6 +126,56 @@ en: {
   'lock-saved':     'Lockout saved. Its counts start again from zero.',
   'lock-off-saved': 'Lockout off. Wrong codes cost nothing now.',
   'lock-lifted':    'Hard lock lifted.',
+  'fw-summary':     'Firmware',
+  'fw-how':         'The board restarts into its bootloader, Micronucleus, and '
+                  + 'the browser asks you to pick it — a second picker, because '
+                  + 'the bootloader is a different kind of USB device. Pick it '
+                  + 'within a few seconds or it gives up and goes back to the '
+                  + 'old firmware. The macros, the password and the lockout '
+                  + 'all stay as they are. On Windows the bootloader needs a '
+                  + 'driver once: Zadig, installing WinUSB for "Micronucleus".',
+  'fw-boot':        'If the board\'s Micronucleus is older than 2.6, replace it '
+                  + 'with 2.6 first',
+  'fw-update':      'Update the firmware',
+  'fw-continue':    'Continue',
+  'fw-who':         'updating the firmware…',
+  'fw-too-old':     'That firmware cannot restart itself into the bootloader, '
+                  + 'so update it once with "./build.sh upload"; from then on '
+                  + 'this page can do it.',
+  'fw-none-here':   'The board runs firmware {on}. This page has no firmware to '
+                  + 'offer; serve it from the project\'s web folder.',
+  'fw-newer':       'The board runs firmware {on}, and firmware {here} is '
+                  + 'available.',
+  'fw-same':        'The board runs firmware {on}, which is the latest this page '
+                  + 'has ({here}). Updating would write it again.',
+  'fw-no-webusb':   'navigator.usb is missing. The bootloader is reached over '
+                  + 'WebUSB, which needs Chrome or Edge.',
+  'fw-ready':       'Ready. Press Update the firmware again within half a '
+                  + 'minute.',
+  'fw-rebooting':   'Restarting the board into its bootloader…',
+  'fw-pick':        'Pick "Micronucleus" in the browser\'s list.',
+  'fw-found':       'Micronucleus {version} found.',
+  'fw-pick-again':  'Micronucleus 2.6 is in. It will wait for you now: press '
+                  + 'Continue and pick it again.',
+  'fw-erasing':     'Erasing, for {what}…',
+  'fw-writing':     'Writing {what}…',
+  'fw-no-bootloader': 'No bootloader was picked, so nothing was written. The '
+                  + 'board goes back to its old firmware by itself after a few '
+                  + 'seconds.',
+  'fw-no-bootloader-again': 'The bootloader was not picked again. It is '
+                  + 'Micronucleus 2.6 now and waits with nothing to run: update '
+                  + 'again to finish.',
+  'fw-failed':      'The update stopped: {msg}',
+  'fw-udev':        'On Linux the bootloader needs the Micronucleus line from '
+                  + 'web/60-digimacro.rules in /etc/udev/rules.d.',
+  'fw-done':        'Firmware {fw} written. The board is starting it now, and '
+                  + 'will ask for the hold again.',
+  'mn-too-big':     'the firmware is {n} bytes and this bootloader leaves {max}',
+  'mn-no-jump':     'the firmware does not start with a jump, so it cannot be '
+                  + 'laid out for the bootloader',
+  'mn-unsupported': 'Micronucleus {version} is not one this page knows',
+  'mn-no-info':     'the bootloader did not say how big it is',
+  'mn-not-t85':     'that bootloader is not on an ATtiny85',
   'ref-summary':    'What can go in a macro',
   'ref-anything':   'typed as itself',
   'ref-escapes':    'newline, tab, backslash',
@@ -165,7 +215,11 @@ en: {
                   + 'it into /etc/udev/rules.d, run "sudo udevadm control '
                   + '--reload", then unplug the board and plug it back in.',
   'connect-failed': 'could not connect: {msg}',
-  connected:        'connected — firmware {fw}, protocol {proto}',
+  connected:        'connected — firmware {fw}{state}, protocol {proto}',
+  'fw-link-update': '(update…)',
+  'fw-link-available': '(update available)',
+  'fw-link-latest': '(latest)',
+  close:            'Close',
   'wrong-magic':    'that device did not answer "DM"',
   'write-ok':       'Wrote {n} bytes and read every one of them back.',
   'write-mismatch': 'mismatch at {at}: wrote {wrote}, read {read}',
@@ -314,6 +368,56 @@ pt: {
   'lock-saved':     'Bloqueio salvo. As contagens recomeçam do zero.',
   'lock-off-saved': 'Bloqueio desligado. Códigos errados não custam mais nada.',
   'lock-lifted':    'Bloqueio forte desfeito.',
+  'fw-summary':     'Firmware',
+  'fw-how':         'A placa reinicia no seu bootloader, o Micronucleus, e o '
+                  + 'navegador pede para você escolhê-lo — uma segunda lista, '
+                  + 'porque o bootloader é outro tipo de dispositivo USB. '
+                  + 'Escolha em poucos segundos, ou ele desiste e volta ao '
+                  + 'firmware antigo. As macros, a senha e o bloqueio continuam '
+                  + 'como estão. No Windows o bootloader precisa de um driver '
+                  + 'uma vez: o Zadig, instalando WinUSB para "Micronucleus".',
+  'fw-boot':        'Se o Micronucleus da placa for anterior ao 2.6, trocá-lo '
+                  + 'pelo 2.6 antes',
+  'fw-update':      'Atualizar o firmware',
+  'fw-continue':    'Continuar',
+  'fw-who':         'atualizando o firmware…',
+  'fw-too-old':     'Esse firmware não sabe reiniciar no bootloader, então '
+                  + 'atualize-o uma vez com "./build.sh upload"; daí em diante '
+                  + 'esta página consegue.',
+  'fw-none-here':   'A placa roda o firmware {on}. Esta página não tem firmware '
+                  + 'para oferecer; sirva-a a partir da pasta web do projeto.',
+  'fw-newer':       'A placa roda o firmware {on}, e o firmware {here} está '
+                  + 'disponível.',
+  'fw-same':        'A placa roda o firmware {on}, que é o mais recente desta '
+                  + 'página ({here}). Atualizar gravaria o mesmo de novo.',
+  'fw-no-webusb':   'navigator.usb não existe. O bootloader é acessado por '
+                  + 'WebUSB, que precisa do Chrome ou do Edge.',
+  'fw-ready':       'Pronto. Clique em Atualizar o firmware de novo em até meio '
+                  + 'minuto.',
+  'fw-rebooting':   'Reiniciando a placa no bootloader…',
+  'fw-pick':        'Escolha "Micronucleus" na lista do navegador.',
+  'fw-found':       'Micronucleus {version} encontrado.',
+  'fw-pick-again':  'O Micronucleus 2.6 está instalado. Agora ele espera: '
+                  + 'clique em Continuar e escolha-o de novo.',
+  'fw-erasing':     'Apagando, para {what}…',
+  'fw-writing':     'Gravando {what}…',
+  'fw-no-bootloader': 'Nenhum bootloader foi escolhido, então nada foi gravado. '
+                  + 'A placa volta sozinha ao firmware antigo em alguns '
+                  + 'segundos.',
+  'fw-no-bootloader-again': 'O bootloader não foi escolhido de novo. Ele já é '
+                  + 'o Micronucleus 2.6 e espera sem nada para rodar: atualize '
+                  + 'de novo para terminar.',
+  'fw-failed':      'A atualização parou: {msg}',
+  'fw-udev':        'No Linux o bootloader precisa da linha do Micronucleus de '
+                  + 'web/60-digimacro.rules em /etc/udev/rules.d.',
+  'fw-done':        'Firmware {fw} gravado. A placa está iniciando agora, e vai '
+                  + 'pedir o toque longo de novo.',
+  'mn-too-big':     'o firmware tem {n} bytes e este bootloader deixa {max}',
+  'mn-no-jump':     'o firmware não começa com um salto, então não dá para '
+                  + 'prepará-lo para o bootloader',
+  'mn-unsupported': 'Micronucleus {version} não é um que esta página conheça',
+  'mn-no-info':     'o bootloader não disse qual é o seu tamanho',
+  'mn-not-t85':     'esse bootloader não está num ATtiny85',
   'ref-summary':    'O que pode entrar numa macro',
   'ref-anything':   'digitado como está',
   'ref-escapes':    'nova linha, tabulação, barra invertida',
@@ -356,7 +460,11 @@ pt: {
                   + 'udevadm control --reload", depois desconecte e reconecte '
                   + 'a placa.',
   'connect-failed': 'não foi possível conectar: {msg}',
-  connected:        'conectada — firmware {fw}, protocolo {proto}',
+  connected:        'conectada — firmware {fw}{state}, protocolo {proto}',
+  'fw-link-update': '(atualizar…)',
+  'fw-link-available': '(atualização disponível)',
+  'fw-link-latest': '(o mais recente)',
+  close:            'Fechar',
   'wrong-magic':    'esse dispositivo não respondeu "DM"',
   'write-ok':       'Gravados {n} bytes, e todos lidos de volta.',
   'write-mismatch': 'divergência em {at}: gravado {wrote}, lido {read}',

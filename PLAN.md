@@ -679,8 +679,36 @@ testable, which is why they are in this order rather than firmware-then-app.
    the chip -- the only way past the lock bits -- erases the EEPROM with it.
    Both need a programmer rather than micronucleus; recommend DigiISP, or any
    other. Until then the lockout is against tapping, not against a laptop.
-7. **Reboot into the bootloader**, a command Marco wants for upgrades and
-   DigiISP already has as `0x41`. Twenty bytes: enable the watchdog and spin.
+7. **Updating the firmware from the page — done.** Option A of the three
+   Marco and I weighed: stock Micronucleus 2.6, reached over WebUSB, which is
+   what DigiISP does and has run on hardware. The alternatives were
+   Micronucleus with MS OS 2.0 descriptors, so that Windows needs no driver,
+   and a HID Micronucleus, so that no second picker is needed either. Marco's
+   call: once development settles, updates are rare, and neither saving is
+   worth a fork of somebody else's bootloader.
+
+   The reboot command is `0x41`, as in DigiISP, and costs 94 bytes. The USB
+   callback only notes the request. The main loop keeps answering for 50 ms,
+   so the host sees it complete, and then the watchdog resets the chip into
+   Micronucleus. `hidBegin()` turns the watchdog off first thing, rather than
+   trusting the bootloader to have done so.
+
+   The uploader is DigiISP's, ported to plain JavaScript, and
+   `test/micronucleus.js` follows both jumps of the laid-out firmware to
+   where they land. `./build.sh release` puts the firmware and its version
+   into `web/firmware/`, next to the unmodified upstream 2.6 upgrader.
+
+   One constraint shaped the flow: the picker needs a click no more than a few
+   seconds old, and the bootloader gives up about six seconds after it starts.
+   So the click has to find the window open and the password given; when it
+   does not, that click gets the board ready and the next one updates. After
+   the upgrader runs, the new 2.6 bootloader waits indefinitely, since there
+   is no application to time out into, so a Continue button can supply the
+   second click at leisure.
+
+   Driven end to end in headless Chrome against a simulated board and a
+   simulated Micronucleus, 1.06 upgraded to 2.6 and then the firmware, with the
+   resulting flash checked.
 
    **It must sit behind the same window as READ and WRITE**, and for a sharper
    reason than they do. A page that can reboot a board into micronucleus can

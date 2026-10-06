@@ -170,6 +170,9 @@ static uint8_t writingVnd;      /* tells usbFunctionWrite which it is serving */
 static uint16_t allowUntil;     /* the configuration window */
 static uint8_t  allowOpen;
 
+static uint8_t  rebootWanted;   /* asked for, and when: see hidPoll() */
+static uint16_t rebootAsked;
+
 static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 
 void hidAllow(uint16_t ms)
@@ -245,6 +248,16 @@ static void vndAnswer(void)
         /* Zero bytes clears it, which is how a board goes back to needing
            nothing. Reaching here at all meant getting past both gates. */
         hidSetPass(vnd + DM_VND_DATA, n);
+        break;
+
+    case DM_FUNC_REBOOT:
+        /* Only noted here. This runs inside the USB driver, and the host
+           has not yet seen the request complete -- see hidPoll(). Behind
+           both gates like everything else, and for a sharper reason than
+           the table: a board rebooted into the bootloader can be flashed
+           with anything, including a sketch that reads the table out. */
+        rebootWanted = 1;
+        rebootAsked = ticks();
         break;
 
     case DM_FUNC_READ:
@@ -373,6 +386,11 @@ void hidType_P(const char *s)
 
 void hidBegin(void)
 {
+    /* A watchdog reset leaves the watchdog running. Micronucleus turns it
+       off, but nothing here should depend on a bootloader having done so. */
+    MCUSR = 0;
+    wdt_disable();
+
     initSerial();
 
     vnd[0] = DM_FUNC_INFO;
@@ -388,7 +406,25 @@ void hidBegin(void)
     usbInit();
 }
 
-void    hidPoll(void)  { usbPoll(); }
+/* Off the bus, and let the watchdog reset us into Micronucleus, which
+   starts on every reset and turns the watchdog off again. */
+static void reboot(void)
+{
+    cli();
+    usbDeviceDisconnect();
+    wdt_enable(WDTO_15MS);
+    for (;;)
+        ;
+}
+
+void hidPoll(void)
+{
+    usbPoll();
+    /* Keep answering for a moment after the reboot was asked for, so the
+       host sees the request complete before we drop off the bus. */
+    if (rebootWanted && (uint16_t)(ticks() - rebootAsked) > 50) reboot();
+}
+
 uint8_t hidReady(void) { return usbConfiguration != 0; }
 uint8_t hidAwake(void) { return awake; }
 uint8_t hidLeds(void)  { return leds; }

@@ -35,6 +35,7 @@
 #define DM_VND_CHUNK        (DM_VND_LEN - DM_VND_DATA)
 
 #define DM_FUNC_INFO        0x40    /* magic, versions, EEPROM size, state */
+#define DM_FUNC_REBOOT      0x41    /* into the bootloader, for an upgrade */
 #define DM_FUNC_READ        0x60    /* address, count -> data */
 #define DM_FUNC_WRITE       0x61    /* address, count, data */
 #define DM_FUNC_UNLOCK      0x62    /* count, password -> accepted or not */
@@ -77,7 +78,7 @@
 #define DM_MAGIC0           'D'
 #define DM_MAGIC1           'M'
 #define DM_PROTOCOL_VERSION 2       /* 1 was the WebUSB vendor-class one */
-#define DM_FW_VERSION       2
+#define DM_FW_VERSION       3
 
 #ifdef __cplusplus
 extern "C" {

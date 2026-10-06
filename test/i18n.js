@@ -36,9 +36,20 @@ for (const l of langs) {
   i18n.setLang(l);
   const budget = i18n.t('budget', { n: 44, max: 497 });
   check(/44/.test(budget) && /497/.test(budget), `${l}: budget lost a number`);
-  const one = i18n.t('read-ok', { n: 1 }), many = i18n.t('read-ok', { n: 7 });
-  check(/1/.test(one) && /7/.test(many) && one !== many,
-        `${l}: read-ok should count, and should differ for one and many`);
+  /* The lockout's lines are mostly numbers, and a translation that dropped
+     one would mislead about exactly the thing it exists to explain. */
+  const counts = i18n.t('lock-counts', { misses: 31, softs: 32, cleared: 33 });
+  check(/31/.test(counts) && /32/.test(counts) && /33/.test(counts),
+        `${l}: lock-counts lost a number`);
+  const odds = i18n.t('lock-odds', { tries: 41, wait: '42 min', soft: 43,
+                                      hard: 1, n: 44, pct: 45 });
+  check([41, 42, 43, 44, 45].every(n => odds.includes(String(n))),
+        `${l}: lock-odds lost a number`);
+  /* ...and says one as one rather than "every 1" */
+  const one = i18n.t('lock-odds', { tries: 1, wait: '1 min', soft: 1,
+                                     hard: 1, n: 3, pct: 5 });
+  check(!/ 1 (wrong|erros)/.test(one) && one !== odds,
+        `${l}: lock-odds should say one wrong code as one`);
   check(/Blah/.test(i18n.t('not-a-key', { what: 'Blah' })),
         `${l}: not-a-key lost what it was about`);
   /* {what} inside braces, which is how the brace forms are quoted back */

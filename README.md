@@ -301,7 +301,7 @@ it only does once there is one — and gives up waiting after a second and a hal
 in case a host never does.
 
 The editor encodes as you type, so a mistake is reported beside the macro that
-has it, and the byte budget — 497 of them — is always on screen. Nothing is
+has it, and the byte budget — 480 of them — is always on screen. Nothing is
 written until every macro is valid.
 
 Accented characters are the host's business, not the board's: it sends key

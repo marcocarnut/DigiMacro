@@ -19,7 +19,6 @@ en: {
   keyboard:         'keyboard',
   language:         'language',
   connect:          'Connect',
-  'connect-hint':   'not connected yet',
   macros:           'Macros',
   'th-code':        'Code',
   'th-types':       'Types',
@@ -40,11 +39,7 @@ en: {
   repeat:           'repeat',
   'pad-hint':       'Inserts at the cursor in whichever macro you were last '
                   + 'editing. A modifier stays pressed until the next key.',
-  read:             'Read from the board',
   write:            'Write to the board',
-  'log-initial':    'Nothing yet. Connect, then hold the pad for four seconds '
-                  + 'when the board asks — it stays a keyboard throughout, and '
-                  + 'the hold is the one thing a web page cannot do for itself.',
 
   'sec-summary':    'Password',
   'sec-none':       'This board has no password, which is the usual thing and '
@@ -52,26 +47,37 @@ en: {
                   + 'out, and plenty of macros are not secret. Set one if the '
                   + 'table is worth protecting from somebody holding the '
                   + 'board.',
-  'sec-locked':     'This board has a password. It will be asked for before '
-                  + 'the table can be read or written, once per session.',
-  'sec-unlocked':   'This board has a password, and it has been given. It will '
-                  + 'be asked for again after the window closes.',
   'set-password':   'Set',
   'change-password':'Change',
   'clear-password': 'Remove it',
-  'ph-password':    'a password, up to 12 characters',
+  'ph-password':    'a new password, up to 12 characters',
+  'ph-gate-password': 'password',
+  'gate-hold':      'Hold the pad for four seconds to let this page in. The '
+                  + 'board stays a keyboard the whole time; the hold is the one '
+                  + 'thing a web page cannot do for itself.',
+  'gate-hold-password': 'This board has a password. Type it here, and hold the '
+                  + 'pad for four seconds — in either order.',
+  'gate-type-password': 'The pad was held. Now the password.',
+  'gate-waiting':   'Got it. Now hold the pad for four seconds.',
+  'gate-reading':   'Reading the board…',
+  'password-empty-unlock': 'Type the password first.',
+  'hold-now':       'Hold the pad for four seconds to let this through — the '
+                  + 'last hold has run out.',
+  'hold-timeout':   'Nobody held the pad, so nothing was done.',
+  writing:          'Writing…',
+  'sec-has':        'This board has a password. Change it here, or remove it '
+                  + 'to make the board open to anyone who can hold the pad.',
+  'board-left':     'the board was unplugged',
+  'read-none':      'The board has no macros on it yet. Add some, and Write '
+                  + 'puts them there.',
+  'sample-say':     'An example of each thing a macro can do. Write puts it on '
+                  + 'the board, over what is there now.',
   unlock:           'Unlock',
-  unlocked:         'Unlocked, until the window closes.',
-  'needs-password': 'This board has a password. Type it in the Password '
-                  + 'section below and press Unlock.',
-  'unlock-to-change': 'Press Unlock with the current password first, then type '
-                  + 'the new one and press Change.',
-  'wrong-password': 'That is not the password. The board waits a second after '
-                  + 'each wrong answer, and with the lockout on it counts as a '
-                  + 'wrong code.',
+  'wrong-password': 'That is not the password. Try again in a second; with the '
+                  + 'lockout on, each wrong one counts as a wrong code.',
   'password-empty': 'Type a password first, or use Remove it.',
-  'password-set':   'Password set. It is asked for once per session, and the '
-                  + 'board still types its macros without it.',
+  'password-set':   'Password set. This page keeps it until the board is '
+                  + 'unplugged, and the board types its macros without it.',
   'password-cleared': 'Password removed. The board is open to anyone who can '
                   + 'hold the pad.',
   'lock-summary':   'Lockout',
@@ -87,7 +93,6 @@ en: {
   'lock-soft':      'wrong codes before a pause',
   'lock-wait':      'pause, in seconds',
   'lock-hard':      'pauses in a row before a hard lock (0: never)',
-  'lock-read':      'Read',
   'lock-save':      'Save',
   'lock-needs-password': 'The lockout needs a password, since giving it is the '
                   + 'only way to lift a hard lock. Set one above first.',
@@ -97,19 +102,22 @@ en: {
   'lock-state-hard': 'The board is locked hard and ignores every tap. Hold the '
                   + 'pad for four seconds, type the password in the Password '
                   + 'section and press Unlock.',
-  'lock-odds':      'Someone guessing gets at most {tries} codes before the '
-                  + 'board locks hard, and waits {wait} after every {soft}. '
-                  + 'With {n} of the 62 codes in use, each guess has about a '
-                  + '{pct}% chance.',
-  'lock-odds-nohard': 'With no hard lock, someone guessing gets {soft} codes '
-                  + 'every {wait}, for as long as they keep at it. With {n} of '
-                  + 'the 62 codes in use, each guess has about a {pct}% chance.',
+  'lock-odds':      p => `Someone guessing gets at most ${p.tries} `
+                  + `${p.tries == 1 ? 'code' : 'codes'} before the board locks `
+                  + `hard, with a ${p.wait} pause after `
+                  + `${p.soft == 1 ? 'each wrong one' : `every ${p.soft} wrong`}. `
+                  + `With ${p.n} of the 62 codes in use, each guess has about a `
+                  + `${p.pct}% chance.`,
+  'lock-odds-nohard': p => `With no hard lock, someone guessing gets a `
+                  + `${p.wait} pause after `
+                  + `${p.soft == 1 ? 'each wrong code' : `every ${p.soft} wrong codes`}, `
+                  + `for as long as they keep at it. With ${p.n} of the 62 codes `
+                  + `in use, each guess has about a ${p.pct}% chance.`,
   'lock-bad':       'Wrong codes before a pause must be 1 to 254, pauses in a '
                   + 'row 0 to 254, and the pause 10 to 2400 seconds in steps '
                   + 'of ten.',
   'lock-counts':    'Wrong codes now: {misses}. Pauses in a row: {softs}. Hard '
                   + 'locks lifted with the password, ever: {cleared}.',
-  'lock-read-ok':   'Lockout settings read from the board.',
   'lock-saved':     'Lockout saved. Its counts start again from zero.',
   'lock-off-saved': 'Lockout off. Wrong codes cost nothing now.',
   'lock-lifted':    'Hard lock lifted.',
@@ -131,7 +139,7 @@ en: {
                   + '700 ms of silence ends it. Sixty-two codes exist, so a '
                   + 'table that uses many of them is easier to guess — which '
                   + 'is what the lockout is for.',
-  'ref-packed':     'Macros are packed end to end, so the only limit is 497 '
+  'ref-packed':     'Macros are packed end to end, so the only limit is 480 '
                   + 'bytes in total: two bytes of overhead each, one byte per '
                   + 'keystroke, two per pause or repeat.',
   'ref-layout':     'The board sends key presses, not letters, so what appears '
@@ -145,10 +153,6 @@ en: {
 
   'no-webhid':      'navigator.hid is missing. WebHID needs Chrome or Edge, '
                   + 'over https or localhost.',
-  'hold-to-open':   'Hold the pad for four seconds to let the app read and '
-                  + 'write the table. The board stays a keyboard the whole '
-                  + 'time; the hold is the part a web page cannot do for '
-                  + 'itself.',
   refused:          'The board said no. Hold the pad for four seconds and try '
                   + 'again — reaching the table needs somebody at the board.',
   'udev-hint':      'On Linux a hidraw device is root-only until a udev rule '
@@ -157,24 +161,9 @@ en: {
                   + '--reload", then unplug the board and plug it back in.',
   'connect-failed': 'could not connect: {msg}',
   connected:        'connected — firmware {fw}, protocol {proto}',
-  'connected-say':  'Connected. Read the board to edit what is on it, or write '
-                  + 'what is here over it.',
-  'not-connected':  'not connected',
-  'board-left':     'the board left — it is a keyboard again',
-  'board-left-say': 'The board is a keyboard again, so it is no longer a device '
-                  + 'this page can talk to. Hold the pad four seconds to bring '
-                  + 'it back.',
   'wrong-magic':    'that device did not answer "DM"',
-  'read-none':      'The board has no macros on it yet.',
-  'read-ok':        p => `Read ${p.n} macro${p.n > 1 ? 's' : ''} off the board.`,
   'write-ok':       'Wrote {n} bytes and read every one of them back.',
   'write-mismatch': 'mismatch at {at}: wrote {wrote}, read {read}',
-  'write-then-tap': 'Hold the pad for four seconds to become a keyboard again, '
-                  + 'then tap a code.',
-  'leave-ok':       'The board is a keyboard again. Tap a code.',
-  'sample-say':     'An example of each thing a macro can do. Write it, then '
-                  + 'hold the pad four seconds to become a keyboard again and '
-                  + 'tap the codes.',
 
   'lone-backslash': 'a lone \\ at the end',
   'bad-escape':     '\\{what} means nothing',
@@ -210,7 +199,6 @@ pt: {
   keyboard:         'teclado',
   language:         'idioma',
   connect:          'Conectar',
-  'connect-hint':   'ainda não conectada',
   macros:           'Macros',
   'th-code':        'Código',
   'th-types':       'Digita',
@@ -231,38 +219,45 @@ pt: {
   repeat:           'repetir',
   'pad-hint':       'Insere no cursor da macro que você estava editando. Um '
                   + 'modificador fica pressionado até a próxima tecla.',
-  read:             'Ler da placa',
   write:            'Gravar na placa',
-  'log-initial':    'Nada ainda. Conecte e segure o sensor por quatro segundos '
-                  + 'quando a placa pedir — ela continua sendo teclado o tempo '
-                  + 'todo, e segurar é a única coisa que uma página não '
-                  + 'consegue fazer sozinha.',
 
   'sec-summary':    'Senha',
   'sec-none':       'Esta placa não tem senha, que é o normal e está ótimo: '
                   + 'segurar o sensor é o que mantém uma página web de fora, e '
                   + 'muitas macros não são secretas. Defina uma se a tabela '
                   + 'merecer proteção contra quem estiver com a placa na mão.',
-  'sec-locked':     'Esta placa tem senha. Ela será pedida antes de ler ou '
-                  + 'gravar a tabela, uma vez por sessão.',
-  'sec-unlocked':   'Esta placa tem senha, e ela já foi dada. Será pedida de '
-                  + 'novo depois que a janela fechar.',
   'set-password':   'Definir',
   'change-password':'Trocar',
   'clear-password': 'Remover',
-  'ph-password':    'uma senha, até 12 caracteres',
+  'ph-password':    'uma senha nova, até 12 caracteres',
+  'ph-gate-password': 'senha',
+  'gate-hold':      'Segure o sensor por quatro segundos para deixar esta '
+                  + 'página entrar. A placa continua sendo teclado o tempo '
+                  + 'todo; segurar é a única coisa que uma página não consegue '
+                  + 'fazer sozinha.',
+  'gate-hold-password': 'Esta placa tem senha. Digite-a aqui e segure o sensor '
+                  + 'por quatro segundos — em qualquer ordem.',
+  'gate-type-password': 'O sensor foi segurado. Agora a senha.',
+  'gate-waiting':   'Certo. Agora segure o sensor por quatro segundos.',
+  'gate-reading':   'Lendo a placa…',
+  'password-empty-unlock': 'Digite a senha primeiro.',
+  'hold-now':       'Segure o sensor por quatro segundos para continuar — o '
+                  + 'último toque longo já expirou.',
+  'hold-timeout':   'Ninguém segurou o sensor, então nada foi feito.',
+  writing:          'Gravando…',
+  'sec-has':        'Esta placa tem senha. Troque-a aqui, ou remova-a para '
+                  + 'deixar a placa aberta a quem conseguir segurar o sensor.',
+  'board-left':     'a placa foi desconectada',
+  'read-none':      'A placa ainda não tem macros. Adicione algumas, e Gravar '
+                  + 'as coloca nela.',
+  'sample-say':     'Um exemplo de cada coisa que uma macro sabe fazer. Gravar '
+                  + 'o coloca na placa, por cima do que houver.',
   unlock:           'Destravar',
-  unlocked:         'Destravada, até a janela fechar.',
-  'needs-password': 'Esta placa tem senha. Digite-a na seção Senha abaixo e '
-                  + 'clique em Destravar.',
-  'unlock-to-change': 'Clique em Destravar com a senha atual primeiro, depois '
-                  + 'digite a nova e clique em Trocar.',
-  'wrong-password': 'Essa não é a senha. A placa espera um segundo a cada '
-                  + 'resposta errada, e com o bloqueio ligado ela conta como '
-                  + 'código errado.',
+  'wrong-password': 'Essa não é a senha. Tente de novo daqui a um segundo; com '
+                  + 'o bloqueio ligado, cada uma errada conta como código errado.',
   'password-empty': 'Digite uma senha primeiro, ou use Remover.',
-  'password-set':   'Senha definida. É pedida uma vez por sessão, e a placa '
-                  + 'continua digitando as macros sem ela.',
+  'password-set':   'Senha definida. Esta página a guarda até a placa ser '
+                  + 'desconectada, e a placa digita as macros sem ela.',
   'password-cleared': 'Senha removida. A placa está aberta a quem conseguir '
                   + 'segurar o sensor.',
   'lock-summary':   'Bloqueio',
@@ -279,7 +274,6 @@ pt: {
   'lock-soft':      'códigos errados antes de uma pausa',
   'lock-wait':      'pausa, em segundos',
   'lock-hard':      'pausas seguidas antes do bloqueio forte (0: nunca)',
-  'lock-read':      'Ler',
   'lock-save':      'Salvar',
   'lock-needs-password': 'O bloqueio precisa de uma senha, porque dá-la é o '
                   + 'único jeito de desfazer um bloqueio forte. Defina uma acima '
@@ -290,21 +284,23 @@ pt: {
   'lock-state-hard': 'A placa está em bloqueio forte e ignora todo toque. '
                   + 'Segure o sensor por quatro segundos, digite a senha na '
                   + 'seção Senha e clique em Destravar.',
-  'lock-odds':      'Quem tentar adivinhar tem no máximo {tries} códigos antes '
-                  + 'do bloqueio forte, e espera {wait} a cada {soft}. Com {n} '
-                  + 'dos 62 códigos em uso, cada tentativa tem cerca de {pct}% '
-                  + 'de chance.',
-  'lock-odds-nohard': 'Sem bloqueio forte, quem tentar adivinhar tem {soft} '
-                  + 'códigos a cada {wait}, pelo tempo que insistir. Com {n} '
-                  + 'dos 62 códigos em uso, cada tentativa tem cerca de {pct}% '
-                  + 'de chance.',
+  'lock-odds':      p => `Quem tentar adivinhar tem no máximo ${p.tries} `
+                  + `${p.tries == 1 ? 'código' : 'códigos'} antes do bloqueio `
+                  + `forte, com uma pausa de ${p.wait} `
+                  + `${p.soft == 1 ? 'a cada erro' : `a cada ${p.soft} erros`}. `
+                  + `Com ${p.n} dos 62 códigos em uso, cada tentativa tem cerca `
+                  + `de ${p.pct}% de chance.`,
+  'lock-odds-nohard': p => `Sem bloqueio forte, quem tentar adivinhar leva uma `
+                  + `pausa de ${p.wait} `
+                  + `${p.soft == 1 ? 'a cada código errado' : `a cada ${p.soft} códigos errados`}, `
+                  + `pelo tempo que insistir. Com ${p.n} dos 62 códigos em uso, `
+                  + `cada tentativa tem cerca de ${p.pct}% de chance.`,
   'lock-bad':       'Códigos errados antes de uma pausa devem ser de 1 a 254, '
                   + 'pausas seguidas de 0 a 254, e a pausa de 10 a 2400 '
                   + 'segundos, de dez em dez.',
   'lock-counts':    'Códigos errados agora: {misses}. Pausas seguidas: '
                   + '{softs}. Bloqueios fortes desfeitos com a senha, desde '
                   + 'sempre: {cleared}.',
-  'lock-read-ok':   'Configuração de bloqueio lida da placa.',
   'lock-saved':     'Bloqueio salvo. As contagens recomeçam do zero.',
   'lock-off-saved': 'Bloqueio desligado. Códigos errados não custam mais nada.',
   'lock-lifted':    'Bloqueio forte desfeito.',
@@ -328,7 +324,7 @@ pt: {
                   + 'deles é mais fácil de adivinhar — que é para isso que '
                   + 'serve o bloqueio.',
   'ref-packed':     'As macros ficam empacotadas uma após a outra, então o '
-                  + 'único limite são 497 bytes no total: dois bytes de '
+                  + 'único limite são 480 bytes no total: dois bytes de '
                   + 'cabeçalho cada, um byte por tecla, dois por pausa ou '
                   + 'repetição.',
   'ref-layout':     'A placa envia pressionamentos de tecla, não letras, então '
@@ -342,10 +338,6 @@ pt: {
 
   'no-webhid':      'navigator.hid não existe. WebHID precisa do Chrome ou do '
                   + 'Edge, por https ou localhost.',
-  'hold-to-open':   'Segure o sensor por quatro segundos para o aplicativo '
-                  + 'poder ler e gravar a tabela. A placa continua sendo '
-                  + 'teclado o tempo todo; segurar é a parte que uma página '
-                  + 'não consegue fazer sozinha.',
   refused:          'A placa recusou. Segure o sensor por quatro segundos e '
                   + 'tente de novo — chegar à tabela exige alguém na placa.',
   'udev-hint':      'No Linux um dispositivo hidraw é só do root até que uma '
@@ -355,25 +347,9 @@ pt: {
                   + 'a placa.',
   'connect-failed': 'não foi possível conectar: {msg}',
   connected:        'conectada — firmware {fw}, protocolo {proto}',
-  'connected-say':  'Conectada. Leia a placa para editar o que está nela, ou '
-                  + 'grave por cima o que está aqui.',
-  'not-connected':  'não conectada',
-  'board-left':     'a placa saiu — voltou a ser teclado',
-  'board-left-say': 'A placa voltou a ser teclado, então não é mais um '
-                  + 'dispositivo com que esta página possa falar. Segure o '
-                  + 'sensor por quatro segundos para trazê-la de volta.',
   'wrong-magic':    'esse dispositivo não respondeu "DM"',
-  'read-none':      'A placa ainda não tem macros.',
-  'read-ok':        p => p.n > 1 ? `Lidas ${p.n} macros da placa.`
-                                 : 'Lida 1 macro da placa.',
   'write-ok':       'Gravados {n} bytes, e todos lidos de volta.',
   'write-mismatch': 'divergência em {at}: gravado {wrote}, lido {read}',
-  'write-then-tap': 'Segure o sensor por quatro segundos para voltar a ser '
-                  + 'teclado e toque um código.',
-  'leave-ok':       'A placa voltou a ser teclado. Toque um código.',
-  'sample-say':     'Um exemplo de cada coisa que uma macro pode fazer. Grave, '
-                  + 'depois segure o sensor por quatro segundos para voltar a '
-                  + 'ser teclado e toque os códigos.',
 
   'lone-backslash': 'uma \\ sozinha no fim',
   'bad-escape':     '\\{what} não significa nada',

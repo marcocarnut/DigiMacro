@@ -75,8 +75,16 @@
   details table { margin-top: .8rem; max-width: 40rem; }
   details td { padding: .15rem .8rem .15rem 0; }
   details td:first-child { font-family: ui-monospace, monospace; white-space: nowrap; }
-  .pick input[type=number] { width: 5rem; }
-  #lockstate:empty, #lockodds:empty, #lockcount:empty { display: none; }
+  [hidden] { display: none !important; }
+  .note { font-size: .85rem; margin: .5rem 0 0; max-width: 44rem; }
+  .note:empty, .prose:empty { display: none; }
+  .prose { max-width: 40rem; }
+  #gate { margin-top: 1.4rem; }
+  .form { display: grid; grid-template-columns: max-content 6rem;
+          gap: .55rem 1rem; align-items: center; margin: .9rem 0; }
+  .form .check { grid-column: 1 / -1; display: flex; gap: .45rem;
+                 align-items: center; }
+  .form input[type=number] { width: 100%; }
   kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line);
         border-bottom-width: 2px; border-radius: .25rem; padding: 0 .3rem; }
 </style>
@@ -100,7 +108,22 @@
   <button id="connect" class="primary" data-t="connect">Connect</button>
   <span id="who" class="dim"></span>
 </div>
+<p class="note" id="connect-note"></p>
 
+<!-- Connected, and not in yet: the hold, and the password if there is one. -->
+<section id="gate" hidden>
+  <p id="gate-lock" class="bad"></p>
+  <p id="gate-msg"></p>
+  <div class="bar" id="gate-pass">
+    <input id="gatepass" type="password" size="16" spellcheck="false"
+           autocomplete="current-password" data-ph="ph-gate-password">
+    <button id="unlock" class="primary" data-t="unlock">Unlock</button>
+  </div>
+  <p class="note" id="gate-note"></p>
+</section>
+
+<!-- In: everything the board holds. -->
+<section id="board" hidden>
 <h2 data-t="macros">Macros</h2>
 <table>
   <thead><tr><th style="width:7.5rem" data-t="th-code">Code</th>
@@ -119,7 +142,7 @@
   <button id="add" data-t="add-macro">Add a macro</button>
   <button id="sample" data-t="load-example">Load the example</button>
   <span class="spacer"></span>
-  <span id="budget" class="dim">1 of 497 bytes</span>
+  <span id="budget" class="dim"></span>
   <span class="meter" id="meter"><i style="width:0"></i></span>
 </div>
 
@@ -148,47 +171,39 @@
 <p class="hint" data-t="pad-hint"></p>
 
 <div class="bar" style="margin-top:1.4rem">
-  <button id="read" disabled data-t="read">Read from the board</button>
-  <button id="write" class="primary" disabled data-t="write">Write to the board</button>
+  <button id="write" class="primary" data-t="write">Write to the board</button>
 </div>
+<p class="note" id="write-note"></p>
 
-<pre id="log" class="dim" data-t="log-initial"></pre>
+<h2 data-t="sec-summary">Password</h2>
+<p class="dim prose" id="secwhy"></p>
+<div class="bar">
+  <input id="passval" type="password" size="30" spellcheck="false"
+         autocomplete="new-password" data-ph="ph-password">
+  <button id="setpass" data-t="set-password">Set</button>
+  <button id="clearpass" data-t="clear-password">Remove it</button>
+</div>
+<p class="note" id="pass-note"></p>
 
-<details id="sec">
-  <summary data-t="sec-summary">Password</summary>
-  <p class="dim" style="max-width:40rem" id="secwhy"></p>
-  <p class="bar">
-    <input id="passval" type="password" size="16" spellcheck="false"
-           autocomplete="off" data-ph="ph-password">
-    <button id="unlock" data-t="unlock">Unlock</button>
-    <button id="setpass" data-t="set-password">Set</button>
-    <button id="clearpass" data-t="clear-password">Remove it</button>
-  </p>
-</details>
-
-<details id="lock">
-  <summary data-t="lock-summary">Lockout</summary>
-  <p class="dim" style="max-width:40rem" data-t="lock-why"></p>
-  <p id="lockstate" class="bad" style="max-width:40rem"></p>
-  <p class="bar">
-    <label class="pick"><input id="lockon" type="checkbox">
-      <span data-t="lock-enable"></span></label>
-  </p>
-  <p class="bar">
-    <label class="pick"><span data-t="lock-soft"></span>
-      <input id="locksoft" type="number" min="1" max="254" value="3"></label>
-    <label class="pick"><span data-t="lock-wait"></span>
-      <input id="lockwait" type="number" min="10" max="2400" step="10" value="60"></label>
-    <label class="pick"><span data-t="lock-hard"></span>
-      <input id="lockhard" type="number" min="0" max="254" value="3"></label>
-  </p>
-  <p id="lockodds" class="dim" style="max-width:40rem"></p>
-  <p id="lockcount" class="dim" style="max-width:40rem"></p>
-  <p class="bar">
-    <button id="lockread" data-t="lock-read">Read</button>
-    <button id="locksave" data-t="lock-save">Save</button>
-  </p>
-</details>
+<h2 data-t="lock-summary">Lockout</h2>
+<p class="dim prose" data-t="lock-why"></p>
+<p id="lockstate" class="prose"></p>
+<div class="form">
+  <label class="check"><input id="lockon" type="checkbox">
+    <span data-t="lock-enable"></span></label>
+  <label for="locksoft" data-t="lock-soft"></label>
+  <input id="locksoft" type="number" min="1" max="254" value="3">
+  <label for="lockwait" data-t="lock-wait"></label>
+  <input id="lockwait" type="number" min="10" max="2400" step="10" value="60">
+  <label for="lockhard" data-t="lock-hard"></label>
+  <input id="lockhard" type="number" min="0" max="254" value="3">
+</div>
+<p id="lockodds" class="dim prose"></p>
+<p id="lockcount" class="dim prose"></p>
+<div class="bar">
+  <button id="locksave" data-t="lock-save">Save</button>
+</div>
+<p class="note" id="lock-note"></p>
 
 <details>
   <summary data-t="ref-summary">What can go in a macro</summary>
@@ -207,10 +222,11 @@
     <tr><td>á ç ã</td><td data-t="ref-accent"></td></tr>
     <tr><td>{'}</td><td data-t="ref-bare-mark"></td></tr>
   </table>
-  <p class="dim" style="max-width:40rem" data-t="ref-layout"></p>
-  <p class="dim" style="max-width:40rem" data-t="ref-codes"></p>
-  <p class="dim" style="max-width:40rem" data-t="ref-packed"></p>
+  <p class="dim prose" data-t="ref-layout"></p>
+  <p class="dim prose" data-t="ref-codes"></p>
+  <p class="dim prose" data-t="ref-packed"></p>
 </details>
+</section>
 </main>
 
 <script src="i18n.js"></script>
@@ -236,43 +252,32 @@ const LOCK_ADDR = 0x1EC;
 const LOCK_LEN  = 6;
 const LOCK_OFF  = 0xFF;         /* a threshold of 0 or 0xFF is no threshold */
 
-
 let dev = null, eeSize = 512;
 let macros = [{ code: '.', text: '' }];
 let auto = AUTO_NONE;           /* the header byte of the power-on macro */
 let state_byte = 0;             /* what INFO last said about the gates */
 
 const $ = id => document.getElementById(id);
-
-/* The status line is written by hand rather than marked up, so it has to
-   remember what it is saying in order to say it again in another language. */
-let whoKey = 'connect-hint', whoParams = {}, whoOk = false;
-
-function connected(yes, key, params) {
-  whoKey = key; whoParams = params || {}; whoOk = yes;
-  renderWho();
-  $('read').disabled = !yes;
-  $('connect').disabled = yes;
-  draw();                       /* Write also wants the macros to be valid */
-}
-
-function renderWho() {
-  $('who').textContent = t(whoKey, whoParams);
-  $('who').className = whoOk ? 'ok' : 'dim';
-}
-const log = $('log');
-let lines = [];
-const say = (s, cls) => {
-  lines.push(cls ? `<span class="${cls}">${s}</span>` : s);
-  log.innerHTML = lines.join('\n');
-  log.className = '';
-  /* Once it holds a record of what happened, it is no longer the standing
-     invitation the markup put there, and changing language must not put that
-     back over it. */
-  log.removeAttribute('data-t');
-};
-const fresh = () => { lines = []; log.innerHTML = ''; };
 const hex2 = v => v.toString(16).padStart(2, '0');
+
+/* Every action says what happened right under the button that started it,
+   rather than in one log at the top of the page where it would go unread.
+   The status beside Connect is kept as a key, so a change of language can
+   say it again; the notes are what happened, and stay as they were said. */
+function note(id, text, cls) {
+  $(id).textContent = text;
+  $(id).className = 'note' + (cls ? ' ' + cls : '');
+}
+
+let whoKey = '', whoParams = {}, whoCls = 'dim';
+function who(key, params, cls) {
+  whoKey = key; whoParams = params || {}; whoCls = cls || 'dim';
+  renderWho();
+}
+function renderWho() {
+  $('who').textContent = whoKey ? t(whoKey, whoParams) : '';
+  $('who').className = whoCls;
+}
 
 /* ---- the device ---------------------------------------------------- */
 
@@ -300,7 +305,6 @@ async function ask(cmd, addr = 0, count = 0, data = null) {
 const eeRead = async (addr, len) =>
   (await ask(F_READ, addr, len)).slice(DATA_AT, DATA_AT + len);
 const eeWrite = (addr, bytes) => ask(F_WRITE, addr, bytes.length, bytes);
-
 
 /* ---- the editor ---------------------------------------------------- */
 
@@ -370,7 +374,7 @@ function draw() {
   m.firstElementChild.style.width =
     Math.min(100, st.total * 100 / TABLE_TOP) + '%';
   m.className = 'meter' + (st.error ? ' full' : '');
-  $('write').disabled = !dev || !st.ok;
+  $('write').disabled = !dev || !st.ok || busy;
   drawAuto();
   drawLock();                   /* the odds depend on how many codes are used */
 }
@@ -387,7 +391,7 @@ $('list').addEventListener('input', e => {
     Math.min(100, st.total * 100 / TABLE_TOP) + '%';
   $('meter').className = 'meter' + (st.error ? ' full' : '');
   e.target.classList.toggle('bad', !!st.each[i].error && f === 'text');
-  $('write').disabled = !dev || !st.ok;
+  $('write').disabled = !dev || !st.ok || busy;
 });
 $('list').addEventListener('change', draw);
 $('list').addEventListener('click', e => {
@@ -410,17 +414,44 @@ $('auto').onchange = () => {
   auto = $('auto').value === '' ? AUTO_NONE : Number($('auto').value);
 };
 
-$('sample').onclick = () => { macros = sampleRows(); draw(); fresh();
-  say(t('sample-say')); };
+$('sample').onclick = () => {
+  macros = sampleRows();
+  draw();
+  note('write-note', t('sample-say'), 'dim');
+};
 
-/* ---- connect, read, write ------------------------------------------ */
+/* ---- connect, and the way in ----------------------------------------
+ *
+ * Three stages, and the page shows one at a time: nothing connected, so only
+ * Connect; connected but not in, so only the hold and the password; and in,
+ * with everything the board holds already read and on screen.
+ *
+ * The hold is what lets anyone in, and it lasts half a minute. Editing takes
+ * longer than that, so every action asks for it again when it has lapsed and
+ * waits for it rather than failing. The password is kept for as long as the
+ * board stays plugged in, so that the hold is all a second save needs; it
+ * lives in this page's memory and nowhere else, and unplugging the board
+ * forgets it, so the next plug-in asks again.
+ */
+let password = null;            /* given, and right, this connection */
+let busy = false;               /* one conversation with the board at a time */
+let stage = 'none';             /* 'none', 'gate' or 'board' */
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function show(s) {
+  stage = s;
+  $('connect').hidden = s !== 'none';
+  $('gate').hidden = s !== 'gate';
+  $('board').hidden = s !== 'board';
+}
 
 /* `ask` is whether we may put the picker up, which needs a real click behind
    it. The device coming back on its own has no click, so it takes what the
    origin was already given and stops there rather than failing noisily. */
 async function connect(mayAsk) {
-  fresh();
-  if (!navigator.hid) { say(t('no-webhid'), 'bad'); return; }
+  note('connect-note', '');
+  if (!navigator.hid) { note('connect-note', t('no-webhid'), 'bad'); return; }
   try {
     /* A device this origin already knows comes back without the picker. */
     const known = await navigator.hid.getDevices();
@@ -429,30 +460,27 @@ async function connect(mayAsk) {
     if (!dev && mayAsk)
       dev = (await navigator.hid.requestDevice(
                { filters: [{ vendorId: 0x16c0, usagePage: 0xFF00 }] }))[0];
-    if (!dev) { connected(false, 'not-connected'); return; }
+    if (!dev) return;
     if (!dev.opened) await dev.open();
 
     const b = await ask(F_INFO);
     if (String.fromCharCode(b[1], b[2]) !== 'DM') {
-      say(t('wrong-magic'), 'bad'); dev = null; return;
+      note('connect-note', t('wrong-magic'), 'bad'); dev = null; return;
     }
     eeSize = b[5] | (b[6] << 8);
     state_byte = b[7];
-    connected(true, 'connected', { fw: b[4], proto: b[3] });
-    say(t('connected-say'), 'ok');
-    if (state_byte & ST_HARDLOCK) say(t('lock-state-hard'), 'bad');
-    else if (state_byte & ST_SOFTLOCK) say(t('lock-state-soft'), 'bad');
-    if (!(state_byte & ST_OPEN)) say(t('hold-to-open'), 'dim');
-    drawSecurity();
+    who('connected', { fw: b[4], proto: b[3] }, 'ok');
+    show('gate');
+    gate();
   } catch (e) {
     dev = null;
-    connected(false, 'not-connected');
-    say(t('connect-failed', { msg: e.message }), 'bad');
+    note('connect-note', t('connect-failed', { msg: e.message }), 'bad');
     /* Only when it is one: "failed to open" on Linux is a file permission
        wearing a browser's error message, but a dismissed picker is not, and
        answering the wrong question is worse than saying nothing. */
     if (navigator.userAgent.includes('Linux') && /open/i.test(e.message))
-      say(t('udev-hint'), 'dim');
+      note('connect-note', t('connect-failed', { msg: e.message }) + ' '
+                           + t('udev-hint'), 'bad');
   }
 }
 
@@ -461,66 +489,181 @@ $('connect').onclick = () => connect(true);
 navigator.hid?.addEventListener('disconnect', ev => {
   if (dev && ev.device !== dev) return;
   dev = null;
-  connected(false, 'board-left');
-  say(t('board-left-say'), 'dim');
+  password = null;              /* the next plug-in asks again */
+  $('gatepass').value = '';
+  show('none');
+  who('board-left', {}, 'dim');
 });
 
 navigator.hid?.addEventListener('connect', ev => {
   if (dev || ev.device.vendorId !== 0x16c0) return;
-  $('connect').disabled = false;
-  connect(false);              /* no click behind this, so no picker */
+  connect(false);               /* no click behind this, so no picker */
 });
 
+/* Whether the board wants a password before it will answer: it has one, and
+   either it has not been given this session or a hard lock wants it again. */
+const wantsPassword = s =>
+  !!(s & ST_PASSWORD) && (!(s & ST_UNLOCKED) || !!(s & ST_HARDLOCK));
 
-$('read').onclick = async () => {
-  fresh();
+/* The password, once the window is open. False if the board said no; a wrong
+   one is forgotten, so it is never tried twice and never counted twice. */
+async function tryUnlock(noteId) {
+  const hard = !!(state_byte & ST_HARDLOCK);
+  const bytes = bytesOf(password);
   try {
-    await refreshState();
-    if (!(await unlock())) return;
-    const ee = new Uint8Array(TABLE_TOP);
-    for (let a = 0; a < TABLE_TOP; a += CHUNK)
-      ee.set(await eeRead(a, Math.min(CHUNK, TABLE_TOP - a)), a);
-    const got = decodeTable(ee);
-    if (!got.length) {
-      say(t('read-none'), 'dim');
-      return;
-    }
-    macros = got;
-    auto = (await eeRead(AUTO_ADDR, 1))[0];
-    lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
-    draw();
-    say(t('read-ok', { n: got.length }), 'ok');
-    if (auto !== AUTO_NONE && $('auto').value === '')
-      say(t('auto-dangling'), 'dim');
+    await ask(F_UNLOCK, 0, bytes.length, bytes);
   } catch (e) {
-    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
+    if (e.message !== 'REFUSED') throw e;
+    /* No to a shut window and no to a wrong password look the same, so ask
+       which before saying which. */
+    await refreshState();
+    if (state_byte & ST_OPEN) {
+      password = null;
+      note(noteId, t('wrong-password'), 'bad');
+    }
+    return false;
   }
-};
+  await refreshState();
+  if (hard) note(noteId, t('lock-lifted'), 'ok');
+  return true;
+}
 
-$('write').onclick = async () => {
-  fresh();
+/* Waits for the hold, and the password if there is one, then reads the board.
+   Runs until it gets in or the board goes away. */
+async function gate() {
+  const me = dev;
+  note('gate-note', '');
+  while (dev === me && stage === 'gate') {
+    try {
+      const s = await refreshState();
+      drawGate();
+      if (s & ST_OPEN) {
+        if (!wantsPassword(s) || (password !== null && await tryUnlock('gate-note'))) {
+          await enterBoard();
+          return;
+        }
+      }
+    } catch (e) {
+      if (dev !== me) return;
+      note('gate-note', e.message, 'bad');
+    }
+    await sleep(400);
+  }
+}
+
+function drawGate() {
+  const has = !!(state_byte & ST_PASSWORD);
+  const open = !!(state_byte & ST_OPEN);
+  $('gate-lock').textContent = state_byte & ST_HARDLOCK ? t('lock-state-hard')
+                             : state_byte & ST_SOFTLOCK ? t('lock-state-soft') : '';
+  $('gate-pass').hidden = !has;
+  $('gate-msg').textContent = !open ? t(has ? 'gate-hold-password' : 'gate-hold')
+                            : password === null ? t('gate-type-password')
+                            : t('gate-reading');
+  if (open && password === null && has && document.activeElement !== $('gatepass'))
+    $('gatepass').focus();
+}
+
+/* The password goes in whenever it is typed; the gate tries it once the
+   window is open, so it does not matter which comes first. */
+function givePassword() {
+  const v = $('gatepass').value;
+  if (!v) { note('gate-note', t('password-empty-unlock'), 'bad'); return; }
+  password = v;
+  $('gatepass').value = '';
+  note('gate-note', state_byte & ST_OPEN ? '' : t('gate-waiting'), 'dim');
+  drawGate();
+}
+$('unlock').onclick = givePassword;
+$('gatepass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') givePassword();
+});
+
+/* Everything at once: the table, the power-on macro and the lockout. */
+async function enterBoard() {
+  note('gate-note', t('gate-reading'), 'dim');
+  const ee = new Uint8Array(TABLE_TOP);
+  for (let a = 0; a < TABLE_TOP; a += CHUNK)
+    ee.set(await eeRead(a, Math.min(CHUNK, TABLE_TOP - a)), a);
+  const got = decodeTable(ee);
+  macros = got.length ? got : [{ code: '.', text: '' }];
+  auto = (await eeRead(AUTO_ADDR, 1))[0];
+  lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
+  for (const id of ['write-note', 'pass-note', 'lock-note']) note(id, '');
+  show('board');
+  draw();
+  drawSecurity();
+  if (!got.length) note('write-note', t('read-none'), 'dim');
+  else if (auto !== AUTO_NONE && $('auto').value === '')
+    note('write-note', t('auto-dangling'), 'dim');
+}
+
+/* What every action does first: the window, waited for if it has lapsed, and
+   the password given again if the board has forgotten it. */
+async function access(noteId) {
+  let s = await refreshState();
+  if (!(s & ST_OPEN)) {
+    note(noteId, t('hold-now'), 'dim');
+    const until = Date.now() + 60000;
+    while (!(s & ST_OPEN)) {
+      if (Date.now() > until) throw new Error(t('hold-timeout'));
+      await sleep(400);
+      s = await refreshState();
+    }
+  }
+  if (!wantsPassword(s)) return;
+  if (password !== null && await tryUnlock(noteId)) return;
+  /* Still held, so the window shut in between: say that. */
+  if (password !== null) throw new Error('REFUSED');
+  /* Forgotten as wrong -- changed from somewhere else, most likely. Back to
+     the way in, which is where a password is asked for. */
+  show('gate');
+  gate();
+  note('gate-note', t('wrong-password'), 'bad');
+  throw new Error(t('wrong-password'));
+}
+
+/* An action: one at a time, its buttons quiet while it runs, and whatever
+   happens said beside the button that started it. */
+const ACTION_BUTTONS = ['write', 'setpass', 'clearpass', 'locksave'];
+
+async function run(noteId, fn) {
+  if (busy || !dev) return;
+  busy = true;
+  ACTION_BUTTONS.forEach(id => $(id).disabled = true);
+  try {
+    await access(noteId);
+    await fn();
+  } catch (e) {
+    note(noteId, e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
+  } finally {
+    busy = false;
+    ACTION_BUTTONS.forEach(id => $(id).disabled = false);
+    draw();                     /* Write also wants the macros to be valid */
+  }
+}
+
+/* ---- writing the table ---------------------------------------------- */
+
+$('write').onclick = () => {
   let bytes;
   try { bytes = encodeTable(macros); }
-  catch (e) { say(e.message, 'bad'); return; }
+  catch (e) { note('write-note', e.message, 'bad'); return; }
 
-  try {
-    await refreshState();
-    if (!(await unlock())) return;
+  run('write-note', async () => {
+    note('write-note', t('writing'), 'dim');
     for (let i = 0; i < bytes.length; i += CHUNK)
       await eeWrite(i, bytes.slice(i, i + CHUNK));
     const back = await eeRead(0, bytes.length);
     const bad = [...bytes].findIndex((v, i) => back[i] !== v);
     if (bad >= 0) {
-      say(t('write-mismatch', { at: bad, wrote: hex2(bytes[bad]),
-                                read: hex2(back[bad]) }), 'bad');
+      note('write-note', t('write-mismatch', { at: bad, wrote: hex2(bytes[bad]),
+                                              read: hex2(back[bad]) }), 'bad');
       return;
     }
     await eeWrite(AUTO_ADDR, Uint8Array.from([auto]));
-    say(t('write-ok', { n: bytes.length }), 'ok');
-    say(t('write-then-tap'));
-  } catch (e) {
-    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
-  }
+    note('write-note', t('write-ok', { n: bytes.length }), 'ok');
+  });
 };
 
 /* ---- the password, which most boards will not have --------------------
@@ -532,12 +675,8 @@ $('write').onclick = async () => {
  */
 function drawSecurity() {
   const has = !!(state_byte & ST_PASSWORD);
-  const open = !!(state_byte & ST_UNLOCKED);
-  $('secwhy').textContent = t(has ? (open ? 'sec-unlocked' : 'sec-locked')
-                                  : 'sec-none');
-  const hard = !!(state_byte & ST_HARDLOCK);
-  $('clearpass').style.display = has ? '' : 'none';
-  $('unlock').style.display = has && (!open || hard) ? '' : 'none';
+  $('secwhy').textContent = t(has ? 'sec-has' : 'sec-none');
+  $('clearpass').hidden = !has;
   $('setpass').textContent = t(has ? 'change-password' : 'set-password');
   drawLock();
 }
@@ -545,90 +684,31 @@ function drawSecurity() {
 async function refreshState() {
   const b = await ask(F_INFO);
   state_byte = b[7];
-  drawSecurity();
+  if (stage === 'board') drawSecurity();
   return state_byte;
 }
 
 const bytesOf = s => new TextEncoder().encode(s).slice(0, 12);
 
-/* No dialog: the password goes in the field in the Password section, which is
-   a real password field rather than a prompt box, and the section opens
-   itself when the board turns out to want one. */
-async function unlock() {
-  const hard = !!(state_byte & ST_HARDLOCK);
-  if (!(state_byte & ST_PASSWORD) || ((state_byte & ST_UNLOCKED) && !hard))
-    return true;
-
+$('setpass').onclick = () => {
   const given = $('passval').value;
-  if (!given) {
-    $('sec').open = true;
-    $('passval').focus();
-    say(t('needs-password'), 'bad');
-    return false;
-  }
-  /* The board answers "no" the same way to a shut window and to a wrong
-     password, so ask which before saying which. Calling a shut window a wrong
-     password sends the owner off doubting the one thing they had right. */
-  if (!(state_byte & ST_OPEN)) { say(t('refused'), 'bad'); return false; }
-  try {
-    await ask(F_UNLOCK, 0, bytesOf(given).length, bytesOf(given));
-  } catch (e) {
-    if (e.message !== 'REFUSED') throw e;
-    await refreshState();
-    say(t(state_byte & ST_OPEN ? 'wrong-password' : 'refused'), 'bad');
-    return false;
-  }
-  $('passval').value = '';
-  await refreshState();
-  if (hard) say(t('lock-lifted'), 'ok');
-  return true;
-}
-
-$('unlock').onclick = async () => {
-  fresh();
-  try {
-    await refreshState();
-    if (await unlock()) say(t('unlocked'), 'ok');
-  } catch (e) {
-    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
-  }
-};
-
-$('setpass').onclick = async () => {
-  fresh();
-  const given = $('passval').value;
-  if (!given) { say(t('password-empty'), 'bad'); return; }
-  try {
-    await refreshState();
-    /* Changing one means getting past the old one first, and the field holds
-       the new password -- so the old one is asked for on its own. */
-    if ((state_byte & ST_PASSWORD) && !(state_byte & ST_UNLOCKED)) {
-      $('sec').open = true;
-      say(t('unlock-to-change'), 'bad');
-      return;
-    }
+  if (!given) { note('pass-note', t('password-empty'), 'bad'); return; }
+  run('pass-note', async () => {
     const bytes = bytesOf(given);
     await ask(F_SETPASS, 0, bytes.length, bytes);
+    password = given;
     $('passval').value = '';
     await refreshState();
-    say(t('password-set'), 'ok');
-  } catch (e) {
-    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
-  }
+    note('pass-note', t('password-set'), 'ok');
+  });
 };
 
-$('clearpass').onclick = async () => {
-  fresh();
-  try {
-    await refreshState();
-    if (!(await unlock())) return;
-    await ask(F_SETPASS, 0, 0, null);
-    await refreshState();
-    say(t('password-cleared'), 'ok');
-  } catch (e) {
-    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
-  }
-};
+$('clearpass').onclick = () => run('pass-note', async () => {
+  await ask(F_SETPASS, 0, 0, null);
+  password = null;
+  await refreshState();
+  note('pass-note', t('password-cleared'), 'ok');
+});
 
 /* ---- the lockout ----------------------------------------------------
  *
@@ -675,56 +755,39 @@ function drawLock() {
       state_byte & ST_HARDLOCK ? t('lock-state-hard')
     : state_byte & ST_SOFTLOCK ? t('lock-state-soft')
     : !has ? t('lock-needs-password') : '';
-  $('lockstate').className = has ? 'bad' : 'dim';
+  $('lockstate').className = 'prose ' + (has ? 'bad' : 'dim');
 
   const s = lockSettings();
   const n = macros.filter(m => m.code).length;
   $('lockodds').textContent = !on || !has ? ''
     : !s.ok ? t('lock-bad')
     : t(s.hard ? 'lock-odds' : 'lock-odds-nohard', {
-        tries: s.soft * s.hard, soft: s.soft, wait: fmtWait(s.tens), n,
+        tries: s.soft * s.hard, soft: s.soft, hard: s.hard, wait: fmtWait(s.tens), n,
         pct: Math.round(n * 100 / 62) });
-  $('lockcount').textContent = lockCounts ? t('lock-counts', lockCounts) : '';
+  $('lockcount').textContent = lockCounts && has ? t('lock-counts', lockCounts) : '';
 }
 
 for (const id of ['lockon', 'locksoft', 'lockwait', 'lockhard'])
   $(id).addEventListener('input', drawLock);
 
-$('lockread').onclick = async () => {
-  fresh();
-  try {
-    await refreshState();
-    if (!(await unlock())) return;
-    lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
-    say(t('lock-read-ok'), 'ok');
-  } catch (e) {
-    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
-  }
-};
-
 /* Saving starts the counts again from zero, so that new settings are not
    judged by what the old ones let happen. The record of hard locks lifted is
    left alone: it is history, not state. */
-$('locksave').onclick = async () => {
-  fresh();
+$('locksave').onclick = () => {
   const on = $('lockon').checked, s = lockSettings();
-  if (on && !s.ok) { say(t('lock-bad'), 'bad'); return; }
-  try {
-    await refreshState();
-    if (on && !(state_byte & ST_PASSWORD)) {
-      say(t('lock-needs-password'), 'bad'); return;
-    }
-    if (!(await unlock())) return;
+  if (on && !s.ok) { note('lock-note', t('lock-bad'), 'bad'); return; }
+  if (on && !(state_byte & ST_PASSWORD)) {
+    note('lock-note', t('lock-needs-password'), 'bad'); return;
+  }
+  run('lock-note', async () => {
     const bytes = on
       ? [s.soft, s.hard || LOCK_OFF, s.tens, 0xFF, 0xFF]
       : [LOCK_OFF, LOCK_OFF, LOCK_OFF, 0xFF, 0xFF];
     await eeWrite(LOCK_ADDR, Uint8Array.from(bytes));
     lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
     await refreshState();
-    say(t(on ? 'lock-saved' : 'lock-off-saved'), 'ok');
-  } catch (e) {
-    say(e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
-  }
+    note('lock-note', t(on ? 'lock-saved' : 'lock-off-saved'), 'ok');
+  });
 };
 
 /* ---- what language to say it in ------------------------------------- */
@@ -743,6 +806,7 @@ function useLang(l) {
   applyLang();
   renderWho();
   drawSecurity();               /* its text is chosen, not marked up */
+  if (stage === 'gate') drawGate();
   drawPad();                    /* its labels are built, not marked up */
   draw();                       /* and so are the rows and the budget */
 }
@@ -883,6 +947,6 @@ $('pad').addEventListener('click', e => {
 
 let savedLang = null;
 try { savedLang = localStorage.getItem('digimacro.lang'); } catch (e) {}
+show('none');
 useLang(savedLang || preferredLang());
-connected(false, 'connect-hint');
 </script>

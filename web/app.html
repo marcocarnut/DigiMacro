@@ -190,7 +190,22 @@
   </label>
 </p>
 <p class="note" id="auto-note"></p>
+<p class="note dim" id="auto-warn"></p>
 
+
+<h2 data-t="host-summary">Host</h2>
+<p class="dim prose" data-t="host-why"></p>
+<p id="hoststate" class="prose"></p>
+<div class="form">
+  <label for="hostwait" data-t="host-wait"></label>
+  <input id="hostwait" type="number" min="10" max="2400" step="10" value="60">
+</div>
+<div class="bar">
+  <button id="hostnew" data-t="host-new">Make a new key</button>
+  <button id="hostdel" data-t="host-remove">Remove the key</button>
+  <button id="hostsave" data-t="save">Save</button>
+</div>
+<p class="note" id="host-note"></p>
 
 <h2 data-t="sec-summary">Password</h2>
 <p class="dim prose" id="secwhy"></p>
@@ -236,6 +251,8 @@
     <tr><td>(ab){3}</td><td data-t="ref-group"></td></tr>
     <tr><td>\( \)</td><td data-t="ref-paren"></td></tr>
     <tr><td>{goto .-}</td><td data-t="ref-goto"></td></tr>
+    <tr><td>{host}</td><td data-t="ref-host"></td></tr>
+    <tr><td>{host!}</td><td data-t="ref-host-loud"></td></tr>
     <tr><td>á ç ã</td><td data-t="ref-accent"></td></tr>
     <tr><td>{'}</td><td data-t="ref-bare-mark"></td></tr>
   </table>
@@ -283,6 +300,12 @@ const F_UNLOCK = 0x62, F_SETPASS = 0x63, F_REFUSED = 0xEE;
 const F_REBOOT = 0x41;
 const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
 const ST_SOFTLOCK = 0x08, ST_HARDLOCK = 0x10;
+const ST_HOST = 0x20, ST_HOSTKEY = 0x40;
+
+/* The host key and how long it is trusted for, and the board's serial number,
+   which names the key file so a client can tell boards apart. */
+const HOST_ADDR = 0x1E4, HOST_LEN = 8, HOST_WAIT_ADDR = 0x1F2;
+const SERIAL_ADDR = 0x1E0;
 
 /* The lockout's six bytes, in the firmware's map: three settings, then three
    counters stored inverted so that an erased byte is a zero. */
@@ -409,6 +432,16 @@ function drawAuto() {
             .map(m => `<option value="${header(m.code)}">${m.code}</option>`).join('');
   sel.value = was === AUTO_NONE ? '' : String(was);
   if (sel.value === '' && was !== AUTO_NONE) auto = AUTO_NONE;  /* it went away */
+  drawAutoWarn();
+}
+
+/* The power-on macro runs before any client can have sent its key, so one
+   that checks the host will always stop at the check. */
+function drawAutoWarn() {
+  const m = macros.find(r => { try { return header(r.code) === auto; } catch (e) { return false; } });
+  let checks = false;
+  try { checks = !!m && hasHostCheck(encodeMacro(m.text)); } catch (e) {}
+  note('auto-warn', checks ? t('host-startup') : '', 'dim');
 }
 
 function draw() {
@@ -431,6 +464,11 @@ function draw() {
       const e = document.createElement('tr');
       e.innerHTML = `<td></td><td colspan="3" class="err">${st.each[i].error}</td>`;
       tbody.appendChild(e);
+    } else if (st.each[i].bytes && macroWarnings(st.each[i].bytes).length) {
+      const w = document.createElement('tr');
+      w.innerHTML = `<td></td><td colspan="3" class="err dim">${
+        macroWarnings(st.each[i].bytes).map(k => t(k)).join(' ')}</td>`;
+      tbody.appendChild(w);
     }
   });
 
@@ -446,6 +484,7 @@ function draw() {
   drawWrite(st);
   drawSample();
   drawLock();                   /* the odds depend on how many codes are used */
+  drawHost();                   /* ...and this on whether any checks the host */
 }
 
 $('list').addEventListener('input', e => {
@@ -482,6 +521,7 @@ $('add').onclick = () => {
 $('auto').onchange = () => {
   auto = $('auto').value === '' ? AUTO_NONE : Number($('auto').value);
   drawWrite();
+  drawAutoWarn();
 };
 
 /* Write is offered only when there is something to write: what is on screen,
@@ -704,10 +744,14 @@ async function readTable() {
   macros = got.length ? got : [{ code: '.', text: '' }];
   auto = (await eeRead(AUTO_ADDR, 1))[0];
   onSample = false;
+  /* Asked before draw(), which drops a power-on code that is not in the
+     table -- after it, there is nothing left to notice. */
+  const dangling = auto !== AUTO_NONE
+                && !macros.some(m => { try { return header(m.code) === auto; }
+                                       catch (e) { return false; } });
   saved = snapshot();
   draw();
-  note('auto-note', auto !== AUTO_NONE && $('auto').value === ''
-                    ? t('auto-dangling') : '', 'dim');
+  note('auto-note', dangling ? t('auto-dangling') : '', 'dim');
   return got.length;
 }
 
@@ -715,10 +759,11 @@ async function readTable() {
 async function enterBoard() {
   note('gate-note', t('gate-reading'), 'dim');
   for (const id of ['table-note', 'auto-note', 'write-note', 'pass-note',
-                    'lock-note']) note(id, '');
+                    'lock-note', 'host-note']) note(id, '');
   show('board');
   const got = await readTable();
   lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
+  await hostRead();
   drawSecurity();
   if (!got) note('table-note', t('read-none'), 'dim');
 }
@@ -751,7 +796,7 @@ async function access(noteId) {
 /* An action: one at a time, its buttons quiet while it runs, and whatever
    happens said beside the button that started it. */
 const ACTION_BUTTONS = ['write', 'sample', 'setpass', 'clearpass', 'locksave',
-                        'fwupdate', 'fwclose'];
+                        'fwupdate', 'fwclose', 'hostnew', 'hostdel', 'hostsave'];
 
 async function run(noteId, fn) {
   if (busy || !dev) return;
@@ -768,6 +813,8 @@ async function run(noteId, fn) {
     $('clearpass').disabled = false;
     $('fwupdate').disabled = false;
     $('fwclose').disabled = false;
+    $('hostnew').disabled = false;
+    $('hostdel').disabled = false;
     draw();                     /* Write, and Save twice: each enables itself
                                    only when it has something to save */
     drawSecurity();
@@ -814,6 +861,7 @@ function drawSecurity() {
   $('clearpass').hidden = !has;
   $('setpass').disabled = busy || !$('passval').value;
   drawLock();
+  drawHost();
   drawFirmware();
 }
 
@@ -937,6 +985,93 @@ $('locksave').onclick = () => {
     lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
     await refreshState();
     note('lock-note', t(on ? 'lock-saved' : 'lock-off-saved'), 'ok');
+  });
+};
+
+/* ---- the host ---------------------------------------------------------
+ *
+ * Macros that hold secrets can be told to play only for a host that has
+ * proved itself: {host} in a macro stops it unless a client on the computer
+ * has sent the board's host key lately. The key is eight random bytes made
+ * here, where there is a real random source; it is written to the board like
+ * the table, and downloaded as a file for the client, one line per board,
+ * named by the board's serial number.
+ */
+let hostKeySet = false;
+let hostWaitSaved = null;       /* the trust time, in tens of seconds, as on
+                                   the board */
+let serial = '';
+
+const hexOf = bytes => [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+
+async function hostRead() {
+  const key = await eeRead(HOST_ADDR, HOST_LEN);
+  hostKeySet = key.some(b => b !== 0xFF);
+  const w = (await eeRead(HOST_WAIT_ADDR, 1))[0];
+  hostWaitSaved = w >= 1 && w <= 240 ? w : 6;
+  $('hostwait').value = hostWaitSaved * 10;
+  const sb = await eeRead(SERIAL_ADDR, 4);
+  serial = ((sb[0] | sb[1] << 8 | sb[2] << 16 | sb[3] << 24) >>> 0)
+           .toString(16).toUpperCase().padStart(8, '0');
+  drawHost();
+}
+
+function hostWaitWanted() {
+  const secs = parseInt($('hostwait').value, 10);
+  return secs >= 10 && secs <= 2400 && secs % 10 === 0 ? secs / 10 : null;
+}
+
+function drawHost() {
+  const guarded = macros.some(m => { try { return hasHostCheck(encodeMacro(m.text)); }
+                                     catch (e) { return false; } });
+  $('hoststate').textContent =
+      !hostKeySet ? t(guarded ? 'host-none-guarded' : 'host-none')
+    : t(state_byte & ST_HOST ? 'host-trusted' : 'host-has');
+  $('hoststate').className = 'prose' + (!hostKeySet && guarded ? ' bad' : '');
+  $('hostdel').hidden = !hostKeySet;
+  $('hostnew').textContent = t(hostKeySet ? 'host-replace' : 'host-new');
+  const w = hostWaitWanted();
+  $('hostsave').disabled = busy || w === null || w === hostWaitSaved;
+}
+$('hostwait').addEventListener('input', drawHost);
+
+/* A file the browser saves, for the client: one line, serial and key. */
+function download(name, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+$('hostnew').onclick = () => run('host-note', async () => {
+  const key = crypto.getRandomValues(new Uint8Array(HOST_LEN));
+  const w = hostWaitWanted() ?? 6;
+  await eeWrite(HOST_ADDR, key);
+  await eeWrite(HOST_WAIT_ADDR, Uint8Array.from([w]));
+  const back = await eeRead(HOST_ADDR, HOST_LEN);
+  if (hexOf(back) !== hexOf(key)) throw new Error(t('host-mismatch'));
+  const file = `digimacro-${serial}.key`;
+  download(file, `# ${t('host-file-comment', { serial })}\n${serial} ${hexOf(key)}\n`);
+  await hostRead();
+  await refreshState();
+  note('host-note', t('host-made', { file }), 'ok');
+});
+
+$('hostdel').onclick = () => run('host-note', async () => {
+  await eeWrite(HOST_ADDR, new Uint8Array(HOST_LEN).fill(0xFF));
+  await hostRead();
+  await refreshState();
+  note('host-note', t('host-removed'), 'ok');
+});
+
+$('hostsave').onclick = () => {
+  const w = hostWaitWanted();
+  if (w === null) { note('host-note', t('host-wait-bad'), 'bad'); return; }
+  run('host-note', async () => {
+    await eeWrite(HOST_WAIT_ADDR, Uint8Array.from([w]));
+    await hostRead();
+    note('host-note', t('host-wait-saved', { wait: fmtWait(w) }), 'ok');
   });
 };
 

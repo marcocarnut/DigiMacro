@@ -185,6 +185,38 @@ for (const [rows, want] of [
           (msg === null ? 'nothing' : JSON.stringify(msg)));
 }
 
+console.log('5d. the host check, quiet and loud');
+check(JSON.stringify(t.encodeMacro('{host}pw')) ===
+      JSON.stringify([t.ESC_HOST, t.HOST_SILENT, 0x13, 0x1A]),
+      '{host} is the escape with 1');
+check(JSON.stringify(t.encodeMacro('{HOST!}')) ===
+      JSON.stringify([t.ESC_HOST, t.HOST_LOUD]), '{host!} with 2, any case');
+check(t.decodeMacro(t.encodeMacro('user\\t{host}pw')) === 'user\\t{host}pw',
+      'and both read back as themselves');
+msg = null;
+try { t.encodeMacro('{host}{3}'); } catch (e) { msg = e.message; }
+check(msg !== null, 'a check is not a thing a count can count');
+/* A loud check is only as good as what comes before it: nothing. */
+check(t.macroWarnings(t.encodeMacro('{host!}secret')).length === 0,
+      'first is right');
+check(t.macroWarnings(t.encodeMacro('{Ctrl+a}{host!}x')).length === 1,
+      'a keystroke first gives the code away');
+check(t.macroWarnings(t.encodeMacro('name{host}pw')).length === 0,
+      'a quiet one may come anywhere: it says nothing to anyone');
+check(t.hasHostCheck(t.encodeMacro('a{pause 1.0}{host}')), 'a check is found');
+check(!t.hasHostCheck(t.encodeMacro('host')), 'and the word is not one');
+/* A loop that only checks the host still never types or pauses */
+msg = null;
+try { t.encodeTable([{ code: '.', text: '{host}{goto .}' }]); } catch (e) { msg = e.message; }
+check(msg !== null && /never type or pause/.test(msg), 'a check is not an action');
+
+/* The two ends define these separately, so read the firmware's own values
+   rather than trust that somebody remembered to change both. */
+const ino = require('fs').readFileSync(require('path').join(__dirname, '../DigiMacro.ino'), 'utf8');
+const def = name => Number(new RegExp(`#define ${name}\\s+(0x[0-9A-Fa-f]+|\\d+)`).exec(ino)?.[1]);
+for (const name of ['ESC_HOST', 'HOST_SILENT', 'HOST_LOUD', 'ESC_JUMP', 'ESC_MARK'])
+  check(def(name) === t[name], `${name}: the firmware says ${def(name)}, table.js ${t[name]}`);
+
 console.log('6. accents, on a layout that can type them');
 /* The board sends scan codes, so an accent is the host's business: two
    keystrokes on a dead-key layout, and impossible on a plain US one. Getting

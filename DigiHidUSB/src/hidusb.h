@@ -40,6 +40,9 @@
 #define DM_FUNC_WRITE       0x61    /* address, count, data */
 #define DM_FUNC_UNLOCK      0x62    /* count, password -> accepted or not */
 #define DM_FUNC_SETPASS     0x63    /* count, password; count 0 clears it */
+#define DM_FUNC_HOSTAUTH    0x64    /* count, host key: the host proves itself.
+                                       Needs neither the hold nor the
+                                       password -- see the firmware's "host" */
 #define DM_REFUSED          0xEE    /* comes back in place of the command */
 
 /* INFO's state byte */
@@ -48,6 +51,8 @@
 #define DM_ST_UNLOCKED      0x04    /* ...and has been given this session */
 #define DM_ST_SOFTLOCK      0x08    /* too many wrong codes: taps ignored */
 #define DM_ST_HARDLOCK      0x10    /* ...until the password is given */
+#define DM_ST_HOST          0x20    /* the host has proved itself lately */
+#define DM_ST_HOSTKEY       0x40    /* ...and there is a host key to prove */
 
 /* Twelve bytes at the top of the EEPROM, zero-padded, 0xFF for none. The
  * firmware's map owns this address; it is here because guarding this channel
@@ -69,6 +74,11 @@
 #define DM_SERIAL_ADDR      0x1E0
 #define DM_SERIAL_LEN       8       /* as hex digits, in the descriptor */
 
+/* Eight random bytes the host sends to prove it is the right one; all 0xFF
+ * for none. Written like the table, through WRITE, behind both gates. */
+#define DM_HOST_ADDR        0x1E4
+#define DM_HOST_LEN         8
+
 /* Reaching the table still needs someone at the board. The mode switch used
    to enforce that by accident of being a mode switch; now the sketch opens a
    window when the pad has been held, and INFO says whether one is open so the
@@ -78,7 +88,7 @@
 #define DM_MAGIC0           'D'
 #define DM_MAGIC1           'M'
 #define DM_PROTOCOL_VERSION 2       /* 1 was the WebUSB vendor-class one */
-#define DM_FW_VERSION       3
+#define DM_FW_VERSION       4
 
 #ifdef __cplusplus
 extern "C" {
@@ -105,6 +115,8 @@ uint8_t hidUnlocked(void);
 uint8_t hidUnlock(const uint8_t *p, uint8_t n);
 void    hidSetPass(const uint8_t *p, uint8_t n);
 uint8_t hidLockState(void);     /* 0, DM_ST_SOFTLOCK or DM_ST_HARDLOCK */
+uint8_t hidHostState(void);     /* DM_ST_HOST and DM_ST_HOSTKEY */
+uint8_t hidHostAuth(const uint8_t *p, uint8_t n);
 
 void    hidKey(uint8_t modifier, uint8_t key);
 void    hidTypeChar(char c, uint8_t mod);

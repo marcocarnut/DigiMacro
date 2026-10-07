@@ -20,7 +20,7 @@ macro can carry on with another, including itself. Hold the pad four seconds and
 an optional password, and wrong codes can lock the board out. The same page
 updates the firmware.
 
-**5188 bytes of the 6650** the stock bootloader leaves, and 164 of RAM.
+**5500 bytes of the 6650** the stock bootloader leaves, and 170 of RAM.
 
 ### It never stops being a keyboard
 
@@ -145,6 +145,71 @@ bits and no bootloader, or the self-wiping bootloader `PLAN.md` describes.
 
 The three counters are stored inverted, so an erased byte reads as zero.
 
+### Trusting the host
+
+A USB device has no idea which computer it is plugged into, so a board that
+types a password types it for whoever holds it. For a computer whose software
+you control, there is an answer: a small client there sends the board a key,
+and for a while afterwards — a minute by default, up to forty — macros
+guarded by a host check play. Plugged into any other computer, they stop.
+
+```
+ {host}      stop here, quietly, unless this computer sent the key lately
+ {host!}     stop as if the code were not in the table at all
+```
+
+`{host!}` is the one that matters against a guesser. Refused, it looks exactly
+like a code that is not there — three blinks, and a wrong code for the
+lockout — so on the wrong computer a guarded code cannot be told from an
+empty one. That holds only if nothing shows before the check, which the app
+warns about. The LED stays dark until a macro types or pauses, for the same
+reason: a flash on the way in would give the code away. `{host}` may go
+anywhere, for a macro that types a user name and then stops short of the
+password.
+
+A refused macro does not count as a code that worked. Only a macro that
+actually plays clears the lockout's counts. Otherwise, tapping a guarded code
+on the wrong computer would wipe a guesser's misses for them.
+
+The key is eight random bytes, made by the app, which has a real random
+source. It is written to the board like the table, and downloaded as a file
+named after the board's serial number. The client is `tools/hostauth`,
+for Linux:
+
+```
+cc -O2 -Wall -o digimacro-host tools/hostauth/digimacro-host.c
+mkdir -p ~/.config/digimacro
+cat digimacro-*.key >> ~/.config/digimacro/host.key
+chmod 600 ~/.config/digimacro/host.key
+digimacro-host            # once
+digimacro-host -e 30      # every 30 seconds, for as long as it runs
+```
+
+Run with `-e` from your session and stopped when the screen locks, the trust
+becomes "while I am logged in". The client finds every board plugged in by
+the serial number the kernel reports for it, so one key file serves several
+boards.
+
+Sending the key is the one request, beside INFO, that needs neither the hold
+nor the password. That is the point: nobody is at the board. So it can do
+nothing else. It opens no window, unlocks nothing and reads nothing, and a
+wrong key does **not** count against the lockout. If it did, any program on
+any computer could hard-lock the board without anyone touching it. A wrong
+key costs a second instead, on a clock of its own.
+
+What it cannot do is protect against someone who reads the EEPROM directly.
+That is the lock bits' job, with EESAVE unprogrammed and no bootloader. Host
+authentication stops the casual case, someone plugging the board in
+somewhere else and tapping; the lock bits stop the determined one.
+
+| EEPROM | |
+|---|---|
+| `0x1E4` | the host key, eight bytes; all `0xFF` for none |
+| `0x1F2` | how long the host stays trusted, in tens of seconds, 1–240; anything else is 6 |
+
+That fills the reserved block. Anything more will have to come out of the
+table.
+
 ## What the LED says
 
 | LED | means |
@@ -197,6 +262,7 @@ four.
 | `0x03 nn` | do the previous keystroke `nn` more times |
 | `0x82` | mark: what follows repeats as a group, not as one keystroke |
 | `0x81 hh` | carry on with the macro whose header is `hh-1` |
+| `0x83 nn` | stop unless the host sent its key lately: quietly if `nn` is 1, as an empty code if 2 |
 
 No argument may be zero, since a zero byte ends the macro. `0x03` is
 run-length coding: "left arrow eleven times" costs three bytes rather than
@@ -230,6 +296,7 @@ One feature report on the vendor collection, both ways:
 | `0x61` WRITE | address, count and data in |
 | `0x62` UNLOCK | the password, if the board has one |
 | `0x63` SETPASS | a new password, or none at all |
+| `0x64` HOSTAUTH | the host key: needs neither the window nor the password, and does nothing else |
 | `0xEE` | comes back in place of the command when the window is shut |
 
 Set the report to ask, get it to see the answer. INFO always answers — it says
@@ -279,6 +346,7 @@ back. A macro is text, with braces for what text cannot say:
  x{11}                        eleven of them, as in a regular expression
  (ab){3}                      ...of a whole group rather than one thing
  {goto .-}                    carry on with another macro, and never come back
+ {host}  {host!}              stop unless this computer sent the host key lately
 ```
 
 A key palette inserts any of it at the cursor — arrows, function keys, the
@@ -387,6 +455,7 @@ raw protocol page and the notes on reading the pad.
 | `DigiHidUSB/` | the V-USB stack: a keyboard, and a vendor collection the app talks to |
 | `test/` | host build of the real sketch against stub hardware |
 | `tools/loadtable/` | writes a sample table into EEPROM, without a browser |
+| `tools/hostauth/` | the Linux client that sends the host key |
 | `spikehid/` | the sketch that derisked the vendor collection |
 | `web/` | `app.html` is the editor, `hid.html` the raw protocol tool, `table.js` and `i18n.js` what they share, `micronucleus.js` the uploader |
 | `web/firmware/` | what the app installs: the released firmware, and the Micronucleus 2.6 upgrader |

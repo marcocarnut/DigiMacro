@@ -198,6 +198,9 @@ uint8_t __attribute__((weak)) hidUnlock(const uint8_t *p, uint8_t n)
 void    __attribute__((weak)) hidSetPass(const uint8_t *p, uint8_t n)
                                                 { (void)p; (void)n; }
 uint8_t __attribute__((weak)) hidLockState(void) { return 0; }
+uint8_t __attribute__((weak)) hidHostState(void) { return 0; }
+uint8_t __attribute__((weak)) hidHostAuth(const uint8_t *p, uint8_t n)
+                                                { (void)p; (void)n; return 0; }
 
 /* ===================================================================== */
 /* Requests                                                              */
@@ -209,6 +212,14 @@ static void vndAnswer(void)
     uint8_t  n    = vnd[3];
 
     if (n > DM_VND_CHUNK) n = DM_VND_CHUNK;
+
+    /* The host proving itself is the one request that needs neither gate:
+       the point is a program on the host doing it with nobody at the board.
+       It can do nothing else -- no window, no unlock, nothing read. */
+    if (vnd[0] == DM_FUNC_HOSTAUTH) {
+        if (!hidHostAuth(vnd + DM_VND_DATA, n)) vnd[0] = DM_REFUSED;
+        return;
+    }
 
     /* Two gates, and they answer different questions. The window says somebody
        is at the board, which a web page cannot arrange; the password says
@@ -237,7 +248,8 @@ static void vndAnswer(void)
         vnd[7] = (hidAllowed()  ? DM_ST_OPEN     : 0)
                | (hidPassSet()  ? DM_ST_PASSWORD : 0)
                | (hidUnlocked() ? DM_ST_UNLOCKED : 0)
-               | hidLockState();
+               | hidLockState()
+               | hidHostState();
         break;
 
     case DM_FUNC_UNLOCK:

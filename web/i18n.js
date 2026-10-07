@@ -126,6 +126,41 @@ en: {
   'lock-saved':     'Lockout saved. Its counts start again from zero.',
   'lock-off-saved': 'Lockout off. Wrong codes cost nothing now.',
   'lock-lifted':    'Hard lock lifted.',
+  'host-summary':   'Host',
+  'host-why':       'A macro that types a secret can be told to type it only for '
+                  + 'a computer you trust: {host} in it stops the macro unless a '
+                  + 'small program on that computer has sent this board\'s host '
+                  + 'key lately. Plugged in anywhere else, it stops. {host!} '
+                  + 'stops it as if the code were not there at all — three '
+                  + 'blinks, and a wrong code for the lockout. The key is sent '
+                  + 'by tools/hostauth, given the file this page downloads.',
+  'host-wait':      'trusted for, in seconds, after the key is sent',
+  'host-new':       'Make a key',
+  'host-replace':   'Make a new key',
+  'host-remove':    'Remove the key',
+  'host-none':      'This board has no host key.',
+  'host-none-guarded': 'Some macros check the host, but this board has no host '
+                  + 'key, so they will always stop at the check. Make one.',
+  'host-has':       'This board has a host key. No host has sent it lately.',
+  'host-trusted':   'This board has a host key, and this computer sent it '
+                  + 'lately: guarded macros play here for now.',
+  'host-made':      'A new key is on the board, and saved as {file}. Add its '
+                  + 'line to ~/.config/digimacro/host.key on each computer the '
+                  + 'board should trust; any that had the old key need this one.',
+  'host-removed':   'The host key is gone. Macros that check the host will now '
+                  + 'always stop at the check.',
+  'host-wait-saved': 'Saved: the host is trusted for {wait} after sending the key.',
+  'host-wait-bad':  'The time runs from 10 to 2400 seconds, in steps of ten.',
+  'host-mismatch':  'the key read back differently from what was written',
+  'host-file-comment': 'DigiMacro host key for board {serial}: add this line to '
+                  + '~/.config/digimacro/host.key',
+  'host-late':      'Something shows before {host!}, so a guesser on the wrong '
+                  + 'computer learns this code exists. Put the check first.',
+  'host-startup':   'The power-on macro checks the host. It runs before any '
+                  + 'program on the computer can have sent the key, so it will '
+                  + 'stop at the check every time.',
+  'ref-host':       'stop here unless this computer sent the host key lately',
+  'ref-host-loud':  '...and stop as if the code were not there',
   'fw-summary':     'Firmware',
   'fw-how':         'The board restarts into its bootloader, Micronucleus, and '
                   + 'the browser asks you to pick it — a second picker, because '
@@ -368,6 +403,48 @@ pt: {
   'lock-saved':     'Bloqueio salvo. As contagens recomeçam do zero.',
   'lock-off-saved': 'Bloqueio desligado. Códigos errados não custam mais nada.',
   'lock-lifted':    'Bloqueio forte desfeito.',
+  'host-summary':   'Computador',
+  'host-why':       'Uma macro que digita um segredo pode digitá-lo só para um '
+                  + 'computador de confiança: {host} nela interrompe a macro a '
+                  + 'menos que um pequeno programa nesse computador tenha '
+                  + 'enviado há pouco a chave de computador desta placa. Ligada '
+                  + 'em qualquer outro, ela para. {host!} a interrompe como se o '
+                  + 'código não existisse — três piscadas, e um código errado '
+                  + 'para o bloqueio. Quem envia a chave é o tools/hostauth, com '
+                  + 'o arquivo que esta página baixa.',
+  'host-wait':      'confiável por, em segundos, depois do envio da chave',
+  'host-new':       'Criar uma chave',
+  'host-replace':   'Criar uma chave nova',
+  'host-remove':    'Remover a chave',
+  'host-none':      'Esta placa não tem chave de computador.',
+  'host-none-guarded': 'Algumas macros verificam o computador, mas esta placa '
+                  + 'não tem chave de computador, então elas sempre param na '
+                  + 'verificação. Crie uma.',
+  'host-has':       'Esta placa tem uma chave de computador. Nenhum computador '
+                  + 'a enviou há pouco.',
+  'host-trusted':   'Esta placa tem uma chave de computador, e este computador a '
+                  + 'enviou há pouco: as macros protegidas rodam aqui por ora.',
+  'host-made':      'Uma chave nova está na placa, e salva como {file}. '
+                  + 'Acrescente a linha dela a ~/.config/digimacro/host.key em '
+                  + 'cada computador de confiança; os que tinham a chave antiga '
+                  + 'precisam desta.',
+  'host-removed':   'A chave de computador foi removida. As macros que '
+                  + 'verificam o computador agora sempre param na verificação.',
+  'host-wait-saved': 'Salvo: o computador fica confiável por {wait} depois de '
+                  + 'enviar a chave.',
+  'host-wait-bad':  'O tempo vai de 10 a 2400 segundos, de dez em dez.',
+  'host-mismatch':  'a chave lida de volta é diferente da gravada',
+  'host-file-comment': 'chave de computador DigiMacro da placa {serial}: '
+                  + 'acrescente esta linha a ~/.config/digimacro/host.key',
+  'host-late':      'Algo aparece antes de {host!}, então quem tenta adivinhar '
+                  + 'num computador errado descobre que este código existe. '
+                  + 'Ponha a verificação primeiro.',
+  'host-startup':   'A macro de inicialização verifica o computador. Ela roda '
+                  + 'antes que qualquer programa no computador possa ter '
+                  + 'enviado a chave, então vai parar na verificação toda vez.',
+  'ref-host':       'parar aqui a menos que este computador tenha enviado a '
+                  + 'chave há pouco',
+  'ref-host-loud':  '...e parar como se o código não existisse',
   'fw-summary':     'Firmware',
   'fw-how':         'A placa reinicia no seu bootloader, o Micronucleus, e o '
                   + 'navegador pede para você escolhê-lo — uma segunda lista, '

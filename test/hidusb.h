@@ -16,6 +16,10 @@ uint8_t hidAllowed(void);
 #define DM_SERIAL_ADDR 0x1E0
 #define DM_ST_SOFTLOCK 0x08
 #define DM_ST_HARDLOCK 0x10
+#define DM_ST_HOST     0x20
+#define DM_ST_HOSTKEY  0x40
+#define DM_HOST_ADDR   0x1E4
+#define DM_HOST_LEN    8
 void    hidKey(uint8_t modifier, uint8_t key);
 void    hidTypeChar(char c, uint8_t mod);
 void    hidType_P(const char *s);

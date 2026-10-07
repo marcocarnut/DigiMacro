@@ -81,6 +81,10 @@
 #define HAVE_AUTOEXEC 1     /* 0 = never type anything unasked */
 #endif
 
+#ifndef HAVE_HOST
+#define HAVE_HOST 1         /* 0 = no {host} checks, and no host key */
+#endif
+
 #ifndef TOUCH_DEBUG
 #define TOUCH_DEBUG 0       /* 1 = type the pad readings twice a second, into
                                whatever window has focus. See below. */
@@ -157,6 +161,9 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *      0x03 nn   do the previous keystroke nn more times
  *      0x82      mark: the rest repeats as a group, not one keystroke
  *      0x81 hh   carry on with the macro whose header is hh-1
+ *      0x83 nn   stop unless the host has proved itself lately: quietly
+ *                if nn is 1, and if nn is 2 exactly as if the code were
+ *                not in the table at all -- see "the host" below
  *
  * The jump's argument is the header plus one, because a zero byte ends a
  * macro and the header of "." is zero. No valid header is 0xFC or above, so
@@ -206,6 +213,9 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define ESC_REPEAT      0x03
 #define ESC_JUMP        0x81
 #define ESC_MARK        0x82
+#define ESC_HOST        0x83
+#define HOST_SILENT     1           /* its argument, and what macro_play() */
+#define HOST_LOUD       2           /* ...returns when the check refuses */
 
 /* Touching the pad stops a macro, so a loop that types or pauses can always
    be got out of. What cannot is a loop that does neither -- macros that only
@@ -225,14 +235,17 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *   0x1E0   the board's serial number, four random bytes made once
  *           (DM_SERIAL_ADDR -- see DigiHidUSB, which needs it to exist
  *           before anything here runs)
- *   0x1E4   free, for whatever this turns out to want
+ *   0x1E4   the host key, eight random bytes (DM_HOST_ADDR); all 0xFF
+ *           for none
  *   0x1EC   lockout: wrong codes before a soft lock, 0 or 0xFF for none
  *   0x1ED   ...soft locks in a row before a hard one, 0 or 0xFF for never
  *   0x1EE   ...how long a soft lock lasts, in tens of seconds
  *   0x1EF   ...wrong codes so far              (these three counters are
  *   0x1F0   ...soft locks in a row so far       stored inverted, so that
  *   0x1F1   ...hard locks lifted, ever          an erased byte is a zero)
- *   0x1F2   free
+ *   0x1F2   how long the host stays trusted, in tens of seconds
+ *
+ * That is the last of it: anything more comes out of the table.
  *   0x1F3   the code to type at power-on, if any
  *   0x1F4   password, twelve bytes zero-padded (DM_PASS_ADDR)
  */
@@ -489,6 +502,101 @@ void hidSetPass(const uint8_t *p, uint8_t n)
                                    rather than with counts left over from
                                    whenever the lockout last ran */
     unlocked = 1;
+}
+
+/* ---- the host ---------------------------------------------------------
+ *
+ * A USB device has no idea which computer it is plugged into, so a board
+ * that types a password types it for whoever holds it. This is the answer
+ * for a host whose software you control: a small client there sends a key,
+ * and for a while afterwards -- a minute by default -- macros guarded by
+ * {host} play. Plugged into any other computer they do not.
+ *
+ *      {host}    stops the macro quietly
+ *      {host!}   stops it exactly as if the code were not in the table:
+ *                three blinks, and a wrong code for the lockout. A guesser
+ *                on the wrong computer cannot tell a guarded code from an
+ *                empty one -- provided nothing is typed before the check.
+ *
+ * The key is eight random bytes rather than a password, since nobody types
+ * it: the app makes it, and it is what fitted in the space that was left.
+ *
+ * It is the one request, beside INFO, that needs neither the hold nor the
+ * password, because the whole point is a client that runs with nobody at the
+ * board. So it must not be able to do anything else -- it opens no window,
+ * unlocks nothing, and reads nothing -- and a wrong key does NOT count against
+ * the lockout. If it did, any program on any computer could hard-lock the
+ * board without anybody touching it. A wrong key costs a second instead, on a
+ * clock of its own so that it cannot hold up the password either.
+ */
+#if HAVE_HOST
+#define HOST_KEY        ((uint8_t *)DM_HOST_ADDR)
+#define HOST_WAIT       ((uint8_t *)0x1F2)
+
+static uint8_t  host_left;      /* tens of seconds the host stays trusted */
+static uint16_t host_tick;
+static uint16_t host_failed;    /* when the last wrong key came... */
+static uint8_t  host_pausing;   /* ...and whether that still holds */
+
+static uint8_t host_keyset(void)
+{
+    for (uint8_t i = 0; i < DM_HOST_LEN; i++)
+        if (eeprom_read_byte(HOST_KEY + i) != 0xFF) return 1;
+    return 0;
+}
+
+/* Runs the trust's clock, catching up however long it was left. */
+static void host_poll(void)
+{
+    while (host_left && (uint16_t)(ticks() - host_tick) >= LOCK_TICK_MS) {
+        host_tick += LOCK_TICK_MS;
+        host_left--;
+    }
+}
+
+static uint8_t host_ok(void)
+{
+    host_poll();
+    return host_left && host_keyset();
+}
+
+uint8_t hidHostState(void)
+{
+    return (host_ok() ? DM_ST_HOST : 0) | (host_keyset() ? DM_ST_HOSTKEY : 0);
+}
+
+/* Compared in full, as the password is. */
+uint8_t hidHostAuth(const uint8_t *p, uint8_t n)
+{
+    uint8_t diff = 0, w;
+
+    if (n != DM_HOST_LEN || !host_keyset()) return 0;
+    if (host_pausing && (uint16_t)(ticks() - host_failed) < PASS_PAUSE_MS)
+        return 0;
+    host_pausing = 0;
+
+    for (uint8_t i = 0; i < DM_HOST_LEN; i++)
+        diff |= eeprom_read_byte(HOST_KEY + i) ^ p[i];
+    if (diff) {
+        host_failed = ticks();
+        host_pausing = 1;
+        return 0;
+    }
+    w = eeprom_read_byte(HOST_WAIT);
+    host_left = (uint8_t)(w - 1) < LOCK_WAIT_MAX ? w : LOCK_WAIT_DEF;
+    host_tick = ticks();
+    return 1;
+}
+#endif
+
+/* The clocks that must keep running while a macro plays, since loop() does
+   not: they count in sixteen bits of milliseconds, which wrap in a minute. */
+static void clocks_poll(void)
+{
+    lock_poll();
+#if HAVE_HOST
+    host_poll();
+#endif
 }
 
 /* The macro to type when the board is plugged in, as a header byte rather
@@ -849,6 +957,7 @@ uint8_t pause_poll(uint16_t ms)
 
     while ((uint16_t)(ticks() - t) < ms) {
         hidPoll();
+        clocks_poll();
 #if HAVE_TOUCH
         touch_poll();
 #endif
@@ -857,9 +966,16 @@ uint8_t pause_poll(uint16_t ms)
     return 0;
 }
 
-/* Type one macro, given where its keystrokes start. */
-void macro_play(uint8_t *a)
+/* Type one macro, given where its keystrokes start. Returns 0 if it played,
+   or how a {host} check refused it.
+
+   The LED comes on with the first thing that shows -- a keystroke or a
+   pause -- and not when the macro is found. A {host!} check that refuses
+   before anything shows must look exactly like a code that is not there,
+   and a flash of the LED on the way would give it away. */
+uint8_t macro_play(uint8_t *a)
 {
+    uint8_t  refused = 0;
 #if HAVE_JUMP
     uint8_t  jumps = 0;         /* since the last pause; see JUMP_MAX */
 #endif
@@ -869,12 +985,11 @@ void macro_play(uint8_t *a)
     uint8_t *mark = 0;          /* ...and where a marked group began */
     uint8_t  reps = 0;          /* times round that group still to go */
 
-    LED_SET(1);
-
     while (a < TABLE_TOP) {
         uint8_t c;
 
         /* Between one thing and the next, is anybody touching it? */
+        clocks_poll();
 #if HAVE_TOUCH
         touch_poll();
 #endif
@@ -898,6 +1013,7 @@ void macro_play(uint8_t *a)
             if (!arg) break;            /* no argument may be zero; a table
                                            that says otherwise is corrupt */
             if (c == ESC_PAUSE) {
+                LED_SET(1);
                 if (pause_poll((uint16_t)arg * 100)) {
                     stop_for_touch();
                     break;
@@ -910,6 +1026,7 @@ void macro_play(uint8_t *a)
                    so whatever the group was -- an accent and its letter, a
                    word, a pause -- repeats whole. */
                 if (!mark) {
+                    LED_SET(1);
                     while (arg--) hidKey(lastmod, lastkey);
                 } else if (!reps) {
                     reps = arg;         /* the group has played once already */
@@ -928,6 +1045,13 @@ void macro_play(uint8_t *a)
                 mark = 0;
                 reps = 0;
 #endif
+#if HAVE_HOST
+            } else if (c == ESC_HOST) {
+                if (!host_ok()) {
+                    refused = arg == HOST_LOUD ? HOST_LOUD : HOST_SILENT;
+                    break;
+                }
+#endif
             } else {
                 break;                  /* an escape this build does not have:
                                            stop rather than guess */
@@ -941,10 +1065,12 @@ void macro_play(uint8_t *a)
 #if HAVE_JUMP
         jumps = 0;              /* a keystroke is a chance to stop it */
 #endif
+        LED_SET(1);
         hidKey(lastmod, lastkey);
     }
 
     LED_SET(0);
+    return refused;
 }
 
 /* Look the finished code up, and play it or say we could not. Locked, a code
@@ -952,7 +1078,7 @@ void macro_play(uint8_t *a)
    very answer the lock is withholding. */
 void code_finish(void)
 {
-    uint8_t *a;
+    uint8_t *a, r;
 
     if (hidLockState()) {
         code_reset();
@@ -961,12 +1087,18 @@ void code_finish(void)
     a = ((FLAGS & FLAG_CODE_OVER) || !code_len)
         ? 0 : find_header(HDR_MAKE(code_len, code_bits));
     code_reset();
-    if (a) {
-        lock_clear();
-        macro_play(a);
-    } else {
+
+    /* A code that is not there, and one whose {host!} check refused, are
+       the same thing from outside, so they are the same thing here. One that
+       played clears the lockout's counts -- afterwards, not on being found:
+       otherwise tapping a guarded code on the wrong computer would wipe a
+       guesser's misses for them. A quiet refusal neither clears nor counts. */
+    r = a ? macro_play(a) : HOST_LOUD;
+    if (r == HOST_LOUD) {
         lock_miss();            /* before the blinks: see lock_miss() */
         blink(3, 70);
+    } else if (!r) {
+        lock_clear();
     }
 }
 
@@ -1040,7 +1172,7 @@ void loop(void)
 #endif
 #endif
     handle_input();
-    lock_poll();
+    clocks_poll();
     update_led();
 
     if (!hidAllowed()) unlocked = 0;    /* the session ends with the window */

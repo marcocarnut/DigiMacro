@@ -722,6 +722,46 @@ testable, which is why they are in this order rather than firmware-then-app.
    set, so Windows wants a driver for it, which is the thing this whole
    transport change was about avoiding.
 
+8. **Host authentication — done, 312 bytes.** Marco's idea, and the answer
+   to decision 6 above: a USB device cannot tell which computer it is plugged
+   into, so a client on a trusted one sends the board a key, and for a while
+   afterwards -- a minute by default, one byte of tens of seconds -- macros
+   guarded by `{host}` play. `{host!}` refuses exactly as an empty code does,
+   blinks and lockout and all, so on the wrong computer a guarded code cannot
+   be told from an empty one.
+
+   Decisions worth keeping:
+
+   - **Sending the key needs neither the hold nor the password**, since the
+     client runs with nobody at the board. So it does nothing else, and a
+     wrong key does not feed the lockout: if it did, any program on any
+     computer could hard-lock the board remotely. A second's rate limit, on a
+     clock of its own.
+   - **Eight random bytes, not a typed password**, because a program sends it
+     and because eight bytes were what the reserved block had left, at
+     0x1E4. Its trust time takes 0x1F2. The reserved block is now full.
+   - **`0x83 nn`**, one escape with an argument, leaving `0x80` as the last
+     free escape value.
+   - **Found is not played.** The lockout's counts used to clear when a code
+     was found; now they clear when its macro plays. Otherwise tapping a
+     guarded code on the wrong computer would clear a guesser's misses, and
+     the hard lock would never come.
+   - **The LED waits for something to show** -- a keystroke or a pause --
+     because lighting it on finding the code would tell a refusal from an
+     empty code.
+   - **The clocks run during playback too.** They count in sixteen bits of
+     milliseconds, which wrap in 65 seconds, and loop() does not run while a
+     macro plays.
+
+   The client is `tools/hostauth/digimacro-host.c`, Linux only: a feature
+   report straight to hidraw, with each board found by the serial number the
+   kernel reports as `HID_UNIQ`, so one key file serves several boards. `-e`
+   resends every so many seconds. Windows can follow with `hid.dll` if
+   wanted.
+
+   Still true, and said in the README: none of this stops someone reading the
+   EEPROM directly. That is the lock bits' job.
+
 ## The first spike: passed on hardware, and since replaced
 
 Kept for the record. Everything here about the BOS, the MS OS 2.0 set, the

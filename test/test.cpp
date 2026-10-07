@@ -25,7 +25,14 @@ unsigned long fake_ms = 0;
 uint8_t EE[512];
 
 static int btn_held = 0;        /* the input, as handle_input() sees it */
-uint8_t fake_pinb(void){ return btn_held ? 0x00 : 0xFF; }
+#define PIN_LED_STUB 1          /* PIN_LED, before the sketch defines it */
+/* Read between every step of a macro, which makes it the place to notice
+   whether the LED was ever lit while one played. */
+static int led_seen = 0;
+uint8_t fake_pinb(void){
+    if (PORTB & (1 << PIN_LED_STUB)) led_seen = 1;
+    return btn_held ? 0x00 : 0xFF;
+}
 void    fake_charge(void){}
 
 /* captured device behaviour */
@@ -691,6 +698,115 @@ int main(void)
     memset(EE + (size_t)LOCK_MISSES, 0xFF, 3);
     unlocked = 0;
 
+    /* ---- the host ---- */
+
+    static const uint8_t KEY[8] = { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88 };
+    static const uint8_t BAD[8] = { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x89 };
+    auto host_forget = [&]() { host_left = 0; host_pausing = 0; };
+
+    printf("22. no host key, no trust: a guarded macro never plays\n");
+    table_reset();
+    add(".",  { K('a'), ESC_HOST, HOST_SILENT, K('b') });
+    add("-",  { ESC_HOST, HOST_LOUD, K('x') });
+    add("..", { K('y') });
+    host_forget();
+    CHECK(!hidHostAuth(KEY, 8), "with no key stored, no key is right");
+    CHECK(!strcmp(play("."), "<00/04>"),
+          "{host} stops the macro where it stands: \"%s\"", typed);
+
+    printf("22b. a key, and the right host\n");
+    memcpy(EE + DM_HOST_ADDR, KEY, 8);
+    CHECK(hidHostState() == DM_ST_HOSTKEY, "a key, not yet proved");
+    CHECK(hidHostAuth(KEY, 8), "the right key is accepted");
+    CHECK(hidHostState() == (DM_ST_HOST | DM_ST_HOSTKEY), "and says so");
+    CHECK(!strcmp(play("."), "<00/04><00/05>"), "now it plays: \"%s\"", typed);
+    CHECK(!strcmp(play("-"), "<00/1B>"), "and so does {host!}: \"%s\"", typed);
+
+    printf("22c. ...for a minute, by default\n");
+    for (int i = 0; i < 55; i++) { fake_ms += 1000; loop(); }
+    CHECK(hidHostState() & DM_ST_HOST, "still trusted at 55 s");
+    for (int i = 0; i < 10; i++) { fake_ms += 1000; loop(); }
+    CHECK(!(hidHostState() & DM_ST_HOST), "not after a minute");
+    CHECK(!strcmp(play("."), "<00/04>"), "and the guard holds again: \"%s\"", typed);
+    EE[0x1F2] = 1;                              /* ten seconds */
+    CHECK(hidHostAuth(KEY, 8), "proved again");
+    for (int i = 0; i < 11; i++) { fake_ms += 1000; loop(); }
+    CHECK(!(hidHostState() & DM_ST_HOST), "the wait is the configured one");
+    EE[0x1F2] = 0xFF;
+
+    printf("22d. a wrong key costs a second, and nothing else\n");
+    /* Nothing else meaning the lockout: anything on any computer may send a
+       key, and if wrong ones counted it could lock the board out remotely. */
+    hidSetPass((const uint8_t *)"secret", 6);
+    lockout(2, 3, 1);
+    lock_clear();
+    CHECK(!hidHostAuth(BAD, 8), "a wrong key is refused");
+    CHECK(!hidHostAuth(KEY, 8), "and even the right one, for a second");
+    CHECK(count_of(LOCK_MISSES) == 0, "a wrong key is not a wrong code");
+    fake_ms += PASS_PAUSE_MS;
+    CHECK(!hidHostAuth(KEY, 7), "a short key is no key");
+    CHECK(hidHostAuth(KEY, 8), "the right one, once the second is up");
+    host_forget();
+
+    printf("22e. {host!} refused is a wrong code, exactly\n");
+    lock_clear();
+    CHECK(play("-")[0] == 0, "nothing typed: \"%s\"", typed);
+    CHECK(count_of(LOCK_MISSES) == 1, "and one miss, as for an empty code");
+    play(".");
+    CHECK(count_of(LOCK_MISSES) == 1, "a quiet {host} neither counts...");
+    play("-");
+    CHECK(hidLockState() == DM_ST_SOFTLOCK, "two loud refusals lock it, as two misses would");
+
+    printf("22e2. ...and the LED does not give it away\n");
+    /* Found and refused must look like not found, and a flash of the LED on
+       the way in would be the difference. */
+    lock_clear();
+    led_seen = 0;
+    PORTB = 0;
+    macro_play(find_header(HDR_MAKE(1, 1)));
+    CHECK(!led_seen, "the LED must stay dark until something shows");
+    macro_play(find_header(HDR_MAKE(2, 0)));
+    CHECK(led_seen, "and come on for a macro that types");
+
+    printf("22f. a guarded code does not wipe a guesser's misses\n");
+    /* Found is not played. If finding a code cleared the counts, tapping a
+       guarded one on the wrong computer would reset them for the guesser,
+       and the hard lock would never come. */
+    lock_clear();
+    miss();
+    CHECK(count_of(LOCK_MISSES) == 1, "one miss");
+    play(".");                                  /* quiet refusal */
+    CHECK(count_of(LOCK_MISSES) == 1, "a quiet refusal leaves it be");
+    lock_clear();
+    for (int n = 0; n < 2; n++) { miss(); miss(); serve(); }
+    play(".");
+    CHECK(count_of(LOCK_SOFTS) == 2, "and the run of soft locks stands, %d",
+          count_of(LOCK_SOFTS));
+    play("..");
+    CHECK(count_of(LOCK_SOFTS) == 0, "until a code really plays");
+
+    printf("22f2. ...and a guarded code that plays is a code that played\n");
+    lock_clear();
+    miss();
+    CHECK(hidHostAuth(KEY, 8), "the right host");
+    CHECK(!strcmp(play("-"), "<00/1B>"), "{host!} passes and types: \"%s\"", typed);
+    CHECK(count_of(LOCK_MISSES) == 0, "and clears the misses, as any code that works");
+    host_forget();
+
+    printf("22g. a jump into a guarded macro is checked there\n");
+    table_reset();
+    add(".", { K('a'), ESC_JUMP, (uint8_t)(HDR_MAKE(1, 1) + 1) });
+    add("-", { ESC_HOST, HOST_SILENT, K('x') });
+    host_forget();
+    CHECK(!strcmp(play("."), "<00/04>"), "the guard holds after a jump: \"%s\"", typed);
+
+    hidSetPass(0, 0);
+    lockout(0xFF, 0xFF, 0xFF);
+    memset(EE + (size_t)LOCK_MISSES, 0xFF, 3);
+    memset(EE + DM_HOST_ADDR, 0xFF, 8);
+    host_forget();
+    unlocked = 0;
+
     printf("20. the reserved bytes are where the map says\n");
     /* The table stops 32 bytes below the end; the app is told the same
        number, so if this changes both must. */
@@ -707,6 +823,11 @@ int main(void)
     CHECK((size_t)LOCK_SOFT >= DM_SERIAL_ADDR + 4 &&
           (size_t)LOCK_CLEARED < (size_t)AUTO_ADDR,
           "the lockout sits between the serial and the power-on byte");
+    CHECK(DM_HOST_ADDR == DM_SERIAL_ADDR + 4 &&
+          DM_HOST_ADDR + DM_HOST_LEN == (size_t)LOCK_SOFT,
+          "the host key fills the gap between the serial and the lockout");
+    CHECK(0x1F2 > (size_t)LOCK_CLEARED && 0x1F2 < (size_t)AUTO_ADDR,
+          "and its wait the byte between the lockout and the power-on byte");
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "all checks passed");
     return fails != 0;

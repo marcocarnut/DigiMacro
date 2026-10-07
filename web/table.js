@@ -19,6 +19,9 @@ const ESC_JUMP   = 0x81;    /* carry on with the macro whose header is arg-1:
                                plus one because a zero byte ends a macro, and
                                the header of "." is zero */
 const ESC_MARK   = 0x82;    /* the repeat after this goes back to here */
+const ESC_HOST   = 0x83;    /* stop unless the host has proved itself: */
+const HOST_SILENT = 1;      /* ...quietly, {host} */
+const HOST_LOUD   = 2;      /* ...as if the code were not there, {host!} */
 const SHIFT      = 0x80;    /* in a stored keystroke */
 
 const AUTO_ADDR  = 0x1F3;   /* the macro to type when the board is plugged
@@ -324,6 +327,16 @@ function encodeMacro(text) {
         continue;
       }
 
+      /* {host} stops the macro here unless the host has sent its key
+         lately; {host!} stops it as if the code were not in the table. */
+      const host = /^host(!?)$/i.exec(body);
+      if (host) {
+        push(ESC_HOST, host[1] ? HOST_LOUD : HOST_SILENT);
+        unitAt = -1;                            /* a check is not a thing to
+                                                   count */
+        continue;
+      }
+
       const go = /^goto\s+([.-]+)$/i.exec(body);
       if (go) {
         push(ESC_JUMP, header(go[1]) + 1);
@@ -447,6 +460,7 @@ function decodeMacro(bytes) {
       const arg = bytes[++i];
       if (b === ESC_PAUSE)  { out += `{pause ${(arg / 10).toFixed(1)}}`; continue; }
       if (b === ESC_JUMP) { out += `{goto ${codeOf(arg - 1)}}`; continue; }
+      if (b === ESC_HOST) { out += arg === HOST_LOUD ? '{host!}' : '{host}'; continue; }
       if (b === ESC_REPEAT) {
         const n = arg + 1;              /* the firmware counts the extra ones */
         if (groupAt < 0) {
@@ -523,6 +537,7 @@ function entryFate(bytes) {
     const b = bytes[i];
     if (b === ESC_JUMP)  return { acts, goes: bytes[i + 1] - 1 };
     if (b === ESC_MARK)  continue;
+    if (b === ESC_HOST || b === ESC_MOD) { i++; continue; } /* nothing shows */
     if ((b & 0x7F) < 0x04) { acts = true; i++; continue; }  /* a pause, say */
     acts = true;                                            /* a keystroke */
   }
@@ -557,6 +572,35 @@ function loopCheck(entries) {
     }
   }
 }
+
+/* Things that are allowed but probably not meant, as message keys. A {host!}
+   is only indistinguishable from an empty code if nothing shows before it:
+   type something first and a guesser learns the code exists. */
+function macroWarnings(bytes) {
+  const warn = [];
+  let shown = false;
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i];
+    if (b === ESC_MARK) continue;
+    if (b === ESC_HOST) {
+      if (bytes[i + 1] === HOST_LOUD && shown) warn.push('host-late');
+      i++;
+      continue;
+    }
+    if (b === ESC_MOD) { i++; continue; }
+    if ((b & 0x7F) < 0x04) { i++; if (b !== ESC_JUMP) shown = true; continue; }
+    shown = true;
+  }
+  return warn;
+}
+
+const hasHostCheck = bytes => {
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] === ESC_HOST) return true;
+    if ((bytes[i] & 0x7F) < 0x04 && bytes[i] !== ESC_MARK) i++;
+  }
+  return false;
+};
 
 /* [[code, keystrokes], ...] -> the whole table, terminator and all. Entries
    are packed, so their order in the array is their order in EEPROM. */
@@ -630,6 +674,7 @@ function sampleRows() {
 
 if (typeof module !== 'undefined') module.exports = {
   ESC_PAUSE, ESC_MOD, ESC_REPEAT, ESC_JUMP, SHIFT, TABLE_TOP, MAX_SYM,
-  ESC_MARK, ESC_JUMP, AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
+  ESC_MARK, ESC_JUMP, ESC_HOST, HOST_SILENT, HOST_LOUD, macroWarnings, hasHostCheck,
+  AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
   usages, header, codeOf, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows };

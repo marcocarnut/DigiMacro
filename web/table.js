@@ -668,7 +668,7 @@ function decodeTable(bytes) {
    what the button writes. */
 function sampleRows() {
   return [
-    { code: '.',  text: 'hello from WebUSB\\n' },
+    { code: '.',  text: 'hello from DigiMacro\\n' },
     { code: '-',  text: 'wait{pause 1.0} ok' },
     { code: '..', text: 'ab{4}' },
     { code: '.-', text: '{Ctrl+Left}z' },

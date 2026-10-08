@@ -157,7 +157,9 @@ en: {
   'bk-needs-pass':  'Type the password the backup was saved with.',
   'bk-confirm':     'This replaces everything on this board with board {serial}\'s '
                   + 'backup: macros, startup, lockout, host key, password and '
-                  + 'serial number. Press Restore again to go ahead.',
+                  + 'serial number. A restore installs whatever the file holds, '
+                  + 'power-on macro included, so only restore backups you made. '
+                  + 'Press Restore again to go ahead.',
   'bk-restored-replug': 'Restored, and read back. Unplug the board and plug '
                   + 'it back in, so that the restored serial number takes effect.',
   'bk-restarting':  'Restored, and read back. The board is restarting, to come '
@@ -187,15 +189,17 @@ en: {
   'host-trusted':   'This board has a host key, and this computer sent it '
                   + 'lately: guarded macros play here for now.',
   'host-made':      'A new key is on the board, and saved as {file}. Add its '
-                  + 'line to ~/.config/digimacro/host.key on each computer the '
-                  + 'board should trust; any that had the old key need this one.',
+                  + 'line to ~/.config/digimacro/host.key (on Windows, '
+                  + '%APPDATA%\\digimacro\\host.key) on each computer the board '
+                  + 'should trust; any that had the old key need this one.',
   'host-removed':   'The host key is gone. Macros that check the host will now '
                   + 'always stop at the check.',
   'host-wait-saved': 'Saved: the host is trusted for {wait} after sending the key.',
   'host-wait-bad':  'The time runs from 10 to 2400 seconds, in steps of ten.',
   'host-mismatch':  'the key read back differently from what was written',
   'host-file-comment': 'DigiMacro host key for board {serial}: add this line to '
-                  + '~/.config/digimacro/host.key',
+                  + '~/.config/digimacro/host.key, or on Windows to '
+                  + '%APPDATA%\\digimacro\\host.key',
   'host-late':      'Something shows before {host!}, so a guesser on the wrong '
                   + 'computer learns this code exists. Put the check first.',
   'host-startup':   'The power-on macro checks the host. It runs before any '
@@ -208,8 +212,8 @@ en: {
                   + 'the browser asks you to pick it — a second picker, because '
                   + 'the bootloader is a different kind of USB device. Pick it '
                   + 'within a few seconds or it gives up and goes back to the '
-                  + 'old firmware. The macros, the password and the lockout '
-                  + 'all stay as they are. On Windows the bootloader needs a '
+                  + 'old firmware. The macros, the password, the lockout, the '
+                  + 'host key and the serial number all stay as they are. On Windows the bootloader needs a '
                   + 'driver once: Zadig, installing WinUSB for "Micronucleus".',
   'fw-boot':        'If the board\'s Micronucleus is older than 2.6, replace it '
                   + 'with 2.6 first',
@@ -315,6 +319,15 @@ en: {
                   + 'extended {ext}, lock {lock}.',
   close:            'Close',
   remove:           'remove',
+  goto:             'goto',
+  'bk-no-pass':     'This page does not know the board\'s password, so it cannot '
+                  + 'encrypt the backup. Unplug the board, plug it back in, and '
+                  + 'give the password when asked.',
+  'backup-bad-password': 'That backup holds a password other than the one it was '
+                  + 'opened with, so restoring it would lock the board against '
+                  + 'you. It was not made by this page; nothing was written.',
+  'password-too-long': 'That is more than 12 bytes. Letters with accents take two '
+                  + 'each, so shorten it a little.',
   'wrong-magic':    'that device did not answer "DM"',
   'write-ok':       'Wrote {n} bytes and read every one of them back.',
   'write-mismatch': 'mismatch at {at}: wrote {wrote}, read {read}',
@@ -495,7 +508,9 @@ pt: {
   'bk-confirm':     'Isto substitui tudo nesta placa pela cópia da placa '
                   + '{serial}: macros, inicialização, bloqueio, chave de '
                   + 'computador, senha e número de série. Clique em Restaurar de '
-                  + 'novo para continuar.',
+                  + 'novo para continuar. Uma restauração instala o que houver no '
+                  + 'arquivo, macro de inicialização inclusive, então só restaure '
+                  + 'cópias feitas por você.',
   'bk-restored-replug': 'Restaurada, e lida de volta. Desconecte a placa e '
                   + 'conecte de novo, para o número de série restaurado valer.',
   'bk-restarting':  'Restaurada, e lida de volta. A placa está reiniciando, para '
@@ -528,8 +543,9 @@ pt: {
   'host-trusted':   'Esta placa tem uma chave de computador, e este computador a '
                   + 'enviou há pouco: as macros protegidas rodam aqui por ora.',
   'host-made':      'Uma chave nova está na placa, e salva como {file}. '
-                  + 'Acrescente a linha dela a ~/.config/digimacro/host.key em '
-                  + 'cada computador de confiança; os que tinham a chave antiga '
+                  + 'Acrescente a linha dela a ~/.config/digimacro/host.key (no '
+                  + 'Windows, %APPDATA%\\digimacro\\host.key) em cada '
+                  + 'computador de confiança; os que tinham a chave antiga '
                   + 'precisam desta.',
   'host-removed':   'A chave de computador foi removida. As macros que '
                   + 'verificam o computador agora sempre param na verificação.',
@@ -538,7 +554,8 @@ pt: {
   'host-wait-bad':  'O tempo vai de 10 a 2400 segundos, de dez em dez.',
   'host-mismatch':  'a chave lida de volta é diferente da gravada',
   'host-file-comment': 'chave de computador DigiMacro da placa {serial}: '
-                  + 'acrescente esta linha a ~/.config/digimacro/host.key',
+                  + 'acrescente esta linha a ~/.config/digimacro/host.key, ou no '
+                  + 'Windows a %APPDATA%\\digimacro\\host.key',
   'host-late':      'Algo aparece antes de {host!}, então quem tenta adivinhar '
                   + 'num computador errado descobre que este código existe. '
                   + 'Ponha a verificação primeiro.',
@@ -553,8 +570,8 @@ pt: {
                   + 'navegador pede para você escolhê-lo — uma segunda lista, '
                   + 'porque o bootloader é outro tipo de dispositivo USB. '
                   + 'Escolha em poucos segundos, ou ele desiste e volta ao '
-                  + 'firmware antigo. As macros, a senha e o bloqueio continuam '
-                  + 'como estão. No Windows o bootloader precisa de um driver '
+                  + 'firmware antigo. As macros, a senha, o bloqueio, a chave de '
+                  + 'computador e o número de série continuam como estão. No Windows o bootloader precisa de um driver '
                   + 'uma vez: o Zadig, instalando WinUSB para "Micronucleus".',
   'fw-boot':        'Se o Micronucleus da placa for anterior ao 2.6, trocá-lo '
                   + 'pelo 2.6 antes',
@@ -663,6 +680,15 @@ pt: {
                   + 'estendido {ext}, trava {lock}.',
   close:            'Fechar',
   remove:           'remover',
+  goto:             'ir para',
+  'bk-no-pass':     'Esta página não sabe a senha da placa, então não consegue '
+                  + 'cifrar a cópia. Desconecte a placa, conecte de novo e dê a '
+                  + 'senha quando ela for pedida.',
+  'backup-bad-password': 'Essa cópia guarda uma senha diferente daquela com que '
+                  + 'foi aberta, então restaurá-la trancaria a placa para você. '
+                  + 'Ela não foi feita por esta página; nada foi gravado.',
+  'password-too-long': 'Isso passa de 12 bytes. Letras acentuadas ocupam dois '
+                  + 'cada; encurte um pouco.',
   'wrong-magic':    'esse dispositivo não respondeu "DM"',
   'write-ok':       'Gravados {n} bytes, e todos lidos de volta.',
   'write-mismatch': 'divergência em {at}: gravado {wrote}, lido {read}',

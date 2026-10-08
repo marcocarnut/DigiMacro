@@ -58,8 +58,8 @@ Be honest with yourself about these before relying on it.
   anything on that computer that sees keystrokes sees the secret: a keylogger,
   a malicious program, a screen recorder, whatever field had focus. Host trust
   decides *where* the board types, not what that computer does with it.
-- **Your host key file.** Anyone who can read `~/.config/digimacro/host.key`,
-  or plug the board into the computer where the client runs, can make guarded
+- **Your host key file.** Anyone who can read `~/.config/digimacro/host.key`
+  (`%APPDATA%\digimacro\host.key` on Windows), or plug the board into the computer where the client runs, can make guarded
   macros play. Root on that computer can also read the key off the USB bus.
 - **Someone watching you tap.** A code seen is a code known. The lockout limits
   guessing, not knowing. Host trust helps here: a code seen is no use on
@@ -76,17 +76,19 @@ Be honest with yourself about these before relying on it.
 ## What it costs
 
 - **No firmware updates from the page.** There is no bootloader to update
-  through. The status line says *(hardened: no bootloader)*. Updating means
-  erasing the chip with a programmer, which erases everything, and starting
-  again.
+  through; the status line says **(hardened)** instead of offering one, or
+  *(hardened: no bootloader)* on firmware older than 8. Updating means erasing
+  the chip with a programmer, which erases everything, and restoring a backup
+  afterwards.
 - **An ISP programmer.** [DigiISP](https://digiisp.postcogito.org) turns a second
   Digispark into one, programmed from the browser with nothing to install. It
   reads and writes flash and EEPROM and sets fuses and lock bits, all from its
   web page, and draws the wiring for a Digispark target. Any other AVR
   programmer works too; the avrdude lines are below.
-- **Starting over erases the board's identity.** The serial number lives in
-  EEPROM. A new one means Chrome asks you to pick the board again, and every
-  computer needs the new host key file.
+- **Starting over erases the board's identity,** unless you restore a backup.
+  The serial number lives in EEPROM. A new one means Chrome asks you to pick
+  the board again, and every computer needs the new host key file; a restored
+  backup brings both back.
 
 ## Setting it up
 
@@ -115,10 +117,12 @@ three ways:
 
 - it may use all 8192 bytes of flash;
 - it has no REBOOT command, since there is nothing to reboot into;
-- **it calibrates its own clock.** Micronucleus normally tunes the chip's RC
-  oscillator against the computer's USB timing and leaves it tuned for the
-  firmware. Without Micronucleus, the firmware does this itself, at the end of
-  every USB reset, using the routine V-USB provides for exactly this.
+- it tells the app it has no bootloader (INFO's state bit `0x80`), which is
+  what the app's hardening check starts from.
+
+Both builds tune the chip's clock for USB themselves, against the computer's
+1 ms frames at every USB reset, so a board needs no bootloader to have done it
+first.
 
 ### 3. Erase, flash and set the fuses
 
@@ -157,16 +161,20 @@ avrdude -c usbasp-clone -p t85 -e -U flash:w:build/DigiMacro.ino.hex:i \
 
 Plug the board in on its own.
 
-- **It must enumerate and type.** Tap a code, or open the app. If it does not,
-  the clock calibration has failed on this board. Nothing is locked yet, so
+- **It must enumerate.** The app connects and reads it, and a tapped code gives
+  three blinks — the table is empty until step 5. If it does not enumerate,
+  something went wrong with the flash or the fuses. Nothing is locked yet, so
   you can go back to step 3, or return to an ordinary board as described
   under *Changing things afterwards*.
-- **The status line must say *(hardened: no bootloader)*.**
+- **The status line must say *(not fully hardened…)*,** and clicking it must
+  show only the lock bits unticked: they come in step 6. Anything else
+  unticked means step 3 went wrong.
 
 ### 5. Restore, or set it up
 
 **With a backup:** in the app, **Backup**, choose the file, type the password
-it was saved with, and **Restore**. Everything comes back as it was, and the
+it was saved with, and press **Restore** twice — the first press asks you to
+confirm. Everything comes back as it was, and the
 board restarts itself so that its restored serial number takes effect; press
 Connect and pick it again. (Firmware older than 8 cannot restart itself:
 unplug the board and plug it in again — the restored serial is only sent when
@@ -200,7 +208,8 @@ The app checks too. A board on firmware 8 or later reports its fuses and lock
 bits as the chip reads them, and the status line says **(hardened)** only when
 everything above is in place: no bootloader, lock byte `0xFC`, EESAVE
 unprogrammed, debugWIRE off. If anything is missing it
-says **(not fully hardened…)** instead, in red, and lists what. Before this
+says **(not fully hardened…)** instead, in red; click it for the list of what
+is missing. Before this
 step the lock bits are expected to be missing; after it, nothing should be.
 
 The firmware runs exactly as before: the lock bits restrict the programmer,
@@ -220,7 +229,8 @@ again whenever the macros change.
   changes none of that.
 - **The firmware:** save a backup in the app, then erase the chip with the
   programmer, which clears the lock bits and the EEPROM together, and go
-  through the steps again from 2: restore, check, lock. The app reads a locked
+  through the steps again from 2: build, erase and flash, check, restore, lock,
+  and save a new backup. The app reads a locked
   board's EEPROM through the firmware, so the backup is always current. A
   high-voltage programmer does all of this too, without the reset pin.
 
@@ -237,8 +247,10 @@ again whenever the macros change.
 - [ ] backup saved from the app, or a fresh start chosen
 - [ ] `./build.sh isp`
 - [ ] chip erased, flash written, fuses `0xE1` `0xDD` `0xFE`
-- [ ] board enumerates, types, and says *(hardened: no bootloader)*
-- [ ] backup restored and the board replugged — or, from scratch: a
+- [ ] board enumerates, and says *(not fully hardened…)* with only the lock
+      bits missing
+- [ ] backup restored (the board restarts itself; pick it again) — or, from
+      scratch: a
       twelve-character password, the lockout, a host key installed, and
       `{host!}` first in every secret macro
 - [ ] guarded macros tried on a trusted computer and an untrusted one

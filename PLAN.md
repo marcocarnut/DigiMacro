@@ -109,7 +109,8 @@ Five things follow from it:
   dangling code simply matches nothing, which is the safe failure.
 - **The walk must be bounded to the table region.** A table written without a
   terminator would otherwise run straight into the password. Settled at
-  0x000-0x1F0, 497 bytes, with the config bytes above it; both the lookup and
+  0x000-0x1DF, 480 bytes (first 0x1F0 and 497; the reserved block grew), with
+  the config bytes above it; both the lookup and
   playback stop at that boundary, and two of the tests are about nothing else.
 - **`\j` survives only for loops**, its original purpose — getting past 30
   characters — having disappeared. Worth keeping (~150 bytes is cheap now) but
@@ -186,8 +187,8 @@ with USB unpolled, because `eeprom_update_byte` blocks. Take 8–32 bytes per
 control transfer so each one completes promptly; DigiISP already writes its
 target's EEPROM this way. Use `update` rather than `write` so unchanged bytes
 cost no wear when the app saves a table it mostly did not touch. **Settled at
-32 bytes, chosen by the app**, the firmware imposing no chunk size of its own
-beyond V-USB's 254-byte control payload.
+32 bytes**, which the 36-byte feature report fixed once the transport became
+HID: four bytes of command, address and count, and 32 of data.
 
 A checksum over the table would let the firmware notice a write interrupted
 half way, which is otherwise silent. Cheap, optional, worth pricing — though
@@ -455,7 +456,8 @@ testable, which is why they are in this order rather than firmware-then-app.
    The morse decoding, the table walk and playback came over from DigiMacroCDC,
    repacked and read-only, with `keymapUS` dropped. The linker takes the keymap
    and `dusbTypeChar` out of the binary by itself now that nothing calls them,
-   so the library keeps both for the spike at no cost here. The whole of
+   so the library keeps both at no cost here — for `touchdebug`, which types
+   its readings with `hidTypeChar`, as the former is now called. The whole of
    playback — table walk, three escapes, morse — cost 254 bytes over the
    spike's 3550, less than the keymap and ASCII mapping it replaced.
 
@@ -494,8 +496,8 @@ testable, which is why they are in this order rather than firmware-then-app.
    escape back to 0x04 and the diff shows "ab" followed by two literal a's,
    which is the collision that moved it.
 
-   `tools/loadtable` stays useful as a way to get a board going without a
-   browser.
+   `tools/loadtable` stayed useful as a way to get a board going without a
+   browser, until the app replaced it; it is gone from the tree.
 3. ~~**The app.**~~ **Done.** `web/app.html`: read a board's table, edit it,
    write it back verified, with the byte budget on screen and every mistake
    reported beside the macro that has it.
@@ -548,7 +550,8 @@ testable, which is why they are in this order rather than firmware-then-app.
 
    Three things were added on top after using it:
 
-   **The app can hand the keyboard back** (`DM_FUNC_LEAVE`, 0x62). Holding the
+   **The app can hand the keyboard back** (`DM_FUNC_LEAVE`, 0x62 — since
+   removed with the mode switch; 0x62 is UNLOCK now). Holding the
    pad to leave vendor mode took the device off the bus without the page being
    told, so it sat holding a dead handle and reconnecting failed. The page now
    listens for connect and disconnect — a returning board is a new object,
@@ -674,13 +677,18 @@ testable, which is why they are in this order rather than firmware-then-app.
    What it does not stop is a laptop: micronucleus listens on every plug-in.
    The lockout is against tapping, which the README now says plainly.
 6. **Hardened mode — written up in `HARDENED_MODE.md`**, which the README
-   now warns, loudly, must be read before a board holds secrets. Writing it
-   found that the no-bootloader build had never been able to work. Micronucleus
-   is what tunes the RC oscillator for 16.5 MHz USB, and leaves it tuned for
-   the firmware; without it nothing did. `./build.sh isp` now sets
-   `DM_NO_BOOTLOADER`, which calibrates against the host's USB frames on every
-   reset (V-USB's own `osccal.c`, which was in the tree all along), drops
-   REBOOT, and tells the app through INFO so the status line can say so. The
+   now warns, loudly, must be read before a board holds secrets. `./build.sh
+   isp` sets `DM_NO_BOOTLOADER`, which drops REBOOT and tells the app through
+   INFO so the status line can say so.
+
+   **A correction.** Writing the guide, I claimed the no-bootloader build had
+   never been able to work, since Micronucleus is what tunes the RC oscillator
+   for 16.5 MHz USB, and added calibration under `DM_NO_BOOTLOADER`. The
+   commit message says so too. It was wrong: `usbconfig.h` has included
+   V-USB's `osccal.h` unconditionally since the first spike, so every build
+   has always calibrated itself at each bus reset, and my addition did
+   nothing. The final review before v1.0 found it; the redundant block is
+   gone. The
    extended fuse first went to `0xFF` as well, since nothing then needs SPM;
    it is back at the Digispark's `0xFE`, Marco's call, because the firmware
    contains no SPM instruction -- objdump says so -- which makes SELFPRGEN of
@@ -843,6 +851,9 @@ vendor-class interface and zero endpoints, and the landing-page URL.
 
 ### Two placeholders to confirm
 
+*Both went with the WebUSB mode: the GUID is gone, and the manufacturer string
+stands.*
+
 - The manufacturer string is now `digimacro.postcogito.org`, inferred from
   DigiISP's `digiisp.postcogito.org`. obdev's terms for `16c0:05dc` require a
   domain or e-mail the author owns, so this needs to be right.
@@ -892,7 +903,8 @@ Tested on:
 So the MS OS 2.0 set does its job and WinUSB binds itself, which was the whole
 of the no-driver-install claim.
 
-**One caveat to close before release.** The spike shares `16c0:05dc` *and*
+**One caveat to close before release** — moot since the mode switch went,
+taking the GUID with it. The spike shares `16c0:05dc` *and*
 DigiISP's `DeviceInterfaceGUID`, so a machine that has already met DigiISP may
 have had WinUSB bound and cached for that pair — in which case the Windows pass
 was inherited rather than earned. Giving DigiMacro its own GUID is on the list
@@ -915,4 +927,4 @@ obdev's terms for `16c0:05dc` want the vendor string to contain a domain the
 author owns, so the same name does both jobs.
 
 Everything the spike left downstream — the packed table, the EEPROM requests —
-has since been built and run on hardware. What is left is the app itself.
+has since been built and run on hardware, and so has the app.

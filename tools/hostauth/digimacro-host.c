@@ -51,7 +51,8 @@
    and their terms say both ends must do the telling: a board's serial starts
    with its author's domain and a colon, and this looks for that before it
    believes a device is a DigiMacro. Firmware 5 and older predate the prefix,
-   and are known instead by their manufacturer and product names. */
+   and are known instead by their manufacturer and product names. Firmware 6
+   sent its serial cut short, as "postcogi", and matches no key: update it. */
 #define SERIAL_PREFIX   "postcogito.org:"
 #define OLD_NAME        "digimacro.postcogito.org DigiMacro"
 
@@ -82,9 +83,17 @@ static int load_keys(const char *path)
         fprintf(stderr, "%s: readable by others; chmod 600 it\n", path);
 #endif
 
-    while (fgets(line, sizeof line, f) && nkeys < MAX_BOARDS) {
-        if (line[0] == '#' || sscanf(line, "%63s %63s", serial, hex) != 2)
+    while (fgets(line, sizeof line, f)) {
+        const char *l = line + strspn(line, " \t");
+        if (*l == '#' || *l == '\n' || *l == 0) continue;
+        if (nkeys == MAX_BOARDS) {
+            fprintf(stderr, "%s: only the first %d boards are used\n", path, MAX_BOARDS);
+            break;
+        }
+        if (sscanf(l, "%63s %63s", serial, hex) != 2) {
+            fprintf(stderr, "%s: skipping a malformed line\n", path);
             continue;
+        }
         if (strlen(serial) >= sizeof keys[0].serial || strlen(hex) != 2 * KEY_LEN) {
             fprintf(stderr, "%s: skipping a malformed line\n", path);
             continue;
@@ -204,11 +213,13 @@ static int sweep(int verbose)
         struct key *k = key_for(digits);
         if (!k) {
             if (verbose) fprintf(stderr, "%s: no key for this board\n", digits);
+            bad = 1;
             continue;
         }
         snprintf(path, sizeof path, "/dev/%s", e->d_name);
         int r = send_key(path, k->key);
-        if (r < 0) fprintf(stderr, "%s: %s: %s\n", digits, path, strerror(errno));
+        if (r < 0 && (verbose || r != k->last))
+            fprintf(stderr, "%s: %s: %s\n", digits, path, strerror(errno));
         if (r <= 0) bad = 1;
         report(k, digits, r, verbose);
     }
@@ -297,6 +308,7 @@ static int sweep(int verbose)
         struct key *k = key_for(digits);
         if (!k) {
             if (verbose) fprintf(stderr, "%s: no key for this board\n", digits);
+            bad = 1;
             CloseHandle(h);
             continue;
         }
@@ -311,7 +323,8 @@ static int sweep(int verbose)
             buf[0] = VND_ID;
             r = HidD_GetFeature(h, buf, sizeof buf) ? accepted(buf) : -1;
         }
-        if (r < 0) fprintf(stderr, "%s: error %lu\n", digits, GetLastError());
+        if (r < 0 && (verbose || r != k->last))
+            fprintf(stderr, "%s: error %lu\n", digits, GetLastError());
         if (r <= 0) bad = 1;
         report(k, digits, r, verbose);
         CloseHandle(h);

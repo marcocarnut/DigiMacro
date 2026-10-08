@@ -25,7 +25,10 @@ nothing installed, and Linux needs one udev rule.
 > a laboratory, and it does nothing about the computer the board types into.
 > The document explains each of those trade-offs. Do not skip it.
 
-**5754 bytes of the 6650** the stock bootloader leaves, and 207 of RAM.
+**DigiMacro v1.0 ships firmware 9**, in 5966 bytes of the 6650 the stock
+bootloader leaves, and 207 of RAM. The firmware counts its own versions —
+the app uses them to decide what a board can do — so v1.0 and firmware 9 are
+two names for the same thing.
 
 ## What you need
 
@@ -39,23 +42,32 @@ nothing installed, and Linux needs one udev rule.
   its LED on P0 needs `PIN_LED` changed in `DigiMacro.ino`, since P0 is the
   pad.
 - **Chrome or Edge**, on a computer: WebHID, and WebUSB for firmware updates,
-  are not in Firefox or Safari.
-- **To build the firmware:** `arduino-cli` and the Digistump AVR core.
+  are not in Firefox or Safari. Tested on Linux and Windows 10; macOS should
+  work the same way, needing nothing installed, but nobody has tried it yet.
+- **To install it,** only the `micronucleus` command-line tool: the released
+  firmware is committed as `web/firmware/digimacro.hex`.
+- **To build it,** `arduino-cli` and the Digistump AVR core, on Linux.
   `./build.sh` says how to install both if either is missing. The tests also
   need `g++` and `node`.
 
 ## Getting started
 
-1. **Build and flash the firmware.** Run `./build.sh upload`, then plug the
-   board in when Micronucleus asks for it.
-2. **On Linux, let the browser reach the board.** Every hidraw device is
-   root-only until a udev rule says otherwise:
+1. **On Linux, let the browser and Micronucleus reach the board.** Every
+   hidraw and USB device is root-only until a udev rule says otherwise:
    ```
    sudo cp web/60-digimacro.rules /etc/udev/rules.d/
    sudo udevadm control --reload
    ```
-   Then unplug the board and plug it back in.
-3. **Open the app.** WebHID needs a secure context, and `localhost` counts:
+   On Windows, Micronucleus needs a driver once: run
+   [Zadig](https://zadig.akeo.ie/) while the board sits in its bootloader, the
+   first few seconds after plugging it in, and install WinUSB for it. The
+   keyboard itself needs nothing anywhere.
+2. **Flash the firmware.** Either build and upload it with `./build.sh upload`,
+   or upload the released one with `micronucleus --run
+   web/firmware/digimacro.hex`. Plug the board in when Micronucleus asks for
+   it. After this first time, the app updates it.
+3. **Open the app.** It is not hosted anywhere yet, so serve it yourself.
+   WebHID needs a secure context, and `localhost` counts:
    ```
    cd web && python3 -m http.server 8000
    ```
@@ -259,7 +271,16 @@ digimacro-host -e 30                      # every 30 seconds, for as long as it 
 For Windows, `make -C tools/hostauth windows` cross-compiles
 `digimacro-host.exe` with MinGW-w64 (`gcc-mingw-w64-x86-64` on Debian and
 Ubuntu). It is a single file needing nothing installed beside it, and it reads
-its keys from `%APPDATA%\digimacro\host.key`.
+its keys from `%APPDATA%\digimacro\host.key`:
+
+```
+mkdir "%APPDATA%\digimacro"
+type digimacro-*.key >> "%APPDATA%\digimacro\host.key"
+digimacro-host.exe -e 30
+```
+
+To keep it running while you are logged in, put a shortcut to
+`digimacro-host.exe -e 30` in the Startup folder (`shell:startup`).
 
 Run with `-e` from your session, and stopped when the screen locks, the trust
 becomes "while I am logged in". The client finds every board plugged in by
@@ -279,8 +300,8 @@ second instead, on a clock of its own.
 lockout, host key, password and serial number — and **Restore** puts it back,
 so a board erased to update it comes back as itself, Chrome's permission and
 host key files included. The password goes in last, or the board would lock
-itself half way through its own restore, and the lockout's counts start
-again. Then the board restarts itself — leaves the bus and comes back, as if
+itself half way through its own restore, and the lockout's wrong-code and
+soft-lock counts start again. Then the board restarts itself — leaves the bus and comes back, as if
 replugged — because the serial number is only sent when the board is plugged
 in, and a restored one is easy to forget about. To Chrome a new serial is a
 new device, so the page asks you to press Connect and pick the board again.
@@ -334,8 +355,9 @@ survive.
   firmware.
 - **Firmware older than 3** cannot restart itself into the bootloader, so it
   needs one update with `./build.sh upload`. The page says so.
-- **A hardened board** has no bootloader, and says *(hardened: no bootloader)*
-  instead. See [HARDENED_MODE.md](HARDENED_MODE.md).
+- **A hardened board** has no bootloader, and says **(hardened)** instead, or
+  **(not fully hardened…)** with a list of what is missing — *(hardened: no
+  bootloader)* on firmware older than 8. See [HARDENED_MODE.md](HARDENED_MODE.md).
 - **Linux** needs the Micronucleus line in `web/60-digimacro.rules`.
 - **Windows** needs a driver for the bootloader once: run
   [Zadig](https://zadig.akeo.ie/) while the board is in Micronucleus, and
@@ -382,7 +404,7 @@ and get it to see the answer:
 |---|---|
 | `0x40` INFO | always answers: `[1..2]` "DM", `[3]` protocol (2), `[4]` firmware, `[5..6]` EEPROM size, `[7]` state, and from firmware 8 `[8..11]` the low, high and extended fuses and the lock byte, as the chip reads them |
 | `0x41` REBOOT | into the bootloader, for a firmware update. Absent from the hardened build |
-| `0x42` RESTART | off the bus and back, as if replugged, without a reset: the serial number is made again from EEPROM, so a restored one takes effect |
+| `0x42` RESTART | off the bus and back, as if replugged, without a reset: the serial number is made again from EEPROM, so a restored one takes effect. The window closes, and the power-on macro does not type |
 | `0x60` READ | address and count in, up to 32 bytes back |
 | `0x61` WRITE | address, count and up to 32 bytes in |
 | `0x62` UNLOCK | the password, if the board has one |
@@ -495,7 +517,8 @@ table.
 ./build.sh                      # just build it
 ```
 
-Options, which combine:
+Options, which mostly combine — `release` takes none, `isp` cannot `upload`,
+and `rc` is for a pad, not a `button`:
 
 - `button`: a pushbutton from P0 to ground instead of a pad.
 - `rc`: a pad read through a bleed resistor rather than the chip's pull-up.
@@ -519,13 +542,13 @@ compiles the real `DigiMacro.ino` for the host against stub hardware and
 exercises the table walk, every escape, the bounds that keep a malformed table
 from reaching the reserved bytes, the morse decoding from the input pin, the
 password, the lockout and the host check, and both ways of reading the pad.
-Then the app's macro language on its own,
-the two languages against each other, and — across the language boundary — a
-table encoded by `web/table.js` played through the firmware. Then the firmware
-the app ships, laid out for the bootloader, with both jumps decoded and
-followed to where they land, and the backups: scrypt against node's own, and
-a file that opens only for its password. Eight suites, a couple of seconds. Without `node`, the
-five that need it are skipped.
+Then the app's macro language on its own; the two languages against each
+other; the firmware the app ships, laid out for the bootloader, with both
+jumps decoded and followed to where they land; the backups, with scrypt
+checked against node's own and a file that opens only for its password; and
+last, across the language boundary, a table encoded by `web/table.js` played
+through the firmware. Eight suites, a few seconds. Without `node`, the five
+that need it are skipped.
 
 ## Layout
 
@@ -535,11 +558,12 @@ five that need it are skipped.
 | `DigiHidUSB/` | the V-USB stack: a keyboard, and the vendor collection the app talks to |
 | `build.sh` | builds and flashes everything here |
 | `test/` | host build of the real sketch against stub hardware, and the web side's tests |
-| `tools/hostauth/` | the Linux client that sends the host key |
+| `tools/hostauth/` | the client that sends the host key, for Linux and Windows |
 | `web/` | `app.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `micronucleus.js` the uploader, `backup.js` the backups, `60-digimacro.rules` the udev rule |
 | `web/firmware/` | what the app installs: the released firmware, and the Micronucleus 2.6 upgrader |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |
 | `PLAN.md` | design, decisions and how it got here |
+| `PLAN-v2.md` | the next version's plan: the firmware updates itself, and Micronucleus goes. Not built |
 
 ## Related
 

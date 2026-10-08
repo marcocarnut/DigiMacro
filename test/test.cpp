@@ -54,10 +54,15 @@ void hidTypeChar(char, uint8_t){}
 
 /* Every keystroke, modifiers and all, in the order they were sent. Hex
    rather than letters so that a modifier or an odd usage cannot hide. */
+/* A finger that arrives after so many keystrokes, for the tests that need
+   one part way through a macro: -1 for never. */
+static int stop_after = -1;
+
 void hidKey(uint8_t mod, uint8_t key)
 {
     if (typedn < (int)sizeof typed - 16)
         typedn += sprintf(typed + typedn, "<%02X/%02X>", mod, key);
+    if (stop_after > 0 && --stop_after == 0) btn_held = 1;
 }
 
 #include "DigiMacro.ino"
@@ -498,6 +503,39 @@ int main(void)
     code_bits = 0; code_len = 1;
     code_finish();                      /* must return at all, is the point */
     CHECK(typedn == 0, "it types nothing, and must stop doing so");
+
+    printf("18g. a long macro does not reopen the window\n");
+    /* The window's expiry is a sixteen-bit comparison of milliseconds, so it
+       has to be asked about more often than every 32 seconds, or an expired
+       window reads as open again -- unlock and all. Three 25.5-second pauses
+       put the first chance to ask 46 seconds past the expiry, squarely in
+       the half of the cycle where the old code got it wrong. */
+    table_reset();
+    add(".", { ESC_PAUSE, 255, ESC_PAUSE, 255, ESC_PAUSE, 255, K('a') });
+    btn_held = 0;
+    hidAllow(CONFIG_MS);
+    unlocked = 1;
+    play(".");
+    CHECK(!strcmp(typed, "<00/04>"), "the macro plays through: \"%s\"", typed);
+    CHECK(!hidAllowed(), "the window must be shut after 76 seconds");
+    CHECK(unlocked == 0, "and the unlock gone with it");
+
+    printf("18h. a repeat of hundreds can be stopped like anything else\n");
+    /* A finger arrives part way through: the stub's pin reads it from the
+       next poll on, so count how many keystrokes went out before that. */
+    table_reset();
+    add(".", { K('a'), ESC_REPEAT, 200 });
+    btn_held = 0;
+    typedn = 0; typed[0] = 0;
+    code_reset();
+    code_bits = 0; code_len = 1;
+    stop_after = 20;
+    code_finish();
+    stop_after = -1;
+    CHECK(typedn / 7 < 40, "it must stop near where the touch came, typed %d",
+          typedn / 7);
+    btn_held = 0; loop();
+    fake_ms += DEBOUNCE_MS + 1; loop();
 
     printf("19. the password, which is optional and absent by default\n");
     /* An erased chip has none, and a board that types eleven right-arrows at

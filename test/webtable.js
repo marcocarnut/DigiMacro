@@ -16,7 +16,7 @@ const check = (ok, what) => { if (!ok) { console.log('  FAIL: ' + what); fails++
 /* Every macro the tests write, in one place: what the firmware plays is
    built from the same list the round trip is checked against. */
 const ROWS = [
-  { code: '.',   text: 'hello from WebUSB\\n' },
+  { code: '.',   text: 'hello from DigiMacro\\n' },
   { code: '-',   text: 'wait{pause 1.0} ok' },
   { code: '..',  text: 'ab{4}' },      /* four b in all, not five */
   { code: '.-',  text: '{Ctrl+Left}z' },

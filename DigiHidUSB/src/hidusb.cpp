@@ -110,12 +110,13 @@ int usbDescriptorStringSerialNumber[1 + DM_SERIAL_LEN] = {
 
 /* Random bits from the watchdog oscillator's jitter against the CPU clock:
  * two independent RC oscillators, so the low bits of Timer0 at each watchdog
- * timeout are unpredictable. Takes about a second, and runs once in a board's
- * life -- on a chip whose EEPROM has never held one.
+ * timeout are unpredictable. Takes about a second, and runs only when the
+ * EEPROM holds no serial: a new chip, or one just erased.
  *
  * Interrupts stay off throughout, because the watchdog is put in interrupt
  * mode to stop it resetting the part and there is no handler for it. Nothing
- * is lost: this runs before the USB driver starts. */
+ * is lost: it runs before the USB driver starts, or from restart() once the
+ * board is off the bus. */
 static uint32_t entropy(void)
 {
     uint32_t s = OSCCAL;
@@ -171,7 +172,8 @@ static void initSerial(void)
 
 static uint8_t kbdReport[KBD_REPORT_LEN] = { HID_REPORT_KBD };
 static uint8_t hidIdleRate;
-static uint8_t awake;           /* ...and that it said anything at all */
+static uint8_t awake;           /* the host has said something to the
+                                   keyboard: see hidAwake() */
 
 static uint8_t vnd[DM_VND_LEN]; /* the feature report, both ways */
 static uint8_t vndLeft;         /* bytes of it still to come */
@@ -198,9 +200,25 @@ void hidAllow(uint16_t ms)
     allowOpen = 1;
 }
 
+/* Whatever the last request carried or the last answer held -- a password,
+   a host key, a chunk of EEPROM -- stays in the report until the next one,
+   and anybody who can reach the device can read the report back. So it is
+   wiped wherever it might have held something, and when the window closes. */
+static void wipe(void)
+{
+    memset(vnd + DM_VND_DATA, 0, DM_VND_CHUNK);
+}
+
+/* Must be asked at least every 32 seconds or so while the window might be
+   open: the comparison is sixteen bits of milliseconds, and asked later than
+   that it would read an expired window as open again. The sketch asks
+   between every step of a macro, not only in loop(). */
 uint8_t hidAllowed(void)
 {
-    if (allowOpen && (int16_t)(ticks() - allowUntil) >= 0) allowOpen = 0;
+    if (allowOpen && (int16_t)(ticks() - allowUntil) >= 0) {
+        allowOpen = 0;
+        wipe();
+    }
     return allowOpen;
 }
 
@@ -216,6 +234,7 @@ void    __attribute__((weak)) hidSetPass(const uint8_t *p, uint8_t n)
                                                 { (void)p; (void)n; }
 uint8_t __attribute__((weak)) hidLockState(void) { return 0; }
 uint8_t __attribute__((weak)) hidHostState(void) { return 0; }
+void    __attribute__((weak)) hidHostForget(void) { }
 uint8_t __attribute__((weak)) hidHostAuth(const uint8_t *p, uint8_t n)
                                                 { (void)p; (void)n; return 0; }
 
@@ -235,6 +254,7 @@ static void vndAnswer(void)
        It can do nothing else -- no window, no unlock, nothing read. */
     if (vnd[0] == DM_FUNC_HOSTAUTH) {
         if (!hidHostAuth(vnd + DM_VND_DATA, n)) vnd[0] = DM_REFUSED;
+        wipe();                 /* the key, whether it was right or not */
         return;
     }
 
@@ -262,10 +282,8 @@ static void vndAnswer(void)
         vnd[4] = DM_FW_VERSION;
         vnd[5] = (uint8_t)(E2END + 1);
         vnd[6] = (uint8_t)((E2END + 1) >> 8);
-        vnd[8]  = fuses[0];     /* low, high, extended, lock: see hidBegin() */
-        vnd[9]  = fuses[1];
-        vnd[10] = fuses[2];
-        vnd[11] = fuses[3];
+        memcpy(vnd + DM_INFO_FUSES, fuses, 4);  /* low, high, extended, lock:
+                                                   see hidBegin() */
         vnd[7] = (hidAllowed()  ? DM_ST_OPEN     : 0)
                | (hidPassSet()  ? DM_ST_PASSWORD : 0)
                | (hidUnlocked() ? DM_ST_UNLOCKED : 0)
@@ -279,12 +297,14 @@ static void vndAnswer(void)
 
     case DM_FUNC_UNLOCK:
         if (!hidUnlock(vnd + DM_VND_DATA, n)) vnd[0] = DM_REFUSED;
+        wipe();
         break;
 
     case DM_FUNC_SETPASS:
         /* Zero bytes clears it, which is how a board goes back to needing
            nothing. Reaching here at all meant getting past both gates. */
         hidSetPass(vnd + DM_VND_DATA, n);
+        wipe();
         break;
 
     case DM_FUNC_RESTART:
@@ -316,6 +336,10 @@ static void vndAnswer(void)
             if ((addr + i) > E2END) break;
             eeprom_update_byte((uint8_t *)(addr + i), vnd[DM_VND_DATA + i]);
         }
+        /* A new host key, or none: whatever trust the old one earned goes. */
+        if (addr < DM_HOST_ADDR + DM_HOST_LEN && addr + n > DM_HOST_ADDR)
+            hidHostForget();
+        wipe();                 /* it might have been the password */
         break;
 
     default:
@@ -451,7 +475,15 @@ static void restart(void)
     restartWanted = 0;
     allowOpen = 0;
     awake = 0;
+    hidHostForget();            /* as if replugged: trust starts again too */
+    wipe();
+    /* Off the bus first: initSerial() may have to make a serial, which keeps
+       interrupts off for a second -- harmless off the bus, not on it. */
+    USB_INTR_ENABLE &= ~(1 << USB_INTR_ENABLE_BIT);
+    usbDeviceDisconnect();
     initSerial();
+    vnd[0] = DM_FUNC_INFO;
+    vndAnswer();                /* so the first read after it is INFO's */
     reconnect();
 }
 
@@ -465,14 +497,21 @@ void hidBegin(void)
     /* The fuses and lock bits, so that the app can say whether a board that
        is meant to be hardened really is -- a lock byte left at 0xFF looks
        exactly like 0xFC from the outside, until somebody reads the chip.
-       Read here, once: a read is a write to SPMCSR and an LPM within three
-       cycles, and an interrupt between the two would read flash instead.
-       USB has not started yet, so nothing can come between them. They only
-       change with a programmer, which means a power cycle. */
-    fuses[0] = boot_lock_fuse_bits_get(GET_LOW_FUSE_BITS);
-    fuses[1] = boot_lock_fuse_bits_get(GET_HIGH_FUSE_BITS);
-    fuses[2] = boot_lock_fuse_bits_get(GET_EXTENDED_FUSE_BITS);
-    fuses[3] = boot_lock_fuse_bits_get(GET_LOCK_BITS);
+       Read once, with interrupts off: a read is a write to SPMCSR and an LPM
+       within three cycles, and an interrupt between the two reads a byte of
+       flash instead. USB has not started, but the core's millisecond timer
+       has -- and for the lock byte the flash it would read is 0xC0, which
+       passes for locked. They only change with a programmer, which means a
+       power cycle, so once is enough. */
+    {
+        uint8_t sreg = SREG;
+        cli();
+        fuses[0] = boot_lock_fuse_bits_get(GET_LOW_FUSE_BITS);
+        fuses[1] = boot_lock_fuse_bits_get(GET_HIGH_FUSE_BITS);
+        fuses[2] = boot_lock_fuse_bits_get(GET_EXTENDED_FUSE_BITS);
+        fuses[3] = boot_lock_fuse_bits_get(GET_LOCK_BITS);
+        SREG = sreg;
+    }
 
     initSerial();
 
@@ -480,7 +519,8 @@ void hidBegin(void)
     vndAnswer();                /* so a first read answers something */
 
     usbInit();
-    reconnect();                /* make the host forget the bootloader */
+    reconnect();                /* make the host forget whatever was on the
+                                   bus before: the bootloader, if any */
 }
 
 

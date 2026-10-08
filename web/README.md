@@ -68,7 +68,7 @@ in its bootloader.
 ## The raw protocol page
 
 `hid.html` speaks the vendor report as bytes, with none of the app's help:
-INFO, decoded; a dump of all 512 bytes of EEPROM; and a write test that writes
+INFO, with its state byte decoded (the fuse bytes are left raw); a dump of all 512 bytes of EEPROM; and a write test that writes
 back exactly the bytes it just read, since every byte of the EEPROM belongs to
 something now and there is nowhere safe to scribble. INFO always answers. READ
 and WRITE need the pad held first, and on a board with a password, the

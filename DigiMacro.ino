@@ -553,6 +553,13 @@ static uint8_t host_ok(void)
     return host_left && host_keyset();
 }
 
+/* The host key was rewritten or removed, or the board restarted: whatever
+   trust the old key earned goes with it. */
+void hidHostForget(void)
+{
+    host_left = 0;
+}
+
 uint8_t hidHostState(void)
 {
     return (host_ok() ? DM_ST_HOST : 0) | (host_keyset() ? DM_ST_HOSTKEY : 0);
@@ -583,12 +590,20 @@ uint8_t hidHostAuth(const uint8_t *p, uint8_t n)
 #endif
 
 /* The clocks that must keep running while a macro plays, since loop() does
-   not: they count in sixteen bits of milliseconds, which wrap in a minute. */
+   not: they count in sixteen bits of milliseconds, which wrap in a minute,
+   so anything compared against them has to be looked at more often than
+   that. The window most of all: left unasked through a long macro, an
+   expired one would read as open again, unlock and all. */
 static void clocks_poll(void)
 {
     lock_poll();
+    if (!hidAllowed()) unlocked = 0;    /* the session ends with the window */
+    if (pass_pausing && (uint16_t)(ticks() - pass_failed) >= PASS_PAUSE_MS)
+        pass_pausing = 0;
 #if HAVE_HOST
     host_poll();
+    if (host_pausing && (uint16_t)(ticks() - host_failed) >= PASS_PAUSE_MS)
+        host_pausing = 0;
 #endif
 }
 
@@ -970,7 +985,7 @@ uint8_t macro_play(uint8_t *a)
 {
     uint8_t  refused = 0;
 #if HAVE_JUMP
-    uint8_t  jumps = 0;         /* since the last pause; see JUMP_MAX */
+    uint8_t  jumps = 0;         /* since the last keystroke; see JUMP_MAX */
 #endif
     uint8_t  mod = 0;           /* latched by ESC_MOD for the next keystroke */
     uint8_t  lastkey = 0;       /* what a bare ESC_REPEAT repeats... */
@@ -1019,8 +1034,18 @@ uint8_t macro_play(uint8_t *a)
                    so whatever the group was -- an accent and its letter, a
                    word, a pause -- repeats whole. */
                 if (!mark) {
+                    /* Up to 255 keystrokes, each a chance to be stopped,
+                       like any other. */
                     LED_SET(1);
-                    while (arg--) hidKey(lastmod, lastkey);
+                    while (arg--) {
+                        clocks_poll();
+#if HAVE_TOUCH
+                        touch_poll();
+#endif
+                        if (INPUT_ACTIVE()) break;
+                        hidKey(lastmod, lastkey);
+                    }
+                    if (INPUT_ACTIVE()) { stop_for_touch(); break; }
                 } else if (!reps) {
                     reps = arg;         /* the group has played once already */
                     a = mark;
@@ -1038,13 +1063,16 @@ uint8_t macro_play(uint8_t *a)
                 mark = 0;
                 reps = 0;
 #endif
-#if HAVE_HOST
             } else if (c == ESC_HOST) {
-                if (!host_ok()) {
+                /* A build without host checks refuses every one: a guarded
+                   macro is never typed by firmware that cannot check. */
+#if HAVE_HOST
+                if (!host_ok())
+#endif
+                {
                     refused = arg == HOST_LOUD ? HOST_LOUD : HOST_SILENT;
                     break;
                 }
-#endif
             } else {
                 break;                  /* an escape this build does not have:
                                            stop rather than guess */

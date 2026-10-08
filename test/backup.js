@@ -73,6 +73,16 @@ const hex = b => Buffer.from(b).toString('hex');
     [JSON.stringify({ ...JSON.parse(plain), map: 2 }), 'backup-other-map'],
     [JSON.stringify({ ...JSON.parse(file), kdf: { ...JSON.parse(file).kdf, N: 1 << 24 } }),
      'backup-not-one'],                                 /* a cost meant to hang the page */
+    [JSON.stringify({ ...JSON.parse(file), kdf: { ...JSON.parse(file).kdf, N: 32768 } }),
+     'backup-not-one'],                                 /* dearer than the page makes */
+    [JSON.stringify({ ...JSON.parse(file), kdf: { ...JSON.parse(file).kdf, N: 2.5 } }),
+     'backup-not-one'],                                 /* not a whole number */
+    [JSON.stringify({ ...JSON.parse(file), kdf: { ...JSON.parse(file).kdf, r: 1.5 } }),
+     'backup-not-one'],
+    ['null', 'backup-not-one'],
+    [JSON.stringify({ ...JSON.parse(file), cipher: undefined }), 'backup-not-one'],
+    [JSON.stringify({ ...JSON.parse(file), image: '%%%not base64' }), 'backup-not-one'],
+    [JSON.stringify({ ...JSON.parse(plain), image: undefined }), 'backup-not-one'],
   ]) {
     msg = null;
     try { await bk.openBackup(text, 'correct horse'); } catch (e) { msg = e.message; }

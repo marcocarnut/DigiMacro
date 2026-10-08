@@ -176,7 +176,7 @@
     <button data-ins="rep" data-t="insert">insert</button>
     <button data-ins="group" style="margin-left:.8rem"
             title="( )">( )</button>
-    <label style="margin-left:.8rem">goto <select id="gotoval"></select></label>
+    <label style="margin-left:.8rem"><span data-t="goto">goto</span> <select id="gotoval"></select></label>
     <button data-ins="goto" data-t="insert">insert</button>
   </div>
 </div>
@@ -362,9 +362,11 @@ function who(key, params, cls) {
   whoKey = key; whoParams = params || {}; whoCls = cls || 'dim';
   renderWho();
 }
-/* "connected" has the firmware's standing in the middle of it -- "(latest)",
-   or "(update…)" as a link to the dialog -- so it is put together from the
-   pieces either side of a marker rather than set as one string. */
+/* "connected" has the board's standing in the middle of it -- "(latest)",
+   "(update…)" as a link to the firmware dialog, or on a hardened board
+   "(hardened)" or "(not fully hardened…)" as a link to the checklist -- so
+   it is put together from the pieces either side of a marker rather than set
+   as one string. */
 function renderWho() {
   const el = $('who');
   el.className = whoCls;
@@ -412,7 +414,13 @@ function renderWho() {
    send one back, and a host that did would still work. */
 let idInPayload = null;
 
+let runDev = null;               /* the device a run() started on */
+
 async function ask(cmd, addr = 0, count = 0, data = null) {
+  /* A run that outlives its board -- unplugged and plugged in again while it
+     was busy -- must not carry on talking to the new connection, which has
+     had neither the hold nor the password. */
+  if (runDev && dev !== runDev) throw new Error(t('board-left'));
   const out = new Uint8Array(VND_LEN);
   out[0] = cmd; out[1] = addr & 0xFF; out[2] = addr >> 8; out[3] = count;
   if (data) out.set(data, DATA_AT);
@@ -497,22 +505,26 @@ function draw() {
     tr.innerHTML =
       `<td><input class="code" value="${r.code.replace(/"/g,'')}"
            spellcheck="false" data-i="${i}" data-f="code"></td>` +
-      `<td><input class="text${st.each[i].error ? ' bad' : ''}" value="${r.text.replace(/"/g,'&quot;')}"
+      `<td><input class="text${st.each[i].error ? ' bad' : ''}" value="${r.text.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"
            spellcheck="false" data-i="${i}" data-f="text"
            placeholder="${t('ph-types')}"></td>` +
       `<td class="n">${st.each[i].bytes ? st.each[i].bytes.length + 2 : '—'} B</td>` +
       `<td><button data-del="${i}" title="${t('remove')}">✕</button></td>`;
     tbody.appendChild(tr);
-    if (st.each[i].error) {
-      const e = document.createElement('tr');
-      e.innerHTML = `<td></td><td colspan="3" class="err">${st.each[i].error}</td>`;
-      tbody.appendChild(e);
-    } else if (st.each[i].bytes && macroWarnings(st.each[i].bytes).length) {
-      const w = document.createElement('tr');
-      w.innerHTML = `<td></td><td colspan="3" class="err dim">${
-        macroWarnings(st.each[i].bytes).map(k => t(k)).join(' ')}</td>`;
-      tbody.appendChild(w);
-    }
+    /* As text, never as markup: an error quotes what was typed, and a pasted
+       macro is not to be trusted with this page, which holds the password. */
+    const msgRow = (text, cls) => {
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 3;
+      cell.className = cls;
+      cell.textContent = text;
+      row.append(document.createElement('td'), cell);
+      tbody.appendChild(row);
+    };
+    if (st.each[i].error) msgRow(st.each[i].error, 'err');
+    else if (st.each[i].bytes && macroWarnings(st.each[i].bytes).length)
+      msgRow(macroWarnings(st.each[i].bytes).map(k => t(k)).join(' '), 'err dim');
   });
 
   $('gotoval').innerHTML = macros
@@ -668,6 +680,7 @@ async function connect(mayAsk) {
     who('connected', { fw: b[4], proto: b[3] }, 'ok');
     note('connect-note', '');           /* whatever the last connection, or
                                            an upgrade, had to say is done */
+    restarting = false;
     show('gate');
     gate();
   } catch (e) {
@@ -687,7 +700,7 @@ async function connect(mayAsk) {
 $('connect').onclick = () => connect(true);
 
 navigator.hid?.addEventListener('disconnect', ev => {
-  if (dev && ev.device !== dev) return;
+  if (!dev || ev.device !== dev) return;
   dev = null;
   if (upgrading) return;        /* expected: the upgrade carries on */
   if (restarting) {
@@ -698,7 +711,8 @@ navigator.hid?.addEventListener('disconnect', ev => {
     note('connect-note', t('bk-restarted'), 'ok');
   }
   password = null;              /* the next plug-in asks again */
-  $('gatepass').value = '';
+  for (const id of ['gatepass', 'passval', 'bkpass']) $(id).value = '';
+  disarm();
   show('none');
   who('board-left', {}, 'dim');
 });
@@ -746,7 +760,12 @@ async function gate() {
       const s = await refreshState();
       drawGate();
       if (s & ST_OPEN) {
-        if (!wantsPassword(s) || (password !== null && await tryUnlock('gate-note'))) {
+        /* A board unlocked already -- by this page before a reload, or by
+           another tab -- would let us in without the password. Ask anyway:
+           the page needs it, to unlock again later and to encrypt backups,
+           and UNLOCK with the right one succeeds whatever the state. */
+        const need = wantsPassword(s) || (!!(s & ST_PASSWORD) && password === null);
+        if (!need || (password !== null && await tryUnlock('gate-note'))) {
           await enterBoard();
           return;
         }
@@ -766,7 +785,7 @@ function drawGate() {
                              : state_byte & ST_SOFTLOCK ? t('lock-state-soft') : '';
   $('gate-pass').hidden = !has;
   $('gate-msg').textContent = !open ? t(has ? 'gate-hold-password' : 'gate-hold')
-                            : password === null ? t('gate-type-password')
+                            : password === null && has ? t('gate-type-password')
                             : t('gate-reading');
   if (open && password === null && has && document.activeElement !== $('gatepass'))
     $('gatepass').focus();
@@ -811,6 +830,7 @@ async function enterBoard() {
   note('gate-note', t('gate-reading'), 'dim');
   for (const id of ['table-note', 'auto-note', 'write-note', 'pass-note',
                     'lock-note', 'host-note', 'bk-save-note', 'bk-note']) note(id, '');
+  disarm();
   show('board');
   const got = await readTable();
   lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
@@ -848,30 +868,36 @@ async function access(noteId) {
    happens said beside the button that started it. */
 const ACTION_BUTTONS = ['write', 'sample', 'setpass', 'clearpass', 'locksave',
                         'fwupdate', 'fwclose', 'hostnew', 'hostdel', 'hostsave',
-                        'bksave', 'bkrestore'];
+                        'bksave', 'bkrestore', 'bkfile'];
+
+function setBusy() {
+  busy = true;
+  ACTION_BUTTONS.forEach(id => $(id).disabled = true);
+}
+
+/* Every button back the way its own rules say, after an action. */
+function idle() {
+  busy = false;
+  runDev = null;
+  for (const id of ['sample', 'clearpass', 'fwupdate', 'fwclose', 'hostnew',
+                    'hostdel', 'bksave', 'bkfile']) $(id).disabled = false;
+  $('bkrestore').disabled = bkText === null;
+  draw();                       /* Write and the Save buttons: each enables
+                                   itself only when it has something to save */
+  drawSecurity();
+}
 
 async function run(noteId, fn) {
   if (busy || !dev) return;
-  busy = true;
-  ACTION_BUTTONS.forEach(id => $(id).disabled = true);
+  setBusy();
+  runDev = dev;
   try {
     await access(noteId);
     await fn();
   } catch (e) {
     note(noteId, e.message === 'REFUSED' ? t('refused') : e.message, 'bad');
   } finally {
-    busy = false;
-    $('sample').disabled = false;
-    $('clearpass').disabled = false;
-    $('fwupdate').disabled = false;
-    $('fwclose').disabled = false;
-    $('hostnew').disabled = false;
-    $('hostdel').disabled = false;
-    $('bksave').disabled = false;
-    $('bkrestore').disabled = bkText === null;
-    draw();                     /* Write and the Save buttons: each enables
-                                   itself only when it has something to save */
-    drawSecurity();
+    idle();
   }
 }
 
@@ -933,6 +959,12 @@ $('passval').addEventListener('input', drawSecurity);
 $('setpass').onclick = () => {
   const given = $('passval').value;
   if (!given) { note('pass-note', t('password-empty'), 'bad'); return; }
+  /* Twelve bytes, not characters: an accented letter takes two. Cut short
+     silently it would still work, but not be the password anybody typed. */
+  if (new TextEncoder().encode(given).length > 12) {
+    note('pass-note', t('password-too-long'), 'bad');
+    return;
+  }
   run('pass-note', async () => {
     const bytes = bytesOf(given);
     await ask(F_SETPASS, 0, bytes.length, bytes);
@@ -1144,9 +1176,18 @@ $('hostsave').onclick = () => {
  * any earlier, it would lock the board half way through its own restore.
  */
 const errText = e => e.message.startsWith('backup-') ? t(e.message) : e.message;
-let saveArmed = false;          /* the warning has been given; go ahead */
+let saveArmed = null;           /* the warning given, by key: go ahead if the
+                                   same one would be given again */
 let bkText = null, bkHead = null, bkArmed = false;
 let restarting = false;         /* the board was asked to restart itself */
+
+/* "Press again" means again, now, for this: not after a reconnect, another
+   board, another file, or another password. */
+function disarm() {
+  saveArmed = null;
+  bkArmed = false;
+}
+$('bkpass').addEventListener('input', () => { bkArmed = false; });
 
 /* The first firmware that can leave the bus and come back by itself, so a
    restored serial number takes effect without anyone unplugging it. */
@@ -1154,13 +1195,16 @@ const FW_FIRST_RESTART = 8;
 
 $('bksave').onclick = () => {
   const has = !!(state_byte & ST_PASSWORD);
+  /* The gate makes sure the page holds a board's password; if it somehow
+     does not, never fall back to saving in the clear. */
+  if (has && password === null) { note('bk-save-note', t('bk-no-pass'), 'bad'); return; }
   const warn = !has ? 'bk-plain' : password.length < 8 ? 'bk-short' : null;
-  if (warn && !saveArmed) {
-    saveArmed = true;
+  if (warn && saveArmed !== warn) {
+    saveArmed = warn;
     note('bk-save-note', t(warn), 'bad');
     return;
   }
-  saveArmed = false;
+  saveArmed = null;
   run('bk-save-note', async () => {
     note('bk-save-note', t('gate-reading'), 'dim');
     const image = await eeRead(0, 512);
@@ -1193,8 +1237,8 @@ $('bkfile').onchange = async () => {
   }
 };
 
-$('bkrestore').onclick = () => {
-  if (!bkText) return;
+$('bkrestore').onclick = async () => {
+  if (!bkText || busy) return;
   if (bkHead.encrypted && !$('bkpass').value) {
     note('bk-note', t('bk-needs-pass'), 'bad');
     return;
@@ -1206,13 +1250,36 @@ $('bkrestore').onclick = () => {
   }
   bkArmed = false;
   const pw = bkHead.encrypted ? $('bkpass').value : null;
-  run('bk-note', async () => {
+  const text = bkText;          /* this file, whatever is picked meanwhile */
+  const PASS = 0x1F4;
+
+  /* Opened before anything else -- before the hold is asked for, so a wrong
+     password costs nobody a hold, and the window is not spent on a second of
+     key derivation. */
+  setBusy();
+  let image;
+  try {
     note('bk-note', t(pw === null ? 'gate-reading' : 'bk-deriving'), 'dim');
-    const image = await openBackup(bkText, pw).catch(e => { throw new Error(errText(e)); });
-    image[0x1EF] = image[0x1F0] = 0xFF;         /* the lockout's counts start
+    image = await openBackup(text, pw);
+    /* The password inside must be one somebody knows: none, or the one this
+       file was opened with -- which is what Save a backup always writes. A
+       file saying otherwise would lock the board against its owner, with no
+       way back short of a programmer. */
+    const stored = image.slice(PASS);
+    const want = new Uint8Array(12);
+    if (pw !== null) want.set(bytesOf(pw));
+    if (!stored.every(b => b === 0xFF) && (pw === null || stored.some((b, i) => b !== want[i])))
+      throw new Error('backup-bad-password');
+  } catch (e) {
+    note('bk-note', errText(e), 'bad');
+    idle();
+    return;
+  }
+  idle();
+  image[0x1EF] = image[0x1F0] = 0xFF;           /* the lockout's counts start
                                                    again: no restoring a lock */
+  run('bk-note', async () => {
     note('bk-note', t('writing'), 'dim');
-    const PASS = 0x1F4;
     for (let a = 0; a < PASS; a += CHUNK)
       await eeWrite(a, image.slice(a, Math.min(a + CHUNK, PASS)));
     const back = await eeRead(0, PASS);
@@ -1221,10 +1288,12 @@ $('bkrestore').onclick = () => {
       throw new Error(t('write-mismatch', { at: bad, wrote: hex2(image[bad]), read: hex2(back[bad]) }));
     await eeWrite(PASS, image.slice(PASS));     /* last: see above */
     password = image[PASS] === 0xFF ? null : pw;
+    if (password !== null) await tryUnlock('bk-note');
+    const pb = await eeRead(PASS, 12);
+    if (pb.some((v, i) => v !== image[PASS + i]))
+      throw new Error(t('write-mismatch', { at: PASS, wrote: hex2(image[PASS]), read: hex2(pb[0]) }));
     $('bkpass').value = '';
-    /* The board now wants the password it has just been given. */
     await refreshState();
-    if (wantsPassword(state_byte) && password !== null) await tryUnlock('bk-note');
     await readTable();
     lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
     await hostRead();
@@ -1237,6 +1306,7 @@ $('bkrestore').onclick = () => {
       return;
     }
     restarting = true;
+    setTimeout(() => { restarting = false; }, 5000);   /* if it never went */
     note('bk-note', t('bk-restarting'), 'ok');
     try { await ask(F_RESTART); }
     catch (e) { if (e.message === 'REFUSED') { restarting = false; throw e; } }
@@ -1355,14 +1425,16 @@ $('fwupdate').onclick = async () => {
   if (!navigator.usb) { note('fw-note', t('fw-no-webusb'), 'bad'); return; }
 
   /* Ready? If not, this click only gets it ready. */
-  const s = await refreshState();
+  let s;
+  try { s = await refreshState(); }
+  catch (e) { note('fw-note', t('fw-failed', { msg: e.message }), 'bad'); return; }
+  if (busy) return;             /* something started meanwhile */
   if (!(s & ST_OPEN)) {
     run('fw-note', async () => note('fw-note', t('fw-ready'), 'ok'));
     return;
   }
 
-  busy = true;
-  ACTION_BUTTONS.forEach(id => $(id).disabled = true);
+  setBusy();
   const upgradeBoot = $('fwboot').checked;
   let done = false;
   try {
@@ -1409,10 +1481,7 @@ $('fwupdate').onclick = async () => {
   } finally {
     $('fwbar').hidden = true;
     $('fwcontinue').hidden = true;
-    busy = false;
-    ACTION_BUTTONS.forEach(id => $(id).disabled = false);
-    draw();
-    drawSecurity();
+    idle();
     if (upgrading) {
       /* The board left, so it is a new connection when it comes back: the
          hold and the password again, as after any replug. */

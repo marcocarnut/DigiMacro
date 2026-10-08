@@ -103,7 +103,7 @@
 #define DM_MAGIC0           'D'
 #define DM_MAGIC1           'M'
 #define DM_PROTOCOL_VERSION 2       /* 1 was the WebUSB vendor-class one */
-#define DM_FW_VERSION       8
+#define DM_FW_VERSION       9
 
 #ifdef __cplusplus
 extern "C" {
@@ -130,6 +130,7 @@ uint8_t hidUnlock(const uint8_t *p, uint8_t n);
 void    hidSetPass(const uint8_t *p, uint8_t n);
 uint8_t hidLockState(void);     /* 0, DM_ST_SOFTLOCK or DM_ST_HARDLOCK */
 uint8_t hidHostState(void);     /* DM_ST_HOST and DM_ST_HOSTKEY */
+void    hidHostForget(void);    /* the host key changed: trust it no more */
 uint8_t hidHostAuth(const uint8_t *p, uint8_t n);
 
 void    hidKey(uint8_t modifier, uint8_t key);

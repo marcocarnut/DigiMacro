@@ -147,14 +147,25 @@ async function makeBackup(image, password, meta) {
 function readBackupHeader(text) {
   let f;
   try { f = JSON.parse(text); } catch (e) { throw new Error('backup-not-one'); }
-  if (f.format !== BACKUP_FORMAT) throw new Error('backup-not-one');
+  if (!f || typeof f !== 'object' || f.format !== BACKUP_FORMAT)
+    throw new Error('backup-not-one');
   if (f.version !== BACKUP_VERSION || f.map !== BACKUP_MAP)
     throw new Error('backup-other-map');
   return { encrypted: !!f.kdf, serial: f.serial, firmware: f.firmware, saved: f.saved };
 }
 
-/* The image, or an error whose message is a key in i18n.js. */
+/* The image, or an error whose message is a key in i18n.js: anything a
+   malformed file trips over -- a missing field, base64 that is not -- is
+   "not a backup", not a raw error in English. */
 async function openBackup(text, password) {
+  try {
+    return await openBackupInner(text, password);
+  } catch (e) {
+    throw e.message.startsWith('backup-') ? e : new Error('backup-not-one');
+  }
+}
+
+async function openBackupInner(text, password) {
   const h = readBackupHeader(text);
   const f = JSON.parse(text);
   if (!h.encrypted) {
@@ -167,17 +178,20 @@ async function openBackup(text, password) {
   /* The cost comes from the file, so a file must not be able to name one
      that asks the page for gigabytes. */
   const { N, r, p } = f.kdf;
-  if (!(N >= 2 && N <= 1 << 17 && (N & (N - 1)) === 0 && r >= 1 && r <= 16
-        && p >= 1 && p <= 16))
-    throw new Error('backup-not-one');
+  if (![N, r, p].every(Number.isInteger) || N < 2 || (N & (N - 1)) !== 0
+      || r < 1 || p < 1 || N * r * p > SCRYPT.N * SCRYPT.r * SCRYPT.p)
+    throw new Error('backup-not-one');      /* no dearer than this page makes */
   const head = { format: f.format, version: f.version, map: f.map,
                  serial: f.serial, firmware: f.firmware, saved: f.saved };
-  const key = await aesKey(password, unb64(f.kdf.salt), f.kdf);
+  /* Decoded first, so that a file whose base64 is broken is "not a backup",
+     not "wrong password": only the decryption itself means the latter. */
+  const salt = unb64(f.kdf.salt), iv = unb64(f.cipher.iv), ct = unb64(f.image);
+  if (iv.length !== 12) throw new Error('backup-not-one');
+  const key = await aesKey(password, salt, f.kdf);
   let image;
   try {
     image = new Uint8Array(await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: unb64(f.cipher.iv), additionalData: utf8(JSON.stringify(head)) },
-      key, unb64(f.image)));
+      { name: 'AES-GCM', iv, additionalData: utf8(JSON.stringify(head)) }, key, ct));
   } catch (e) {
     throw new Error('backup-wrong-password');
   }

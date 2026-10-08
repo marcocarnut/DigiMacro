@@ -61,7 +61,8 @@ In rough order of difficulty.
      fixed jump tables.
      - The core offers the app hidKey, hidPoll, hidAllow and the rest.
      - The app offers the core what are now weak hooks: hidPassSet,
-       hidUnlock, hidLockState, hidHostAuth, hidHostState.
+       hidUnlocked, hidUnlock, hidSetPass, hidLockState, hidHostAuth,
+       hidHostState.
    - RAM must be split so the app's `.data` and `.bss` never land on the
      core's: V-USB's buffers, the feature report, the serial descriptor. The
      stack is shared.

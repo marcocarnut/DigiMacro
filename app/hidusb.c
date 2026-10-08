@@ -22,7 +22,8 @@
 
    Not blocking: V-USB's interrupt has to start within a few cycles of the
    bus moving, so this one lets it in at once. */
-static volatile uint32_t ms;
+static volatile uint16_t ms;    /* sixteen bits: all anything here compares,
+                                   and half the interrupt of thirty-two */
 static uint8_t tenth;
 
 /* It also counts the core's update window, in tenths (layout.h). */
@@ -35,11 +36,11 @@ ISR(TIMER1_COMPA_vect, ISR_NOBLOCK)
     }
 }
 
-uint32_t millis(void)
+uint16_t millis(void)
 {
     uint8_t sreg = SREG;
     cli();
-    uint32_t m = ms;
+    uint16_t m = ms;
     SREG = sreg;
     return m;
 }
@@ -121,13 +122,15 @@ void hidBegin(void)
     TCCR1 = (1 << CTC1) | (1 << CS13);
     TIMSK |= (1 << OCIE1A);
 
-    /* The core reads the serial as it connects; a chip that has none gets
-       one now, once. */
-    uint32_t serial;
-    eeprom_read_block(&serial, (const void *)DM_SERIAL_ADDR, 4);
-    if (serial == 0xFFFFFFFF) {
-        serial = entropy();
-        eeprom_write_block(&serial, (void *)DM_SERIAL_ADDR, 4);
+    /* The core reads the serial when the host asks for it; a chip that has
+       none gets one now, once. Byte by byte, with what the app links
+       anyway, rather than the block routines for the sake of four bytes. */
+    uint8_t *e = (uint8_t *)DM_SERIAL_ADDR, none = 0xFF;
+    for (uint8_t i = 0; i < 4; i++) none &= eeprom_read_byte(e + i);
+    if (none == 0xFF) {
+        uint32_t serial = entropy();
+        for (uint8_t i = 0; i < 4; i++, serial >>= 8)
+            eeprom_update_byte(e + i, (uint8_t)serial);
     }
 }
 

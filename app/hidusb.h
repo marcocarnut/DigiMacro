@@ -16,7 +16,7 @@
 
 /* DigiMacro's own version, in INFO's [13] as the app's. v1 counted to 9
    in [4]; v2 goes on from there, and [4] is the core's now. */
-#define DM_FW_VERSION       11
+#define DM_FW_VERSION       12
 
 #define DM_FUNC_RESTART     0x42    /* off the bus and back, as if replugged */
 #define DM_FUNC_READ        0x60    /* address, count -> EEPROM */
@@ -48,7 +48,7 @@ void     hidBegin(void);        /* from app_setup(): the clock, the serial */
 void     hidPoll(void);         /* from app_loop(), and often: the core's
                                    corePoll() and what has to wait for the
                                    loop. The watchdog wants it every second */
-uint32_t millis(void);
+uint16_t millis(void);         /* wraps every 65 s: compare differences */
 void     hidAllow(uint16_t ms); /* somebody is at the board, briefly */
 uint8_t  hidAllowed(void);      /* ask at least every 32 s: see hidusb.c */
 void     hidKey(uint8_t modifier, uint8_t key);

@@ -30,7 +30,7 @@
 
 static const char line[] = APP_LINE "\n";
 static uint8_t  typed;                  /* .bss: zero, if start-up cleared it */
-static uint32_t since, blinked;
+static uint16_t since, blinked;
 
 void app_setup(void)
 {
@@ -41,7 +41,7 @@ void app_setup(void)
 
 void app_loop(void)
 {
-    uint32_t now = millis();
+    uint16_t now = millis();
 
     hidPoll();
     hidAllow(10000);

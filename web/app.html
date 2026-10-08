@@ -133,6 +133,20 @@
   <p class="note" id="gate-note"></p>
 </section>
 
+<!-- A v2 board whose core runs with no DigiMacro on it: an update cut off,
+     or a firmware the watchdog had to stop. All it takes is the firmware. -->
+<section id="recovery" hidden>
+  <h2 data-t="rec-summary">No firmware on this board</h2>
+  <p id="recwhy" class="prose"></p>
+  <div class="bar">
+    <input id="recpass" type="password" size="16" spellcheck="false"
+           autocomplete="current-password" data-ph="ph-gate-password" hidden>
+    <button id="recinstall" class="primary">Install DigiMacro</button>
+    <progress id="recbar" max="1" value="0" hidden></progress>
+  </div>
+  <p class="note" id="rec-note"></p>
+</section>
+
 <!-- In: everything the board holds. -->
 <section id="board" hidden>
 <div class="bar headbar">
@@ -188,6 +202,7 @@
   <label class="pick"><span data-t="on-plug">when plugged in, type</span>
     <select id="auto"></select>
   </label>
+  <button id="autosave" data-t="save">Save</button>
 </p>
 <p class="note" id="auto-note"></p>
 <p class="note dim" id="auto-warn"></p>
@@ -280,7 +295,7 @@
 <!-- Opened from the status line, on a hardened board that is not quite. -->
 <dialog id="hddialog">
   <h2 data-t="hd-summary">Hardening</h2>
-  <p class="prose" data-t="hd-why"></p>
+  <p class="prose" id="hdwhy"></p>
   <ul id="hdlist"></ul>
   <p class="dim prose" id="hdraw"></p>
   <div class="bar">
@@ -293,8 +308,8 @@
 <dialog id="fwdialog">
   <h2 data-t="fw-summary">Firmware</h2>
   <p id="fwwhy" class="prose"></p>
-  <p class="dim prose" data-t="fw-how"></p>
-  <div class="form">
+  <p class="dim prose" id="fwhow"></p>
+  <div class="form" id="fwbootrow">
     <label class="check"><input id="fwboot" type="checkbox" checked>
       <span data-t="fw-boot"></span></label>
   </div>
@@ -311,6 +326,7 @@
 <script src="i18n.js"></script>
 <script src="table.js"></script>
 <script src="micronucleus.js"></script>
+<script src="coreupdate.js"></script>
 <script src="backup.js"></script>
 <script>
 /* The device never stops being a keyboard. The app reaches it through a second
@@ -325,6 +341,7 @@ const CHUNK   = VND_LEN - DATA_AT;
 const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61;
 const F_UNLOCK = 0x62, F_SETPASS = 0x63, F_REFUSED = 0xEE;
 const F_REBOOT = 0x41, F_RESTART = 0x42;
+const F_UPDATE = 0x68;           /* v2: the firmware opens the update window */
 const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
 const ST_SOFTLOCK = 0x08, ST_HARDLOCK = 0x10;
 const ST_HOST = 0x20, ST_NOBOOT = 0x80;
@@ -341,6 +358,8 @@ const LOCK_LEN  = 6;
 const LOCK_OFF  = 0xFF;         /* a threshold of 0 or 0xFF is no threshold */
 
 let dev = null;
+let core = null;                /* a v2 board's core, as INFO says it (coreupdate.js's
+                                   coreInfo), or null for a v1 board */
 let macros = [{ code: '.', text: '' }];
 let auto = AUTO_NONE;           /* the header byte of the power-on macro */
 let state_byte = 0;             /* what INFO last said about the gates */
@@ -376,9 +395,26 @@ function renderWho() {
   const [before, after] = t('connected', { ...whoParams, state: '\u0000' }).split('\u0000');
   el.append(before);
   const hd = hardening();
-  if (state_byte & ST_NOBOOT && hd && hd.every(c => c.ok)) {
+  /* Meant to be hardened: on v1, built without a bootloader; on v2, which
+     never has one, locked. */
+  const meant = core ? !!fuses && (fuses[3] & 0x03) !== 0x03
+                     : !!(state_byte & ST_NOBOOT);
+  if (core && hd && !hd.every(c => c.ok)) {
+    /* Every v2 board says where it stands. Red when it is locked, or holds a
+       password, and is still not done: a board worth guarding should be
+       guarded all the way, and an owner who stops short hears about it every
+       time -- forgetting would be worse. Dim when there is nothing to guard. */
+    const nag = meant || !!(state_byte & ST_PASSWORD);
+    el.append(' ');
+    const b = document.createElement('button');
+    b.className = 'link';
+    if (nag) b.style.color = 'var(--bad)';
+    b.textContent = t(nag ? 'hd-not' : 'hd-none');
+    b.onclick = openHardening;
+    el.append(b);
+  } else if ((meant || core) && hd && hd.every(c => c.ok)) {
     el.append(' ' + t('hd-ok'));
-  } else if (state_byte & ST_NOBOOT && hd) {
+  } else if (meant && hd) {
     /* Built to be hardened, and the chip says it is not, quite: say so where
        it cannot be missed, since it looks the same as hardened from outside. */
     el.append(' ');
@@ -388,22 +424,28 @@ function renderWho() {
     b.textContent = t('hd-not');
     b.onclick = openHardening;
     el.append(b);
-  } else if (state_byte & ST_NOBOOT) {
+  } else if (meant) {
     /* Hardened, by firmware too old to say how well. */
     el.append(' ' + t('fw-link-noboot'));
-  } else if (fwHere !== null) {
+  }
+  /* A hardened v1 board cannot take an update from here; a v2 board can. */
+  const latest = fwLatest();
+  if ((!meant || core) && latest !== null) {
     el.append(' ');
-    if (fwOnBoard < fwHere && stage === 'board') {
+    if (fwOnBoard < latest && stage === 'board') {
       const b = document.createElement('button');
       b.className = 'link';
       b.textContent = t('fw-link-update');
       b.onclick = openFirmware;
       el.append(b);
     } else {
-      el.append(t(fwOnBoard < fwHere ? 'fw-link-available' : 'fw-link-latest'));
+      el.append(t(fwOnBoard < latest ? 'fw-link-available' : 'fw-link-latest'));
     }
   }
   el.append(after);
+  /* Once in, which is when the page has read it: the same eight digits the
+     backups and the host key file are named with. */
+  if (serial && stage === 'board') el.append(' · ' + t('serial-tag', { serial }));
 }
 
 /* ---- the device ---------------------------------------------------- */
@@ -416,21 +458,26 @@ let idInPayload = null;
 
 let runDev = null;               /* the device a run() started on */
 
+/* One report each way, as coreupdate.js wants them. */
+const io = {
+  send: out => dev.sendFeatureReport(VND_ID, out),
+  receive: async () => {
+    const view = await dev.receiveFeatureReport(VND_ID);
+    const b = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+    if (idInPayload === null) idInPayload = b[0] === VND_ID;
+    return idInPayload ? b.slice(1) : b;
+  },
+};
+
 async function ask(cmd, addr = 0, count = 0, data = null) {
   /* A run that outlives its board -- unplugged and plugged in again while it
      was busy -- must not carry on talking to the new connection, which has
      had neither the hold nor the password. */
   if (runDev && dev !== runDev) throw new Error(t('board-left'));
-  const out = new Uint8Array(VND_LEN);
-  out[0] = cmd; out[1] = addr & 0xFF; out[2] = addr >> 8; out[3] = count;
-  if (data) out.set(data, DATA_AT);
-  await dev.sendFeatureReport(VND_ID, out);
-
-  const view = await dev.receiveFeatureReport(VND_ID);
-  let b = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
-  if (idInPayload === null) idInPayload = b[0] === VND_ID;
-  if (idInPayload) b = b.slice(1);
-
+  /* The board has one report for everybody: an answer counts only if it is
+     to this question, or another tab's INFO could pass for it. Both
+     versions echo the command and keep the address (coreupdate.js). */
+  const b = await askOwn(io, cmd, addr, count, data);
   if (b[0] === F_REFUSED) throw new Error('REFUSED');
   return b;
 }
@@ -575,24 +622,46 @@ $('add').onclick = () => {
 
 $('auto').onchange = () => {
   auto = $('auto').value === '' ? AUTO_NONE : Number($('auto').value);
-  drawWrite();
+  drawAutoSave();
   drawAutoWarn();
 };
+
+/* The power-on macro has its own Save, since it is a setting rather than a
+   macro. Not while the table has changes still to write: the choice could
+   name a code the board does not hold yet, which would type nothing. */
+function drawAutoSave() {
+  const pending = savedAuto !== null && auto !== savedAuto;
+  const tableFirst = pending && saved !== null && snapshot() !== saved;
+  $('autosave').disabled = !dev || busy || !pending || tableFirst;
+  if (tableFirst) note('auto-note', t('auto-write-first'), 'dim');
+  else if ($('auto-note').textContent === t('auto-write-first')) note('auto-note', '');
+}
+
+$('autosave').onclick = () => run('auto-note', async () => {
+  await eeWrite(AUTO_ADDR, Uint8Array.from([auto]));
+  const back = (await eeRead(AUTO_ADDR, 1))[0];
+  if (back !== auto)
+    throw new Error(t('write-mismatch', { at: AUTO_ADDR, wrote: hex2(auto), read: hex2(back) }));
+  savedAuto = auto;
+  note('auto-note', t(auto === AUTO_NONE ? 'auto-saved-none' : 'auto-saved'), 'ok');
+});
 
 /* Write is offered only when there is something to write: what is on screen,
    encoded, differs from what was last read from or written to the board.
    Compared as bytes rather than text, so retyping a macro the same way is no
    change, and changing the keyboard layout is one when it changes the bytes. */
-let saved = null;               /* table bytes and power-on byte, as on board */
+let saved = null;               /* table bytes as on the board */
+let savedAuto = null;           /* the power-on byte as on the board */
 
 function snapshot() {
-  try { return encodeTable(macros).join(',') + '/' + auto; }
+  try { return encodeTable(macros).join(','); }
   catch (e) { return null; }
 }
 
 function drawWrite(st = state()) {
   const changed = st.ok && saved !== null && snapshot() !== saved;
   $('write').disabled = !dev || busy || !changed;
+  drawAutoSave();               /* which waits on the table */
 }
 
 /* One button, two jobs: the example replaces the table on screen, and then
@@ -643,6 +712,7 @@ function show(s) {
   stage = s;
   $('connect').hidden = s !== 'none';
   $('gate').hidden = s !== 'gate';
+  $('recovery').hidden = s !== 'recovery';
   $('board').hidden = s !== 'board';
   $('write').hidden = s !== 'board';
   renderWho();
@@ -674,13 +744,23 @@ async function connect(mayAsk) {
     if (String.fromCharCode(b[1], b[2]) !== 'DM') {
       note('connect-note', t('wrong-magic'), 'bad'); dev = null; return;
     }
-    fwOnBoard = b[4];
-    fuses = b[4] >= FW_FIRST_FUSES ? [...b.slice(8, 12)] : null;
+    /* v2 (protocol 3) says the core's version in [4] and the firmware's in
+       [13]; v1 says the firmware's in [4]. */
+    core = coreInfo(b);
+    const bare = !!core && !(core.state & CU_CORE_APP);
+    fwOnBoard = core ? core.app : b[4];
+    fuses = core || b[4] >= FW_FIRST_FUSES ? [...b.slice(8, 12)] : null;
     state_byte = b[7];
-    who('connected', { fw: b[4], proto: b[3] }, 'ok');
+    who('connected', { fw: bare ? '—' : fwOnBoard, proto: b[3] }, 'ok');
     note('connect-note', '');           /* whatever the last connection, or
                                            an upgrade, had to say is done */
     restarting = false;
+    if (bare) {                         /* only the core answers: no hold to
+                                           ask for, only the firmware */
+      show('recovery');
+      drawRecovery();
+      return;
+    }
     show('gate');
     gate();
   } catch (e) {
@@ -711,7 +791,9 @@ navigator.hid?.addEventListener('disconnect', ev => {
     note('connect-note', t('bk-restarted'), 'ok');
   }
   password = null;              /* the next plug-in asks again */
-  for (const id of ['gatepass', 'passval', 'bkpass']) $(id).value = '';
+  for (const id of ['gatepass', 'passval', 'bkpass', 'recpass']) $(id).value = '';
+  note('write-note', '');       /* it was about the board that just left */
+  serial = '';
   disarm();
   show('none');
   who('board-left', {}, 'dim');
@@ -819,6 +901,7 @@ async function readTable() {
                 && !macros.some(m => { try { return header(m.code) === auto; }
                                        catch (e) { return false; } });
   saved = snapshot();
+  savedAuto = auto;
   draw();
   note('auto-note', dangling ? t('auto-dangling') : '', 'dim');
   return got.length;
@@ -868,7 +951,8 @@ async function access(noteId) {
    happens said beside the button that started it. */
 const ACTION_BUTTONS = ['write', 'sample', 'setpass', 'clearpass', 'locksave',
                         'fwupdate', 'fwclose', 'hostnew', 'hostdel', 'hostsave',
-                        'bksave', 'bkrestore', 'bkfile'];
+                        'bksave', 'bkrestore', 'bkfile', 'recinstall',
+                        'autosave'];
 
 function setBusy() {
   busy = true;
@@ -882,6 +966,7 @@ function idle() {
   for (const id of ['sample', 'clearpass', 'fwupdate', 'fwclose', 'hostnew',
                     'hostdel', 'bksave', 'bkfile']) $(id).disabled = false;
   $('bkrestore').disabled = bkText === null;
+  if (stage === 'recovery') drawRecovery();
   draw();                       /* Write and the Save buttons: each enables
                                    itself only when it has something to save */
   drawSecurity();
@@ -919,11 +1004,9 @@ $('write').onclick = () => {
                                               read: hex2(back[bad]) }), 'bad');
       return;
     }
-    await eeWrite(AUTO_ADDR, Uint8Array.from([auto]));
     onSample = false;           /* what is on screen is on the board now */
     saved = snapshot();
     note('table-note', '');
-    note('auto-note', '');
     note('write-note', t('write-ok', { n: bytes.length }), 'ok');
   });
 };
@@ -1100,6 +1183,7 @@ async function hostRead() {
   serial = ((sb[0] | sb[1] << 8 | sb[2] << 16 | sb[3] << 24) >>> 0)
            .toString(16).toUpperCase().padStart(8, '0');
   drawHost();
+  renderWho();
 }
 
 function hostWaitWanted() {
@@ -1337,7 +1421,32 @@ const FW_FIRST_REBOOT = 3;
 fetch('firmware/digimacro.json').then(r => r.json())
   .then(j => { fwHere = j.fw; drawFirmware(); }).catch(() => {});
 
+/* For v2 boards: the firmware above the core, and the core API it was built
+   for -- it goes only on a core that speaks the same. */
+let fwHereV2 = null;            /* { app, core, api } */
+fetch('firmware/digimacro-v2.json').then(r => r.json())
+  .then(j => { fwHereV2 = j; drawFirmware();
+               if (stage === 'recovery') drawRecovery(); }).catch(() => {});
+
+/* The newest firmware this page has for the board connected, or null. */
+function fwLatest() {
+  if (!core) return fwHere;
+  return fwHereV2 && fwHereV2.api === core.api ? fwHereV2.app : null;
+}
+
 function drawFirmware() {
+  $('fwhow').textContent = t(core ? 'fw-how-v2' : 'fw-how');
+  $('fwbootrow').hidden = !!core;       /* Micronucleus is v1's */
+  if (core) {
+    const here = fwLatest(), on = fwOnBoard;
+    $('fwwhy').textContent = !fwHereV2 ? t('fw-none-here', { on })
+      : here === null ? t('fw-api-other', { app: fwHereV2.api, core: core.api })
+      : t(on < here ? 'fw-newer' : 'fw-same', { on, here });
+    $('fwwhy').className = 'prose' + (here !== null && on < here ? ' ok' : ' dim');
+    $('fwupdate').disabled = busy || here === null;
+    renderWho();
+    return;
+  }
   const tooOld = fwOnBoard < FW_FIRST_REBOOT;
   $('fwwhy').textContent = fwHere === null ? t('fw-none-here', { on: fwOnBoard })
     : t(fwOnBoard < fwHere ? 'fw-newer' : 'fw-same', { on: fwOnBoard, here: fwHere })
@@ -1359,7 +1468,17 @@ let fuses = null;               /* low, high, extended, lock, or null */
 
 function hardening() {
   if (!fuses) return null;
-  const [, high, , lock] = fuses;
+  const [, high, ext, lock] = fuses;
+  /* v2 has no bootloader to lose, and writes its own flash: it needs
+     SELFPRGEN to update itself, and the brown-out detector so that a sagging
+     supply cannot corrupt what it writes -- the core most of all. */
+  if (core) return [
+    { key: 'hd-lock',    ok: (lock & 0x03) === 0 },
+    { key: 'hd-eesave',  ok: !!(high & 0x08) },
+    { key: 'hd-dwen',    ok: !!(high & 0x40) },
+    { key: 'hd-selfprg', ok: !(ext & 0x01) },
+    { key: 'hd-bod',     ok: (high & 0x07) !== 0x07 },
+  ];
   return [
     { key: 'hd-boot',    ok: !!(state_byte & ST_NOBOOT) },
     { key: 'hd-lock',    ok: (lock & 0x03) === 0 },     /* LB1 and LB2: mode 3 */
@@ -1370,6 +1489,8 @@ function hardening() {
 
 function openHardening() {
   const hd = hardening();
+  $('hdwhy').textContent = t(core ? 'hd-why-v2' : 'hd-why')
+    + (core && state_byte & ST_PASSWORD && !hd.every(c => c.ok) ? ' ' + t('hd-nag') : '');
   $('hdlist').innerHTML = '';
   for (const c of hd) {
     const li = document.createElement('li');
@@ -1421,6 +1542,7 @@ async function writeVia(m, app, what) {
 }
 
 $('fwupdate').onclick = async () => {
+  if (core) { updateV2('fw-note', $('fwbar'), false); return; }
   if (busy || !dev || fwHere === null) return;
   if (!navigator.usb) { note('fw-note', t('fw-no-webusb'), 'bad'); return; }
 
@@ -1499,6 +1621,82 @@ $('fwupdate').onclick = async () => {
   }
 };
 
+/* ---- updating a v2 board ---------------------------------------------
+ *
+ * No bootloader and no second picker: the board takes the new firmware over
+ * this same connection, half a page per report, and restarts into it
+ * (coreupdate.js). With firmware running, the firmware gates it -- the hold,
+ * the password -- and opens six seconds for the first page; with none, as
+ * after an update cut off, the core alone asks for the password.
+ */
+async function updateV2(noteId, bar, recovering) {
+  if (busy || !dev || fwLatest() === null) return;
+  setBusy();
+  runDev = dev;
+  const fw = fwHereV2.app;
+  let done = false;
+  try {
+    const img = parseIntelHex(await fetchText('firmware/digimacro-v2.hex'), 8192);
+    appPages(img, core);                /* refused here, before the board is
+                                           asked for anything */
+    if (!recovering) {
+      await access(noteId);             /* the hold, and the password */
+      await ask(F_UPDATE);              /* six seconds for the first page */
+    } else if (state_byte & ST_PASSWORD && !(state_byte & ST_UNLOCKED)) {
+      const pw = $('recpass').value;
+      if (!pw) throw new Error(t('rec-pass'));
+      const p = bytesOf(pw);
+      try { await ask(F_UNLOCK, 0, p.length, p); }
+      catch (e) { throw e.message === 'REFUSED' ? new Error(t('wrong-password')) : e; }
+    }
+    upgrading = true;
+    who('fw-who', {}, 'dim');
+    bar.hidden = false; bar.value = 0;
+    note(noteId, t('fw-writing', { what: `DigiMacro ${fw}` }), 'dim');
+    await writeApp(io, img, core, { onPage: (n, all) => { bar.value = n / all; } });
+    done = true;
+  } catch (e) {
+    note(noteId, e.message === 'REFUSED' ? t('refused')
+                 : t('fw-failed', { msg: e.message }), 'bad');
+  } finally {
+    bar.hidden = true;
+    idle();
+    if (upgrading) {
+      /* Gone, on purpose or not: a new connection when it comes back -- the
+         new firmware asking for the hold, or the core with no firmware if
+         this was cut off, asking for it again. */
+      upgrading = false;
+      password = null;
+      dev = null;
+      show('none');
+      who('board-left', {}, 'dim');
+      if (done) {
+        if ($('fwdialog').open) $('fwdialog').close();
+        note('connect-note', t('fw-done', { fw }), 'ok');
+      }
+      setTimeout(() => connect(false), done ? 1500 : 0);
+    }
+  }
+}
+
+/* What a v2 board with only its core running needs: why, and the firmware. */
+function drawRecovery() {
+  if (!core) return;
+  const why = core.state & CU_CORE_HALTED ? 'rec-halted'
+            : core.state & CU_CORE_UPDATE ? 'rec-updating' : 'rec-none';
+  const here = fwLatest();
+  const needPass = !!(state_byte & ST_PASSWORD) && !(state_byte & ST_UNLOCKED);
+  $('recwhy').textContent = t(why) + (needPass ? ' ' + t('rec-pass') : '')
+                          + (here === null ? ' ' + t('rec-no-fw') : '');
+  $('recpass').hidden = !needPass;
+  $('recinstall').textContent = t('rec-install', { fw: here === null ? '' : here });
+  $('recinstall').disabled = busy || here === null;
+}
+$('recinstall').onclick = () => updateV2('rec-note', $('recbar'), true);
+$('recpass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') updateV2('rec-note', $('recbar'), true);
+});
+
 /* ---- what language to say it in ------------------------------------- */
 
 /* table.js keeps English as its default and the tests read it, so the app
@@ -1516,6 +1714,7 @@ function useLang(l) {
   renderWho();
   drawSecurity();               /* its text is chosen, not marked up */
   if (stage === 'gate') drawGate();
+  if (stage === 'recovery') drawRecovery();
   drawPad();                    /* its labels are built, not marked up */
   draw();                       /* and so are the rows and the budget */
 }

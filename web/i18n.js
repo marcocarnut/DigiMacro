@@ -315,6 +315,59 @@ en: {
                   + 'chip',
   'hd-eesave':      'EESAVE unprogrammed: erasing the chip erases the EEPROM too',
   'hd-dwen':        'debugWIRE off',
+  'fw-how-v2':      'The board writes the new firmware itself, over the same '
+                  + 'connection, and restarts into it: no bootloader, no second '
+                  + 'picker, no driver. It needs the hold, and the password if '
+                  + 'there is one. Cut off half way, the board comes back with no '
+                  + 'firmware and asks for it again here. The macros, the '
+                  + 'password, the lockout, the host key and the serial number '
+                  + 'all stay as they are.',
+  'fw-api-other':   'This page\'s firmware is for core API {app}, and the board\'s '
+                  + 'core speaks {core}: it cannot go on this board.',
+  'cu-crowded':     'something else keeps asking the board at the same time -- '
+                  + 'another tab with this page, or another program. Close it '
+                  + 'and try again.',
+  'cu-region':      'the firmware, {start}–{end}, does not fit the board\'s '
+                  + 'region for it, {rs}–{re}',
+  'cu-no-header':   'that is not DigiMacro firmware for a v2 board: it has no '
+                  + 'header',
+  'cu-api':         'that firmware was built for core API {app}, and the board\'s '
+                  + 'core speaks {core}',
+  'cu-first-refused': 'the board would not take the first page: the password '
+                  + 'was not given, or the six seconds it allows had passed',
+  'cu-page-refused': 'the board refused the page at {at}',
+  'cu-not-held':    'the page at {at} did not read back as written',
+  'cu-commit-refused': 'the board would not start the new firmware: it did not '
+                  + 'check out',
+  'rec-summary':    'No firmware on this board',
+  'rec-none':       'The board\'s core is running, with no DigiMacro on top of '
+                  + 'it: most likely an update was cut off half way. Install it '
+                  + 'again from here.',
+  'rec-halted':     'DigiMacro stopped answering, and the board\'s watchdog reset '
+                  + 'it, so the core did not start it again. Install it again '
+                  + 'from here -- or unplug the board and plug it back in, to '
+                  + 'give it another try.',
+  'rec-updating':   'The board is in the middle of an update. If none is running '
+                  + 'here, it was cut off: install again.',
+  'rec-pass':       'The board has a password: give it, to install.',
+  'rec-install':    'Install DigiMacro {fw}',
+  'rec-no-fw':      'This page has no DigiMacro for this board\'s core.',
+  'hd-none':        '(not hardened…)',
+  'hd-why-v2':      'A board keeps its secrets only as well as it is hardened: '
+                  + 'the password guards the table from the page, and the lock '
+                  + 'bits and fuses below guard it from a programmer. '
+                  + 'HARDENED_MODE.md explains each.',
+  'hd-nag':         'This board has a password, so it holds something worth '
+                  + 'guarding -- and until every line below is ticked, anyone '
+                  + 'with a programmer can read it out, password and all.',
+  'hd-selfprg':     'SELFPRGEN programmed: the board can update itself',
+  'hd-bod':         'brown-out detection on: a sagging supply cannot corrupt '
+                  + 'the flash the board writes',
+  'auto-saved':     'Saved: the board types it whenever it is plugged in.',
+  'auto-saved-none': 'Saved: the board types nothing when plugged in.',
+  'auto-write-first': 'Write the macros first: the board does not hold this '
+                  + 'one yet.',
+  'serial-tag':     'serial {serial}',
   'hd-raw':         'As the chip reads them: low fuse {low}, high {high}, '
                   + 'extended {ext}, lock {lock}.',
   close:            'Close',
@@ -676,6 +729,58 @@ pt: {
                   + 'consegue ler o chip',
   'hd-eesave':      'EESAVE não programado: apagar o chip apaga a EEPROM também',
   'hd-dwen':        'debugWIRE desligado',
+  'fw-how-v2':      'A placa grava o novo firmware ela mesma, pela mesma '
+                  + 'conexão, e reinicia nele: sem bootloader, sem segundo '
+                  + 'seletor, sem driver. É preciso segurar o sensor, e dar a '
+                  + 'senha se houver uma. Interrompida no meio, a placa volta sem '
+                  + 'firmware e pede de novo aqui. As macros, a senha, o '
+                  + 'bloqueio, a chave do computador e o número de série ficam '
+                  + 'como estão.',
+  'fw-api-other':   'O firmware desta página é para a API de núcleo {app}, e o '
+                  + 'núcleo da placa fala {core}: não pode ir nesta placa.',
+  'cu-crowded':     'outra coisa está falando com a placa ao mesmo tempo -- outra '
+                  + 'aba com esta página, ou outro programa. Feche-a e tente de '
+                  + 'novo.',
+  'cu-region':      'o firmware, {start}–{end}, não cabe na região da placa '
+                  + 'para ele, {rs}–{re}',
+  'cu-no-header':   'isso não é firmware do DigiMacro para uma placa v2: não tem '
+                  + 'cabeçalho',
+  'cu-api':         'esse firmware foi feito para a API de núcleo {app}, e o '
+                  + 'núcleo da placa fala {core}',
+  'cu-first-refused': 'a placa não aceitou a primeira página: a senha não foi '
+                  + 'dada, ou os seis segundos que ela permite já tinham passado',
+  'cu-page-refused': 'a placa recusou a página em {at}',
+  'cu-not-held':    'a página em {at} não foi lida de volta como gravada',
+  'cu-commit-refused': 'a placa não iniciou o novo firmware: ele não foi '
+                  + 'validado',
+  'rec-summary':    'Sem firmware nesta placa',
+  'rec-none':       'O núcleo da placa está rodando, sem o DigiMacro em cima '
+                  + 'dele: provavelmente uma atualização foi interrompida no '
+                  + 'meio. Instale de novo daqui.',
+  'rec-halted':     'O DigiMacro parou de responder, e o watchdog da placa a '
+                  + 'reiniciou, então o núcleo não o iniciou de novo. Instale de '
+                  + 'novo daqui -- ou desconecte a placa e conecte de novo, para '
+                  + 'dar outra chance.',
+  'rec-updating':   'A placa está no meio de uma atualização. Se nenhuma está '
+                  + 'rodando aqui, ela foi interrompida: instale de novo.',
+  'rec-pass':       'A placa tem senha: informe-a, para instalar.',
+  'rec-install':    'Instalar o DigiMacro {fw}',
+  'rec-no-fw':      'Esta página não tem DigiMacro para o núcleo desta placa.',
+  'hd-none':        '(não protegida…)',
+  'hd-why-v2':      'Uma placa guarda seus segredos só na medida em que está '
+                  + 'protegida: a senha protege a tabela da página, e os bits de '
+                  + 'trava e os fuses abaixo a protegem de um gravador. O '
+                  + 'HARDENED_MODE.md explica cada item.',
+  'hd-nag':         'Esta placa tem senha, então guarda algo que vale proteger '
+                  + '-- e enquanto cada linha abaixo não estiver marcada, '
+                  + 'qualquer um com um gravador consegue lê-la, senha e tudo.',
+  'hd-selfprg':     'SELFPRGEN programado: a placa pode se atualizar',
+  'hd-bod':         'detecção de queda de tensão ligada: uma alimentação fraca '
+                  + 'não corrompe a flash que a placa grava',
+  'auto-saved':     'Salvo: a placa digita isso sempre que for conectada.',
+  'auto-saved-none': 'Salvo: a placa não digita nada ao ser conectada.',
+  'auto-write-first': 'Grave as macros antes: a placa ainda não tem esta.',
+  'serial-tag':     'série {serial}',
   'hd-raw':         'Como o chip os lê: fuse baixo {low}, alto {high}, '
                   + 'estendido {ext}, trava {lock}.',
   close:            'Fechar',

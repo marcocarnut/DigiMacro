@@ -4,6 +4,10 @@
 #                   and digimacro-full.hex (core and app, for Micronucleus
 #                   or a programmer); options as build.sh had them:
 #                   make BUTTON=1 RC=1 LEDECHO=1 TOUCHDEBUG=1
+#   make release    DigiMacro as it ships, into web/firmware/: the app for
+#                   the page to update a v2 board with, the full image for
+#                   a programmer, and a json naming the core API it needs.
+#                   Commit the result: the page carries it.
 #   make spike      the core, the spike's apps A, B and C, and spikeA.hex,
 #                   all below Micronucleus, in build/v2-spike/
 #   make page       spike-page.html: the spike page with A, B and C inside --
@@ -134,6 +138,17 @@ $(O)/digimacro.hex: $(O)/digimacro.elf app/apphex.py
 $(O)/digimacro-full.hex: $(O)/core.hex $(O)/digimacro.hex
 	python3 app/apphex.py join $@ $^
 
+CORE_VER := $(shell sed -n 's/^\#define DM_CORE_VERSION *\([0-9]*\).*/\1/p' core/core.h)
+CORE_API := $(call val,CORE_API)
+
+release: $(O)/digimacro.hex $(O)/digimacro-full.hex
+	@[ -z "$(strip $(DMDEFS))" ] || { echo "release is the stock firmware: no options"; exit 1; }
+	cp $(O)/digimacro.hex web/firmware/digimacro-v2.hex
+	cp $(O)/digimacro-full.hex web/firmware/digimacro-v2-full.hex
+	printf '{ "app": %s, "core": %s, "api": %s }\n' $(APPVER_DM) $(CORE_VER) $(CORE_API) \
+	    > web/firmware/digimacro-v2.json
+	@cat web/firmware/digimacro-v2.json
+
 # ---- the spike's apps --------------------------------------------------
 
 APPVER_A  = 1
@@ -179,5 +194,5 @@ clean:
 	rm -rf $(O)
 	$(MAKE) -C core/test clean
 
-.PHONY: all spike page size upload test clean
+.PHONY: all release spike page size upload test clean
 .SECONDARY:

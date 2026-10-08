@@ -104,7 +104,7 @@ BUILD=build
 if [ "$ISP" = 1 ]; then
     echo
     echo "Flash $BUILD/DigiMacro.ino.hex with a programmer, and set the fuses,"
-    echo "as HARDENED_MODE.md says: low 0xE1, high 0xDD, extended 0xFF. High"
+    echo "as HARDENED_MODE.md says: low 0xE1, high 0xDD, extended 0xFE. High"
     echo "0xDD leaves EESAVE unprogrammed, so a chip erase takes the EEPROM with"
     echo "it -- which is the point. Lock it with 0xFC only once it is set up."
 fi

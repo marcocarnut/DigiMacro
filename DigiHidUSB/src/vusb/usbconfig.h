@@ -358,7 +358,11 @@ section at the end of this file).
  * number; without one, every replug means picking the board out of the
  * chooser again. Ours is random per board, so two boards are also told apart
  * rather than sharing one grant. */
-#define USB_CFG_DESCR_PROPS_STRING_SERIAL_NUMBER    (USB_PROP_IS_RAM | USB_PROP_LENGTH(2 + 2 * 8))
+/* DigiMacro: the serial is "postcogito.org:" and eight hex digits, 23
+ * characters, built in RAM by hidusb.cpp. The length has to be said here as
+ * well, and once it was not: the descriptor went out eight characters long
+ * as "postcogi". hidusb.cpp now refuses to compile if the two disagree. */
+#define USB_CFG_DESCR_PROPS_STRING_SERIAL_NUMBER    (USB_PROP_IS_RAM | USB_PROP_LENGTH(2 + 2 * 23))
 #define USB_CFG_DESCR_PROPS_HID                     USB_PROP_IS_DYNAMIC
 #define USB_CFG_DESCR_PROPS_HID_REPORT              USB_PROP_IS_DYNAMIC
 #define USB_CFG_DESCR_PROPS_UNKNOWN                 0

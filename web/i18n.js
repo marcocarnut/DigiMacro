@@ -126,6 +126,48 @@ en: {
   'lock-saved':     'Lockout saved. Its counts start again from zero.',
   'lock-off-saved': 'Lockout off. Wrong codes cost nothing now.',
   'lock-lifted':    'Hard lock lifted.',
+  'bk-summary':     'Backup',
+  'bk-why':         'Everything on the board — the macros, the startup macro, '
+                  + 'the lockout, the host key, the password and the serial '
+                  + 'number — saved to a file, and put back. A hardened board '
+                  + 'loses all of it when it is erased to update its firmware; '
+                  + 'restored, it comes back as itself. With a password the file '
+                  + 'is encrypted with it, so keep that password: without it the '
+                  + 'file is no use to anyone, you included.',
+  'bk-save':        'Save a backup',
+  'bk-restore':     'Restore',
+  'ph-bk-pass':     'the password it was saved with',
+  'bk-short':       'The password is shorter than eight characters. A copied file '
+                  + 'can be guessed at offline, far faster than the board allows, '
+                  + 'and a short password will not hold for long. Press Save a '
+                  + 'backup again to save it anyway.',
+  'bk-plain':       'This board has no password, so the backup would hold every '
+                  + 'macro in the clear. Press Save a backup again to save it '
+                  + 'anyway, or set a password first.',
+  'bk-deriving':    'Working out the key from the password — a second or two, '
+                  + 'on purpose…',
+  'bk-saved':       'Saved as {file}, encrypted with the board\'s password.',
+  'bk-saved-plain': 'Saved as {file}, in the clear. Keep it somewhere you would '
+                  + 'keep the macros themselves.',
+  'bk-file-locked': 'A backup of board {serial}, firmware {firmware}, saved on '
+                  + '{saved}. It is encrypted: type the password it was saved '
+                  + 'with.',
+  'bk-file-plain':  'A backup of board {serial}, firmware {firmware}, saved on '
+                  + '{saved}. It is not encrypted.',
+  'bk-needs-pass':  'Type the password the backup was saved with.',
+  'bk-confirm':     'This replaces everything on this board with board {serial}\'s '
+                  + 'backup: macros, startup, lockout, host key, password and '
+                  + 'serial number. Press Restore again to go ahead.',
+  'bk-restored-replug': 'Restored, and read back. Unplug the board and plug '
+                  + 'it back in, so that the restored serial number takes effect.',
+  'bk-restarting':  'Restored, and read back. The board is restarting, to come '
+                  + 'back with its restored serial number…',
+  'bk-restarted':   'Restored. The board has restarted with its restored serial '
+                  + 'number — press Connect and pick it again.',
+  'backup-not-one': 'That file is not a DigiMacro backup.',
+  'backup-other-map': 'That backup was made by a different version of DigiMacro, '
+                  + 'and this page cannot read it.',
+  'backup-wrong-password': 'That is not the password this backup was saved with.',
   'host-summary':   'Host',
   'host-why':       'A macro that types a secret can be told to type it only for '
                   + 'a computer you trust: {host} in it stops the macro unless a '
@@ -256,6 +298,21 @@ en: {
   'fw-link-available': '(update available)',
   'fw-link-latest': '(latest)',
   'fw-link-noboot': '(hardened: no bootloader)',
+  'hd-ok':          '(hardened)',
+  'hd-not':         '(not fully hardened…)',
+  'hd-summary':     'Hardening',
+  'hd-why':         'This board was built without a bootloader, for hardened '
+                  + 'mode, and the chip says it is missing something hardened '
+                  + 'mode needs. HARDENED_MODE.md explains each. Before step 6, '
+                  + 'the lock bits are expected to be missing; after it, nothing '
+                  + 'here should be.',
+  'hd-boot':        'no bootloader',
+  'hd-lock':        'lock bits set, lock byte 0xFC: a programmer cannot read the '
+                  + 'chip',
+  'hd-eesave':      'EESAVE unprogrammed: erasing the chip erases the EEPROM too',
+  'hd-dwen':        'debugWIRE off',
+  'hd-raw':         'As the chip reads them: low fuse {low}, high {high}, '
+                  + 'extended {ext}, lock {lock}.',
   close:            'Close',
   remove:           'remove',
   'wrong-magic':    'that device did not answer "DM"',
@@ -406,6 +463,49 @@ pt: {
   'lock-saved':     'Bloqueio salvo. As contagens recomeçam do zero.',
   'lock-off-saved': 'Bloqueio desligado. Códigos errados não custam mais nada.',
   'lock-lifted':    'Bloqueio forte desfeito.',
+  'bk-summary':     'Cópia de segurança',
+  'bk-why':         'Tudo o que está na placa — as macros, a macro de '
+                  + 'inicialização, o bloqueio, a chave de computador, a senha e '
+                  + 'o número de série — salvo num arquivo, e restaurado. Uma '
+                  + 'placa protegida perde tudo isso quando é apagada para '
+                  + 'atualizar o firmware; restaurada, ela volta a ser a mesma. '
+                  + 'Com senha, o arquivo é cifrado com ela, então guarde essa '
+                  + 'senha: sem ela o arquivo não serve para ninguém, nem para '
+                  + 'você.',
+  'bk-save':        'Salvar uma cópia',
+  'bk-restore':     'Restaurar',
+  'ph-bk-pass':     'a senha com que foi salva',
+  'bk-short':       'A senha tem menos de oito caracteres. Um arquivo copiado pode '
+                  + 'ser atacado fora da placa, muito mais rápido do que a placa '
+                  + 'permite, e uma senha curta não aguenta muito. Clique em '
+                  + 'Salvar uma cópia de novo para salvar assim mesmo.',
+  'bk-plain':       'Esta placa não tem senha, então a cópia teria todas as '
+                  + 'macros às claras. Clique em Salvar uma cópia de novo para '
+                  + 'salvar assim mesmo, ou defina uma senha antes.',
+  'bk-deriving':    'Calculando a chave a partir da senha — um ou dois segundos, '
+                  + 'de propósito…',
+  'bk-saved':       'Salva como {file}, cifrada com a senha da placa.',
+  'bk-saved-plain': 'Salva como {file}, às claras. Guarde-a onde você guardaria '
+                  + 'as próprias macros.',
+  'bk-file-locked': 'Uma cópia da placa {serial}, firmware {firmware}, salva em '
+                  + '{saved}. Está cifrada: digite a senha com que foi salva.',
+  'bk-file-plain':  'Uma cópia da placa {serial}, firmware {firmware}, salva em '
+                  + '{saved}. Não está cifrada.',
+  'bk-needs-pass':  'Digite a senha com que a cópia foi salva.',
+  'bk-confirm':     'Isto substitui tudo nesta placa pela cópia da placa '
+                  + '{serial}: macros, inicialização, bloqueio, chave de '
+                  + 'computador, senha e número de série. Clique em Restaurar de '
+                  + 'novo para continuar.',
+  'bk-restored-replug': 'Restaurada, e lida de volta. Desconecte a placa e '
+                  + 'conecte de novo, para o número de série restaurado valer.',
+  'bk-restarting':  'Restaurada, e lida de volta. A placa está reiniciando, para '
+                  + 'voltar com o número de série restaurado…',
+  'bk-restarted':   'Restaurada. A placa reiniciou com o número de série '
+                  + 'restaurado — clique em Conectar e escolha-a de novo.',
+  'backup-not-one': 'Esse arquivo não é uma cópia de segurança do DigiMacro.',
+  'backup-other-map': 'Essa cópia foi feita por outra versão do DigiMacro, e esta '
+                  + 'página não consegue lê-la.',
+  'backup-wrong-password': 'Essa não é a senha com que esta cópia foi salva.',
   'host-summary':   'Computador',
   'host-why':       'Uma macro que digita um segredo pode digitá-lo só para um '
                   + 'computador de confiança: {host} nela interrompe a macro a '
@@ -546,6 +646,21 @@ pt: {
   'fw-link-available': '(atualização disponível)',
   'fw-link-latest': '(o mais recente)',
   'fw-link-noboot': '(protegida: sem bootloader)',
+  'hd-ok':          '(protegida)',
+  'hd-not':         '(não totalmente protegida…)',
+  'hd-summary':     'Proteção',
+  'hd-why':         'Esta placa foi gravada sem bootloader, para o modo '
+                  + 'protegido, e o chip diz que falta algo de que o modo '
+                  + 'protegido precisa. O HARDENED_MODE.md explica cada item. '
+                  + 'Antes do passo 6 é normal faltarem os bits de trava; depois '
+                  + 'dele, nada aqui deveria faltar.',
+  'hd-boot':        'sem bootloader',
+  'hd-lock':        'bits de trava gravados, byte de trava 0xFC: um gravador não '
+                  + 'consegue ler o chip',
+  'hd-eesave':      'EESAVE não programado: apagar o chip apaga a EEPROM também',
+  'hd-dwen':        'debugWIRE desligado',
+  'hd-raw':         'Como o chip os lê: fuse baixo {low}, alto {high}, '
+                  + 'estendido {ext}, trava {lock}.',
   close:            'Fechar',
   remove:           'remover',
   'wrong-magic':    'esse dispositivo não respondeu "DM"',

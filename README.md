@@ -25,7 +25,7 @@ nothing installed, and Linux needs one udev rule.
 > a laboratory, and it does nothing about the computer the board types into.
 > The document explains each of those trade-offs. Do not skip it.
 
-**5576 bytes of the 6650** the stock bootloader leaves, and 200 of RAM.
+**5754 bytes of the 6650** the stock bootloader leaves, and 207 of RAM.
 
 ## What you need
 
@@ -116,7 +116,8 @@ stays plugged in.
 
 The sections are **Macros**, with the keyboard layout picker beside the
 heading; **Keys**, a palette that inserts anything below at the cursor;
-**Startup**; **Host**; **Password**; **Lockout**; and a reference. The app
+**Startup**; **Host**; **Password**; **Lockout**; **Backup**; and a
+reference. The app
 speaks English and Brazilian Portuguese, picked from the browser and changed
 at the top right.
 
@@ -272,6 +273,30 @@ it opens no window, unlocks nothing and reads nothing, and a wrong key does
 could hard-lock the board without anyone touching it. A wrong key costs a
 second instead, on a clock of its own.
 
+### Backups
+
+**Backup** saves the board's whole EEPROM to a file — macros, startup,
+lockout, host key, password and serial number — and **Restore** puts it back,
+so a board erased to update it comes back as itself, Chrome's permission and
+host key files included. The password goes in last, or the board would lock
+itself half way through its own restore, and the lockout's counts start
+again. Then the board restarts itself — leaves the bus and comes back, as if
+replugged — because the serial number is only sent when the board is plugged
+in, and a restored one is easy to forget about. To Chrome a new serial is a
+new device, so the page asks you to press Connect and pick the board again.
+Firmware older than 8 cannot restart itself, and the page asks you to replug
+it instead.
+
+On a board with a password, the file is encrypted with it: scrypt with BIP38's
+parameters derives the key, and AES-256-GCM encrypts the image and says
+plainly when the password is wrong. Browsers have no scrypt, so `web/backup.js`
+writes it out, and a test checks it against node's own and RFC 7914's
+vectors. A copied file can be guessed at offline, with no hold and no
+one-second wait, so a password under eight characters gets a warning first;
+a board with no password backs up in the clear, after a warning too. Restore
+takes the whole image, whatever board it came from, so restoring one board's
+backup onto another gives the second the first's identity.
+
 ### Every board has a serial number
 
 Four random bytes, made once on a chip that has never had one and kept in
@@ -355,8 +380,9 @@ and get it to see the answer:
 
 | | |
 |---|---|
-| `0x40` INFO | always answers: `[1..2]` "DM", `[3]` protocol (2), `[4]` firmware, `[5..6]` EEPROM size, `[7]` state |
+| `0x40` INFO | always answers: `[1..2]` "DM", `[3]` protocol (2), `[4]` firmware, `[5..6]` EEPROM size, `[7]` state, and from firmware 8 `[8..11]` the low, high and extended fuses and the lock byte, as the chip reads them |
 | `0x41` REBOOT | into the bootloader, for a firmware update. Absent from the hardened build |
+| `0x42` RESTART | off the bus and back, as if replugged, without a reset: the serial number is made again from EEPROM, so a restored one takes effect |
 | `0x60` READ | address and count in, up to 32 bytes back |
 | `0x61` WRITE | address, count and up to 32 bytes in |
 | `0x62` UNLOCK | the password, if the board has one |
@@ -497,8 +523,9 @@ Then the app's macro language on its own,
 the two languages against each other, and — across the language boundary — a
 table encoded by `web/table.js` played through the firmware. Then the firmware
 the app ships, laid out for the bootloader, with both jumps decoded and
-followed to where they land. Seven suites, about a second. Without `node`, the
-four that need it are skipped.
+followed to where they land, and the backups: scrypt against node's own, and
+a file that opens only for its password. Eight suites, a couple of seconds. Without `node`, the
+five that need it are skipped.
 
 ## Layout
 
@@ -509,7 +536,7 @@ four that need it are skipped.
 | `build.sh` | builds and flashes everything here |
 | `test/` | host build of the real sketch against stub hardware, and the web side's tests |
 | `tools/hostauth/` | the Linux client that sends the host key |
-| `web/` | `app.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `micronucleus.js` the uploader, `60-digimacro.rules` the udev rule |
+| `web/` | `app.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `micronucleus.js` the uploader, `backup.js` the backups, `60-digimacro.rules` the udev rule |
 | `web/firmware/` | what the app installs: the released firmware, and the Micronucleus 2.6 upgrader |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |
 | `PLAN.md` | design, decisions and how it got here |

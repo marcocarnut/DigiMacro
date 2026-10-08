@@ -681,8 +681,20 @@ testable, which is why they are in this order rather than firmware-then-app.
    `DM_NO_BOOTLOADER`, which calibrates against the host's USB frames on every
    reset (V-USB's own `osccal.c`, which was in the tree all along), drops
    REBOOT, and tells the app through INFO so the status line can say so. The
-   extended fuse goes to `0xFF` as well as the lock bits, since nothing then
-   needs SPM. Tried on hardware by Marco, all seven steps, and it works.
+   extended fuse first went to `0xFF` as well, since nothing then needs SPM;
+   it is back at the Digispark's `0xFE`, Marco's call, because the firmware
+   contains no SPM instruction -- objdump says so -- which makes SELFPRGEN of
+   no consequence in v1, and v2 will need it. Tried on hardware by Marco, all
+   seven steps, and it works.
+
+   From firmware 8 the board reports its fuses and lock bits in INFO, read
+   once at boot before USB can interrupt the SPMCSR-and-LPM pair, and the app
+   says **(hardened)** or **(not fully hardened…)** with what is missing: no
+   bootloader, lock byte `0xFC`, EESAVE unprogrammed, debugWIRE off. Seen on
+   hardware before locking, saying exactly that, and **(hardened)** after.
+   EESAVE gets a check of its own because it is what makes clearing the lock
+   bits worthless to an attacker; a simulated board with it programmed (high
+   fuse `0xD5`) and everything else right is flagged on that line alone.
 
    The original note, for the record: a security section in the README, for whoever wants the table really
    protected. Marco's summary: real security means programming the **lock

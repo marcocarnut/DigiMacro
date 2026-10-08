@@ -67,8 +67,11 @@ Be honest with yourself about these before relying on it.
 - **A weak password.** The app needs the hold, and allows one wrong answer per
   second, but a short password still falls to someone patient with the board in
   hand. Use the full twelve characters.
-- **Your own backups.** If you save the EEPROM to a file, below, that file holds
-  everything in plain text.
+- **Your own backups.** The app's backup is encrypted with the board's
+  password, so it is as strong as that password — but a copied file can be
+  guessed at offline, with no hold and no one-second wait. A board with no
+  password backs up in the clear. Keep backups where you would keep the
+  secrets themselves.
 
 ## What it costs
 
@@ -91,17 +94,15 @@ The order matters. The chip is erased first, configured while it is still
 open, and locked last, because locking is the step that cannot be undone
 without losing everything.
 
-### 1. Decide about a backup
+### 1. Save a backup
 
 Erasing the chip in step 3 erases the EEPROM: your macros, password, lockout
-settings, host key and serial number. Either:
-
-- **start fresh,** and re-enter everything in the app in step 5; or
-- **save the EEPROM first:** with DigiISP, read the EEPROM of the board as it
-  is now, save it to a file, and write it back in step 4. Everything comes
-  back, serial number included. **That file is every secret on the board in
-  plain text.** Delete it once the board is locked, or keep it somewhere you
-  would keep the secrets themselves.
+settings, host key and serial number. Save them first: in the app, **Backup**,
+**Save a backup**. The file holds the whole EEPROM, encrypted with the board's
+password if it has one, and restoring it in step 5 brings the board back as
+itself — serial number included, so Chrome's permission and every computer's
+host key file still fit. Or start fresh, and set everything up again in
+step 5.
 
 ### 2. Build the firmware without a bootloader
 
@@ -143,21 +144,16 @@ Then, in this order:
 |---|---|---|
 | low | `0xE1` | as a Digispark: the PLL clock, which is then tuned to the 16.5 MHz USB needs |
 | high | `0xDD` | as a Digispark. **EESAVE (bit 3) is 1, unprogrammed**, so a chip erase takes the EEPROM with it. Reset stays enabled, so a programmer can still erase the chip if you start over. Disabling reset would gain nothing, since high-voltage programming obeys the same lock bits and erase rules. debugWIRE stays off. |
-| extended | `0xFF` | **not** a Digispark's `0xFE`: SELFPRGEN unprogrammed, so nothing running on the chip can write its own flash at all. Micronucleus needed it; DigiMacro does not. |
+| extended | `0xFE` | as a Digispark. It leaves SELFPRGEN programmed, which lets code on the chip write flash -- and that is of no consequence here: with no bootloader nothing else runs on the chip, and DigiMacro contains no SPM instruction at all, so there is nothing that could. `0xFF` is equally fine. |
 
 With avrdude and DigiISP, or any USBasp:
 
 ```
 avrdude -c usbasp-clone -p t85 -e -U flash:w:build/DigiMacro.ino.hex:i \
-        -U lfuse:w:0xe1:m -U hfuse:w:0xdd:m -U efuse:w:0xff:m
+        -U lfuse:w:0xe1:m -U hfuse:w:0xdd:m -U efuse:w:0xfe:m
 ```
 
-### 4. Restore the backup, if you made one
-
-Write the saved EEPROM back with DigiISP. Do this before locking: once the
-lock bits are set, the EEPROM cannot be written by a programmer.
-
-### 5. Check it, and configure it
+### 4. Check that it works
 
 Plug the board in on its own.
 
@@ -167,8 +163,16 @@ Plug the board in on its own.
   under *Changing things afterwards*.
 - **The status line must say *(hardened: no bootloader)*.**
 
-Then set up everything in the app while the chip is still open to fixing
-mistakes:
+### 5. Restore, or set it up
+
+**With a backup:** in the app, **Backup**, choose the file, type the password
+it was saved with, and **Restore**. Everything comes back as it was, and the
+board restarts itself so that its restored serial number takes effect; press
+Connect and pick it again. (Firmware older than 8 cannot restart itself:
+unplug the board and plug it in again — the restored serial is only sent when
+the board is plugged in.)
+
+**Without one,** set up everything in the app:
 
 - **a password, twelve characters.** Without one, the hold is the only thing
   between a stranger holding the board and the table;
@@ -176,7 +180,8 @@ mistakes:
 - **a host key**, with `{host!}` at the very start of every macro that types a
   secret, and the key file installed on each computer you trust.
 
-Try every guarded macro on a trusted computer and on one that is not.
+Either way, try every guarded macro on a trusted computer and on one that is
+not, while the chip is still open to fixing mistakes.
 
 ### 6. Lock it
 
@@ -191,45 +196,53 @@ avrdude -c usbasp-clone -p t85 -U lock:w:0xfc:m
 Then read the EEPROM back with the programmer. It should no longer show your
 data.
 
+The app checks too. A board on firmware 8 or later reports its fuses and lock
+bits as the chip reads them, and the status line says **(hardened)** only when
+everything above is in place: no bootloader, lock byte `0xFC`, EESAVE
+unprogrammed, debugWIRE off. If anything is missing it
+says **(not fully hardened…)** instead, in red, and lists what. Before this
+step the lock bits are expected to be missing; after it, nothing should be.
+
 The firmware runs exactly as before: the lock bits restrict the programmer,
 not the program. The app keeps working, because it talks to the firmware, and
 the firmware still reads its own EEPROM.
 
-### 7. Clean up
+### 7. Save a new backup
 
-Delete the EEPROM backup, or put it where the secrets themselves belong.
+Save one now, from the board as it will be used, and keep it where you would
+keep the secrets themselves. The lock bits stop a programmer reading the
+EEPROM, not the firmware, so the app can back up a locked board too: do it
+again whenever the macros change.
 
 ## Changing things afterwards
 
 - **Macros, password, lockout, host key:** the app, as always. Hardening
   changes none of that.
-- **The firmware:** erase the chip with the programmer. That clears the lock
-  bits and the EEPROM together. Then start again from step 1. The board comes
-  back with a new serial number, unless you restore a backup. A high-voltage
-  programmer does all of this too, without the reset pin.
+- **The firmware:** save a backup in the app, then erase the chip with the
+  programmer, which clears the lock bits and the EEPROM together, and go
+  through the steps again from 2: restore, check, lock. The app reads a locked
+  board's EEPROM through the firmware, so the backup is always current. A
+  high-voltage programmer does all of this too, without the reset pin.
 
-  **Your macros do not come back by themselves.** A locked chip cannot be read,
-  so the only copy of the table is on the board, and the erase takes it. Keep
-  what you need to re-enter it somewhere you would keep the secrets
-  themselves. The step 1 backup can only be made while the chip is open, so
-  it is only as recent as the last time the board was unlocked.
+  **Without a backup, your macros do not come back.** The erase takes the only
+  copy, by design.
 - **Going back to an ordinary board:** erase the chip, write the upstream
   Micronucleus 2.6 bootloader (`t85_default.hex`, which DigiISP's repository
-  carries in `firmware/bootloader/`) with the programmer, and set the extended
-  fuse back to `0xFE`, since Micronucleus needs to write flash. The board then
+  carries in `firmware/bootloader/`) with the programmer, and make sure the
+  extended fuse is `0xFE`, since Micronucleus needs to write flash. The board then
   takes firmware over USB again, from the page or with `./build.sh upload`.
 
 ## Checklist
 
-- [ ] backup decided: none, or saved and to be destroyed
+- [ ] backup saved from the app, or a fresh start chosen
 - [ ] `./build.sh isp`
-- [ ] chip erased, flash written, fuses `0xE1` `0xDD` `0xFF`
-- [ ] backup restored, if any
+- [ ] chip erased, flash written, fuses `0xE1` `0xDD` `0xFE`
 - [ ] board enumerates, types, and says *(hardened: no bootloader)*
-- [ ] twelve-character password set
-- [ ] lockout on
-- [ ] host key made and installed; `{host!}` first in every secret macro
+- [ ] backup restored and the board replugged — or, from scratch: a
+      twelve-character password, the lockout, a host key installed, and
+      `{host!}` first in every secret macro
 - [ ] guarded macros tried on a trusted computer and an untrusted one
 - [ ] lock byte `0xFC` written, without an erase
 - [ ] EEPROM read back with the programmer, and no longer your data
-- [ ] backup destroyed or stored with the secrets
+- [ ] the app's status line says **(hardened)**
+- [ ] a new backup saved, and kept with the secrets

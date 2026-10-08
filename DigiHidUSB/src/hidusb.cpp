@@ -3,6 +3,7 @@
 #include <avr/pgmspace.h>
 #include <avr/interrupt.h>
 #include <avr/wdt.h>
+#include <avr/boot.h>
 #include <util/delay.h>
 
 extern "C" {
@@ -139,6 +140,11 @@ static uint32_t entropy(void)
 static const char PROGMEM serialPrefix[] = DM_SERIAL_PREFIX;
 static_assert(sizeof DM_SERIAL_PREFIX - 1 == DM_SERIAL_PREFIX_LEN,
               "DM_SERIAL_PREFIX_LEN must match DM_SERIAL_PREFIX");
+/* The driver sends as many bytes as usbconfig.h says, not as many as the
+   array holds, so a longer serial with the old length goes out cut short. */
+static_assert((USB_CFG_DESCR_PROPS_STRING_SERIAL_NUMBER & 0x3FFF)
+              == sizeof usbDescriptorStringSerialNumber,
+              "usbconfig.h's serial descriptor length must match the serial");
 
 static void initSerial(void)
 {
@@ -174,6 +180,10 @@ static uint8_t writingVnd;      /* tells usbFunctionWrite which it is serving */
 
 static uint16_t allowUntil;     /* the configuration window */
 static uint8_t  allowOpen;
+
+static uint8_t  fuses[4];       /* low, high, extended, lock, read at boot */
+static uint8_t  restartWanted;  /* asked for, and when: see hidPoll() */
+static uint16_t restartAsked;
 
 #if !DM_NO_BOOTLOADER
 static uint8_t  rebootWanted;   /* asked for, and when: see hidPoll() */
@@ -252,6 +262,10 @@ static void vndAnswer(void)
         vnd[4] = DM_FW_VERSION;
         vnd[5] = (uint8_t)(E2END + 1);
         vnd[6] = (uint8_t)((E2END + 1) >> 8);
+        vnd[8]  = fuses[0];     /* low, high, extended, lock: see hidBegin() */
+        vnd[9]  = fuses[1];
+        vnd[10] = fuses[2];
+        vnd[11] = fuses[3];
         vnd[7] = (hidAllowed()  ? DM_ST_OPEN     : 0)
                | (hidPassSet()  ? DM_ST_PASSWORD : 0)
                | (hidUnlocked() ? DM_ST_UNLOCKED : 0)
@@ -271,6 +285,12 @@ static void vndAnswer(void)
         /* Zero bytes clears it, which is how a board goes back to needing
            nothing. Reaching here at all meant getting past both gates. */
         hidSetPass(vnd + DM_VND_DATA, n);
+        break;
+
+    case DM_FUNC_RESTART:
+        /* Noted, like REBOOT, and done once the host has seen the answer. */
+        restartWanted = 1;
+        restartAsked = ticks();
         break;
 
 #if !DM_NO_BOOTLOADER
@@ -408,20 +428,10 @@ void hidTypeChar(char c, uint8_t mod)
 
 /* ===================================================================== */
 
-void hidBegin(void)
+/* Off the bus for long enough that the host notices, and back on: to the
+   host, a device just plugged in, which it enumerates from scratch. */
+static void reconnect(void)
 {
-    /* A watchdog reset leaves the watchdog running. Micronucleus turns it
-       off, but nothing here should depend on a bootloader having done so. */
-    MCUSR = 0;
-    wdt_disable();
-
-    initSerial();
-
-    vnd[0] = DM_FUNC_INFO;
-    vndAnswer();                /* so a first read answers something */
-
-    usbInit();
-    /* Make the host forget the bootloader. */
     USB_INTR_ENABLE &= ~(1 << USB_INTR_ENABLE_BIT);
     usbDeviceDisconnect();
     for (uint8_t i = 30; i; i--) _delay_ms(10);
@@ -429,6 +439,50 @@ void hidBegin(void)
     USB_INTR_PENDING = (1 << USB_INTR_PENDING_BIT);
     usbInit();
 }
+
+/* As if the board had been unplugged and plugged back in, without a reset --
+   which on an ordinary board would mean Micronucleus's six seconds. The
+   serial number is made again from EEPROM, so a restored one is what the
+   host sees; the window closes, and the host has to say hello again before
+   it counts as having a keyboard. The power-on macro does not type: this is
+   not a power-up. */
+static void restart(void)
+{
+    restartWanted = 0;
+    allowOpen = 0;
+    awake = 0;
+    initSerial();
+    reconnect();
+}
+
+void hidBegin(void)
+{
+    /* A watchdog reset leaves the watchdog running. Micronucleus turns it
+       off, but nothing here should depend on a bootloader having done so. */
+    MCUSR = 0;
+    wdt_disable();
+
+    /* The fuses and lock bits, so that the app can say whether a board that
+       is meant to be hardened really is -- a lock byte left at 0xFF looks
+       exactly like 0xFC from the outside, until somebody reads the chip.
+       Read here, once: a read is a write to SPMCSR and an LPM within three
+       cycles, and an interrupt between the two would read flash instead.
+       USB has not started yet, so nothing can come between them. They only
+       change with a programmer, which means a power cycle. */
+    fuses[0] = boot_lock_fuse_bits_get(GET_LOW_FUSE_BITS);
+    fuses[1] = boot_lock_fuse_bits_get(GET_HIGH_FUSE_BITS);
+    fuses[2] = boot_lock_fuse_bits_get(GET_EXTENDED_FUSE_BITS);
+    fuses[3] = boot_lock_fuse_bits_get(GET_LOCK_BITS);
+
+    initSerial();
+
+    vnd[0] = DM_FUNC_INFO;
+    vndAnswer();                /* so a first read answers something */
+
+    usbInit();
+    reconnect();                /* make the host forget the bootloader */
+}
+
 
 #if !DM_NO_BOOTLOADER
 /* Off the bus, and let the watchdog reset us into Micronucleus, which
@@ -446,6 +500,7 @@ static void reboot(void)
 void hidPoll(void)
 {
     usbPoll();
+    if (restartWanted && (uint16_t)(ticks() - restartAsked) > 50) restart();
 #if !DM_NO_BOOTLOADER
     /* Keep answering for a moment after the reboot was asked for, so the
        host sees the request complete before we drop off the bus. */

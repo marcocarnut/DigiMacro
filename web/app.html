@@ -237,6 +237,20 @@
 </div>
 <p class="note" id="lock-note"></p>
 
+<h2 data-t="bk-summary">Backup</h2>
+<p class="dim prose" data-t="bk-why"></p>
+<div class="bar">
+  <button id="bksave" data-t="bk-save">Save a backup</button>
+</div>
+<p class="note" id="bk-save-note"></p>
+<div class="bar" style="margin-top:1rem">
+  <input id="bkfile" type="file" accept=".backup,application/json">
+  <input id="bkpass" type="password" size="20" spellcheck="false"
+         autocomplete="off" data-ph="ph-bk-pass" hidden>
+  <button id="bkrestore" data-t="bk-restore" disabled>Restore</button>
+</div>
+<p class="note" id="bk-note"></p>
+
 <details>
   <summary data-t="ref-summary">What can go in a macro</summary>
   <table>
@@ -263,6 +277,18 @@
 </section>
 </main>
 
+<!-- Opened from the status line, on a hardened board that is not quite. -->
+<dialog id="hddialog">
+  <h2 data-t="hd-summary">Hardening</h2>
+  <p class="prose" data-t="hd-why"></p>
+  <ul id="hdlist"></ul>
+  <p class="dim prose" id="hdraw"></p>
+  <div class="bar">
+    <span class="spacer"></span>
+    <button id="hdclose" data-t="close">Close</button>
+  </div>
+</dialog>
+
 <!-- Opened from the status line, where the firmware version is. -->
 <dialog id="fwdialog">
   <h2 data-t="fw-summary">Firmware</h2>
@@ -285,6 +311,7 @@
 <script src="i18n.js"></script>
 <script src="table.js"></script>
 <script src="micronucleus.js"></script>
+<script src="backup.js"></script>
 <script>
 /* The device never stops being a keyboard. The app reaches it through a second
    top-level collection on a vendor usage page, which is the one kind WebHID
@@ -297,7 +324,7 @@ const DATA_AT = 4;              /* command, address low, address high, count */
 const CHUNK   = VND_LEN - DATA_AT;
 const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61;
 const F_UNLOCK = 0x62, F_SETPASS = 0x63, F_REFUSED = 0xEE;
-const F_REBOOT = 0x41;
+const F_REBOOT = 0x41, F_RESTART = 0x42;
 const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
 const ST_SOFTLOCK = 0x08, ST_HARDLOCK = 0x10;
 const ST_HOST = 0x20, ST_NOBOOT = 0x80;
@@ -346,8 +373,21 @@ function renderWho() {
   if (whoKey !== 'connected') { el.textContent = t(whoKey, whoParams); return; }
   const [before, after] = t('connected', { ...whoParams, state: '\u0000' }).split('\u0000');
   el.append(before);
-  if (state_byte & ST_NOBOOT) {
-    /* Hardened: there is no bootloader to update through, by design. */
+  const hd = hardening();
+  if (state_byte & ST_NOBOOT && hd && hd.every(c => c.ok)) {
+    el.append(' ' + t('hd-ok'));
+  } else if (state_byte & ST_NOBOOT && hd) {
+    /* Built to be hardened, and the chip says it is not, quite: say so where
+       it cannot be missed, since it looks the same as hardened from outside. */
+    el.append(' ');
+    const b = document.createElement('button');
+    b.className = 'link';
+    b.style.color = 'var(--bad)';
+    b.textContent = t('hd-not');
+    b.onclick = openHardening;
+    el.append(b);
+  } else if (state_byte & ST_NOBOOT) {
+    /* Hardened, by firmware too old to say how well. */
     el.append(' ' + t('fw-link-noboot'));
   } else if (fwHere !== null) {
     el.append(' ');
@@ -623,6 +663,7 @@ async function connect(mayAsk) {
       note('connect-note', t('wrong-magic'), 'bad'); dev = null; return;
     }
     fwOnBoard = b[4];
+    fuses = b[4] >= FW_FIRST_FUSES ? [...b.slice(8, 12)] : null;
     state_byte = b[7];
     who('connected', { fw: b[4], proto: b[3] }, 'ok');
     note('connect-note', '');           /* whatever the last connection, or
@@ -649,6 +690,13 @@ navigator.hid?.addEventListener('disconnect', ev => {
   if (dev && ev.device !== dev) return;
   dev = null;
   if (upgrading) return;        /* expected: the upgrade carries on */
+  if (restarting) {
+    /* Gone on purpose, to come back with its restored serial. To Chrome a
+       new serial is a new device, so it usually has to be picked again; if
+       the serial did not change, it reconnects by itself and this clears. */
+    restarting = false;
+    note('connect-note', t('bk-restarted'), 'ok');
+  }
   password = null;              /* the next plug-in asks again */
   $('gatepass').value = '';
   show('none');
@@ -762,7 +810,7 @@ async function readTable() {
 async function enterBoard() {
   note('gate-note', t('gate-reading'), 'dim');
   for (const id of ['table-note', 'auto-note', 'write-note', 'pass-note',
-                    'lock-note', 'host-note']) note(id, '');
+                    'lock-note', 'host-note', 'bk-save-note', 'bk-note']) note(id, '');
   show('board');
   const got = await readTable();
   lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
@@ -799,7 +847,8 @@ async function access(noteId) {
 /* An action: one at a time, its buttons quiet while it runs, and whatever
    happens said beside the button that started it. */
 const ACTION_BUTTONS = ['write', 'sample', 'setpass', 'clearpass', 'locksave',
-                        'fwupdate', 'fwclose', 'hostnew', 'hostdel', 'hostsave'];
+                        'fwupdate', 'fwclose', 'hostnew', 'hostdel', 'hostsave',
+                        'bksave', 'bkrestore'];
 
 async function run(noteId, fn) {
   if (busy || !dev) return;
@@ -818,6 +867,8 @@ async function run(noteId, fn) {
     $('fwclose').disabled = false;
     $('hostnew').disabled = false;
     $('hostdel').disabled = false;
+    $('bksave').disabled = false;
+    $('bkrestore').disabled = bkText === null;
     draw();                     /* Write and the Save buttons: each enables
                                    itself only when it has something to save */
     drawSecurity();
@@ -1078,6 +1129,120 @@ $('hostsave').onclick = () => {
   });
 };
 
+/* ---- backing it up --------------------------------------------------
+ *
+ * The whole EEPROM, to a file and back: see backup.js for why the image and
+ * not the macros, and how it is encrypted. On a board with a password the
+ * file is encrypted with it, so a backup is no easier a way in than the board;
+ * the one difference is that a copied file can be guessed at offline, which
+ * is why a short password gets a warning first. Without a password there is
+ * nothing to encrypt with, and the file holds the image in the clear -- which
+ * also gets a warning, since a file goes places a board does not.
+ *
+ * A restore writes everything, serial number included, so a board erased to
+ * update its firmware comes back as itself. The password goes last: written
+ * any earlier, it would lock the board half way through its own restore.
+ */
+const errText = e => e.message.startsWith('backup-') ? t(e.message) : e.message;
+let saveArmed = false;          /* the warning has been given; go ahead */
+let bkText = null, bkHead = null, bkArmed = false;
+let restarting = false;         /* the board was asked to restart itself */
+
+/* The first firmware that can leave the bus and come back by itself, so a
+   restored serial number takes effect without anyone unplugging it. */
+const FW_FIRST_RESTART = 8;
+
+$('bksave').onclick = () => {
+  const has = !!(state_byte & ST_PASSWORD);
+  const warn = !has ? 'bk-plain' : password.length < 8 ? 'bk-short' : null;
+  if (warn && !saveArmed) {
+    saveArmed = true;
+    note('bk-save-note', t(warn), 'bad');
+    return;
+  }
+  saveArmed = false;
+  run('bk-save-note', async () => {
+    note('bk-save-note', t('gate-reading'), 'dim');
+    const image = await eeRead(0, 512);
+    if (has) note('bk-save-note', t('bk-deriving'), 'dim');
+    const saved = new Date().toISOString().slice(0, 10);
+    const text = await makeBackup(image, has ? password : null,
+                                  { serial, firmware: fwOnBoard, saved });
+    const file = `digimacro-${serial}-${saved}.backup`;
+    download(file, text);
+    note('bk-save-note', t(has ? 'bk-saved' : 'bk-saved-plain', { file }), 'ok');
+  });
+};
+
+$('bkfile').onchange = async () => {
+  bkText = bkHead = null;
+  bkArmed = false;
+  $('bkpass').hidden = true;
+  $('bkrestore').disabled = true;
+  const f = $('bkfile').files[0];
+  if (!f) { note('bk-note', ''); return; }
+  try {
+    const text = await f.text();
+    bkHead = readBackupHeader(text);
+    bkText = text;
+    $('bkpass').hidden = !bkHead.encrypted;
+    $('bkrestore').disabled = busy;
+    note('bk-note', t(bkHead.encrypted ? 'bk-file-locked' : 'bk-file-plain', bkHead), 'dim');
+  } catch (e) {
+    note('bk-note', errText(e), 'bad');
+  }
+};
+
+$('bkrestore').onclick = () => {
+  if (!bkText) return;
+  if (bkHead.encrypted && !$('bkpass').value) {
+    note('bk-note', t('bk-needs-pass'), 'bad');
+    return;
+  }
+  if (!bkArmed) {
+    bkArmed = true;
+    note('bk-note', t('bk-confirm', bkHead), 'bad');
+    return;
+  }
+  bkArmed = false;
+  const pw = bkHead.encrypted ? $('bkpass').value : null;
+  run('bk-note', async () => {
+    note('bk-note', t(pw === null ? 'gate-reading' : 'bk-deriving'), 'dim');
+    const image = await openBackup(bkText, pw).catch(e => { throw new Error(errText(e)); });
+    image[0x1EF] = image[0x1F0] = 0xFF;         /* the lockout's counts start
+                                                   again: no restoring a lock */
+    note('bk-note', t('writing'), 'dim');
+    const PASS = 0x1F4;
+    for (let a = 0; a < PASS; a += CHUNK)
+      await eeWrite(a, image.slice(a, Math.min(a + CHUNK, PASS)));
+    const back = await eeRead(0, PASS);
+    const bad = [...back].findIndex((v, i) => v !== image[i]);
+    if (bad >= 0)
+      throw new Error(t('write-mismatch', { at: bad, wrote: hex2(image[bad]), read: hex2(back[bad]) }));
+    await eeWrite(PASS, image.slice(PASS));     /* last: see above */
+    password = image[PASS] === 0xFF ? null : pw;
+    $('bkpass').value = '';
+    /* The board now wants the password it has just been given. */
+    await refreshState();
+    if (wantsPassword(state_byte) && password !== null) await tryUnlock('bk-note');
+    await readTable();
+    lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
+    await hostRead();
+
+    /* The serial number goes out at enumeration, so a restored one only
+       takes effect when the board is plugged in again -- which is easy to
+       forget, so the board does it itself when it can. */
+    if (fwOnBoard < FW_FIRST_RESTART) {
+      note('bk-note', t('bk-restored-replug'), 'ok');
+      return;
+    }
+    restarting = true;
+    note('bk-note', t('bk-restarting'), 'ok');
+    try { await ask(F_RESTART); }
+    catch (e) { if (e.message === 'REFUSED') { restarting = false; throw e; } }
+  });
+};
+
 /* ---- updating the firmware ------------------------------------------
  *
  * The board reboots into Micronucleus, which is a different USB device on a
@@ -1111,6 +1276,43 @@ function drawFirmware() {
   $('fwupdate').disabled = busy || fwHere === null || tooOld;
   renderWho();
 }
+
+/* ---- is a hardened board really hardened? ------------------------------
+ *
+ * The firmware reports the fuses and lock bits as the chip reads them. Hardened
+ * mode needs all of these, and a board missing one looks just the same from
+ * outside -- which is the point of checking: a lock byte left at 0xFF is
+ * exactly the mistake nobody notices until somebody reads the chip.
+ */
+const FW_FIRST_FUSES = 8;
+let fuses = null;               /* low, high, extended, lock, or null */
+
+function hardening() {
+  if (!fuses) return null;
+  const [, high, , lock] = fuses;
+  return [
+    { key: 'hd-boot',    ok: !!(state_byte & ST_NOBOOT) },
+    { key: 'hd-lock',    ok: (lock & 0x03) === 0 },     /* LB1 and LB2: mode 3 */
+    { key: 'hd-eesave',  ok: !!(high & 0x08) },         /* unprogrammed is 1 */
+    { key: 'hd-dwen',    ok: !!(high & 0x40) },
+  ];
+}
+
+function openHardening() {
+  const hd = hardening();
+  $('hdlist').innerHTML = '';
+  for (const c of hd) {
+    const li = document.createElement('li');
+    li.className = c.ok ? 'ok' : 'bad';
+    li.textContent = (c.ok ? '✓ ' : '✗ ') + t(c.key);
+    $('hdlist').append(li);
+  }
+  const hx = v => '0x' + v.toString(16).toUpperCase().padStart(2, '0');
+  $('hdraw').textContent = t('hd-raw', { low: hx(fuses[0]), high: hx(fuses[1]),
+                                         ext: hx(fuses[2]), lock: hx(fuses[3]) });
+  $('hddialog').showModal();
+}
+$('hdclose').onclick = () => $('hddialog').close();
 
 function openFirmware() {
   note('fw-note', '');

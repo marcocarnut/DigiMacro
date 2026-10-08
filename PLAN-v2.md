@@ -121,7 +121,10 @@ Measure, don't trust this table: the spike will say.
 
 What changes for hardened mode:
 
-- **SELFPRGEN must stay programmed:** extended fuse `0xFE`, not v1's `0xFF`.
+- **SELFPRGEN must stay programmed:** extended fuse `0xFE`. v1's hardened mode
+  first asked for `0xFF`, and dropped it: v1 contains no SPM instruction, so
+  the fuse was of no consequence there, and asking for `0xFE` from the start
+  means nobody has to change it for v2.
 - **Protection becomes the password** — guessed at one per second, with the
   pad held — instead of "only a full chip erase gets in". With a long
   password that is as strong. `HARDENED_MODE.md` needs rewriting to say so.

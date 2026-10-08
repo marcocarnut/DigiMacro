@@ -35,6 +35,8 @@
 #define DM_FUNC_INFO        0x40    /* magic, versions, EEPROM size, state */
 #define DM_FUNC_REBOOT      0x41    /* into the bootloader, for an upgrade;
                                        absent with DM_NO_BOOTLOADER */
+#define DM_FUNC_RESTART     0x42    /* off the bus and back, as if replugged:
+                                       a restored serial takes effect */
 #define DM_FUNC_READ        0x60    /* address, count -> data */
 #define DM_FUNC_WRITE       0x61    /* address, count, data */
 #define DM_FUNC_UNLOCK      0x62    /* count, password -> accepted or not */
@@ -43,6 +45,10 @@
                                        Needs neither the hold nor the
                                        password -- see the firmware's "host" */
 #define DM_REFUSED          0xEE    /* comes back in place of the command */
+
+/* INFO, after the state byte at [7]: the fuses and lock bits as the chip
+ * reads them, low [8], high [9], extended [10] and lock [11]. Firmware 8 on. */
+#define DM_INFO_FUSES       8
 
 /* INFO's state byte */
 #define DM_ST_OPEN          0x01    /* somebody held the pad recently */
@@ -97,7 +103,7 @@
 #define DM_MAGIC0           'D'
 #define DM_MAGIC1           'M'
 #define DM_PROTOCOL_VERSION 2       /* 1 was the WebUSB vendor-class one */
-#define DM_FW_VERSION       6
+#define DM_FW_VERSION       8
 
 #ifdef __cplusplus
 extern "C" {

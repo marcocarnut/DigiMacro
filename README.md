@@ -490,7 +490,8 @@ on one interface need report IDs and a boot report may not have one, which
 also caps it at three key slots rather than six — nothing that presses one key
 at a time notices. And there is no landing page: Chrome offers one for a
 WebUSB device, not a HID one. An earlier version re-enumerated as a WebUSB
-device after the hold, and back again afterwards; `PLAN.md` tells that story.
+device after the hold, and back again afterwards; v1's design record tells
+that story (`git show v1.0:PLAN.md`).
 
 ### The core and the firmware
 
@@ -507,7 +508,8 @@ nothing else; `core/layout.h` is the whole contract. The firmware's header
 carries a magic, its length, its version and the core API it was built for,
 and a CRC follows it: the core runs only firmware that checks out. Every
 interrupt but V-USB's is passed on to the firmware, and the watchdog watches
-it. `PLAN-v2.md` tells how it was decided and why.
+it. v2's design record tells how it was decided and why: it was retired once
+everything in it was built, and `git show ae7e0ac:PLAN-v2.md` has it.
 
 ### The protocol
 
@@ -709,8 +711,6 @@ seconds. Without `node`, the six that need it are skipped.
 | `web/` | `app.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `backup.js` the backups, `60-digimacro.rules` the udev rule |
 | `web/firmware/` | what the page installs: v2's firmware, core and full image, v1's firmware 9 for v1 boards, and the Micronucleus 2.6 upgrader |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |
-| `PLAN.md` | v1's design, decisions and how it got there |
-| `PLAN-v2.md` | v2's: the core, the spike that proved it, and what was decided |
 
 ## Related
 

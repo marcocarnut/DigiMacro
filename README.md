@@ -25,7 +25,7 @@ nothing installed, and Linux needs one udev rule.
 > a laboratory, and it does nothing about the computer the board types into.
 > The document explains each of those trade-offs. Do not skip it.
 
-**5504 bytes of the 6650** the stock bootloader leaves, and 170 of RAM.
+**5576 bytes of the 6650** the stock bootloader leaves, and 200 of RAM.
 
 ## What you need
 
@@ -243,8 +243,8 @@ guarded code on the wrong computer does not clear a guesser's misses.
 
 The key is eight random bytes, made in the app's Host section, written to the
 board, and downloaded as a file named after the board's serial number. The
-client is `tools/hostauth`, for Linux, and needs the same udev rule as the
-app:
+client is `tools/hostauth`, one C file with no library, for Linux and
+Windows. On Linux it needs the same udev rule as the app:
 
 ```
 make -C tools/hostauth install            # into ~/.local/bin
@@ -255,10 +255,15 @@ digimacro-host                            # once
 digimacro-host -e 30                      # every 30 seconds, for as long as it runs
 ```
 
+For Windows, `make -C tools/hostauth windows` cross-compiles
+`digimacro-host.exe` with MinGW-w64 (`gcc-mingw-w64-x86-64` on Debian and
+Ubuntu). It is a single file needing nothing installed beside it, and it reads
+its keys from `%APPDATA%\digimacro\host.key`.
+
 Run with `-e` from your session, and stopped when the screen locks, the trust
 becomes "while I am logged in". The client finds every board plugged in by
-the serial number the kernel reports for it, so one key file serves several
-boards. `-k` names another key file; the default honours `$XDG_CONFIG_HOME`.
+its serial number, so one key file serves several boards. `-k` names another
+key file; on Linux the default honours `$XDG_CONFIG_HOME`.
 
 Sending the key is the one request, beside INFO, that needs neither the hold
 nor the password, because nobody is at the board. So it can do nothing else:
@@ -270,7 +275,10 @@ second instead, on a clock of its own.
 ### Every board has a serial number
 
 Four random bytes, made once on a chip that has never had one and kept in
-EEPROM, rendered as eight hex digits. Chrome remembers a WebHID permission
+EEPROM, rendered as eight hex digits after `postcogito.org:`. The prefix is
+obdev's rule for `16c0:27db`, the shared ID for keyboards told apart by serial
+number: the serial must begin with a domain the author owns, so that devices
+from different people on the same ID cannot be confused. Chrome remembers a WebHID permission
 only for a device that has a serial number, so without one every replug would
 mean picking the board out of the chooser again. Making it per board rather
 than per model means two boards get their own grants, and their own host keys.
@@ -429,9 +437,9 @@ says where the repeated thing began. It takes no argument — its position is
 its argument — and marks do not nest.
 
 This is the interface between the firmware and the app, so neither end is
-trusted on its own: `tools/loadtable/sample_table.h` is one original shared by
-the loader and a test, and `web/table.js` is one original shared by the web
-page and a test that plays what it encodes against the real firmware.
+trusted on its own: `web/table.js` is one original, shared by the app and a
+test that plays what it encodes through the real firmware, and another test
+reads the escape values out of `DigiMacro.ino` and checks the two agree.
 
 ### The EEPROM
 
@@ -474,10 +482,6 @@ Options, which combine:
   flashed with a programmer, not uploaded.
 - `release`: the stock firmware, copied into `web/firmware/` for the app to
   offer.
-- `loadtable`: build `tools/loadtable/` instead, which writes a sample table
-  into EEPROM without the app. `.` types a banner, `-` pauses in the middle,
-  `..` repeats, `.-` sends Ctrl+Left, and `---` is long. Micronucleus never
-  erases EEPROM, so the table survives the firmware upload that follows.
 
 ## Testing
 
@@ -488,12 +492,12 @@ test/run.sh
 compiles the real `DigiMacro.ino` for the host against stub hardware and
 exercises the table walk, every escape, the bounds that keep a malformed table
 from reaching the reserved bytes, the morse decoding from the input pin, the
-password, the lockout and the host check, both ways of reading the pad, and
-the sample table the loader flashes. Then the app's macro language on its own,
+password, the lockout and the host check, and both ways of reading the pad.
+Then the app's macro language on its own,
 the two languages against each other, and — across the language boundary — a
 table encoded by `web/table.js` played through the firmware. Then the firmware
 the app ships, laid out for the bootloader, with both jumps decoded and
-followed to where they land. Eight suites, about a second. Without `node`, the
+followed to where they land. Seven suites, about a second. Without `node`, the
 four that need it are skipped.
 
 ## Layout
@@ -505,8 +509,6 @@ four that need it are skipped.
 | `build.sh` | builds and flashes everything here |
 | `test/` | host build of the real sketch against stub hardware, and the web side's tests |
 | `tools/hostauth/` | the Linux client that sends the host key |
-| `tools/loadtable/` | writes a sample table into EEPROM, without the app |
-| `spikehid/` | the sketch that showed a keyboard can carry a vendor collection; history now |
 | `web/` | `app.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `micronucleus.js` the uploader, `60-digimacro.rules` the udev rule |
 | `web/firmware/` | what the app installs: the released firmware, and the Micronucleus 2.6 upgrader |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |

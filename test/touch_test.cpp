@@ -38,7 +38,6 @@ void hidBegin(void){} void hidPoll(void){}
 uint8_t hidReady(void){ return 1; } uint8_t hidAwake(void){ return 1; }
 void hidAllow(uint16_t){} uint8_t hidAllowed(void){ return 0; }
 void hidKey(uint8_t,uint8_t){} void hidTypeChar(char,uint8_t){}
-void hidType_P(const char*){}
 
 #include "DigiMacro.ino"
 

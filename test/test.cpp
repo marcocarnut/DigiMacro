@@ -51,7 +51,6 @@ uint8_t hidAllowed(void){
     return allow_open;
 }
 void hidTypeChar(char, uint8_t){}
-void hidType_P(const char*){}
 
 /* Every keystroke, modifiers and all, in the order they were sent. Hex
    rather than letters so that a modifier or an odd usage cannot hide. */

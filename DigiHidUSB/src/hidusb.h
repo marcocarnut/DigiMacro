@@ -71,9 +71,17 @@
  * without one every replug means picking the board out of the chooser again;
  * and making it per board rather than per model means two boards get their
  * own grants instead of sharing one. Same trick as DigiISP, for the same
- * reason. */
+ * reason.
+ *
+ * The descriptor carries it after a domain and a colon, because 16c0:27db is
+ * one of obdev's IDs for devices told apart by serial number, and their
+ * terms say the serial must start with a domain the author owns, so that two
+ * people's devices on the shared ID can never be confused. */
 #define DM_SERIAL_ADDR      0x1E0
-#define DM_SERIAL_LEN       8       /* as hex digits, in the descriptor */
+#define DM_SERIAL_PREFIX    "postcogito.org:"
+#define DM_SERIAL_PREFIX_LEN 15
+#define DM_SERIAL_DIGITS    8       /* the four bytes, as hex */
+#define DM_SERIAL_LEN       (DM_SERIAL_PREFIX_LEN + DM_SERIAL_DIGITS)
 
 /* Eight random bytes the host sends to prove it is the right one; all 0xFF
  * for none. Written like the table, through WRITE, behind both gates. */
@@ -89,7 +97,7 @@
 #define DM_MAGIC0           'D'
 #define DM_MAGIC1           'M'
 #define DM_PROTOCOL_VERSION 2       /* 1 was the WebUSB vendor-class one */
-#define DM_FW_VERSION       5
+#define DM_FW_VERSION       6
 
 #ifdef __cplusplus
 extern "C" {
@@ -120,7 +128,6 @@ uint8_t hidHostAuth(const uint8_t *p, uint8_t n);
 
 void    hidKey(uint8_t modifier, uint8_t key);
 void    hidTypeChar(char c, uint8_t mod);
-void    hidType_P(const char *s);
 
 #ifdef __cplusplus
 }

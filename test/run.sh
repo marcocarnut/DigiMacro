@@ -18,10 +18,6 @@ echo "== table, playback and tapping =="
 g++ -w -I. -I.. -o "$OUT"_test test.cpp
 "$OUT"_test
 
-echo
-echo "== the sample table tools/loadtable flashes =="
-g++ -w -I. -I.. -o "$OUT"_table table_test.cpp
-"$OUT"_table
 
 # Both sensing methods, since they differ in polarity as well as in arithmetic
 echo

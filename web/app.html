@@ -610,11 +610,11 @@ async function connect(mayAsk) {
   try {
     /* A device this origin already knows comes back without the picker. */
     const known = await navigator.hid.getDevices();
-    dev = known.find(d => d.vendorId === 0x16c0
+    dev = known.find(d => d.vendorId === 0x16c0 && d.productId === 0x27db
                        && d.collections.some(c => c.usagePage === 0xFF00));
     if (!dev && mayAsk)
       dev = (await navigator.hid.requestDevice(
-               { filters: [{ vendorId: 0x16c0, usagePage: 0xFF00 }] }))[0];
+               { filters: [{ vendorId: 0x16c0, productId: 0x27db, usagePage: 0xFF00 }] }))[0];
     if (!dev) return;
     if (!dev.opened) await dev.open();
 

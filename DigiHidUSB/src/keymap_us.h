@@ -5,7 +5,7 @@
 #define KEYMAP_SHIFT 0x80
 #define KEYMAP_FIRST 0x20
 #define KEYMAP_LAST  0x7E
-/* Only hidTypeChar() reads it -- the TOUCH_DEBUG readings, and spikehid --
+/* Only hidTypeChar() reads it -- the TOUCH_DEBUG readings --
    so the linker leaves it out of the firmware proper. */
 static const uint8_t PROGMEM keymapUS[KEYMAP_LAST - KEYMAP_FIRST + 1] = {
     0x2C, 0x9E, 0xB4, 0xA0, 0xA1, 0xA2, 0xA4, 0x34,

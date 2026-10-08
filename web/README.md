@@ -73,8 +73,3 @@ back exactly the bytes it just read, since every byte of the EEPROM belongs to
 something now and there is nowhere safe to scribble. INFO always answers. READ
 and WRITE need the pad held first, and on a board with a password, the
 password given in the app — the unlock lasts until the window closes.
-
-It began as the page for `spikehid/`, the spike that showed the board need not
-stop being a keyboard to be configured. That sketch is kept as history; built
-against today's library it answers INFO and nothing else, since nothing in it
-opens the window.

@@ -13,33 +13,53 @@
  *      # comments are ignored
  *      7DD5DC7E 0123456789abcdef
  *
- * by default ~/.config/digimacro/host.key, and it should be readable by you
- * alone. Linux only: it writes a feature report straight to hidraw, which
- * needs the udev rule in web/60-digimacro.rules and no library at all.
+ * by default ~/.config/digimacro/host.key on Linux and
+ * %APPDATA%\digimacro\host.key on Windows, and it should be readable by you
+ * alone. No library either way: hidraw on Linux, which needs the udev rule in
+ * web/60-digimacro.rules, and Windows' own hid.dll, which needs nothing.
  *
- *      cc -O2 -Wall -o digimacro-host digimacro-host.c
+ *      make                    Linux
+ *      make windows            digimacro-host.exe, with MinGW
  */
-#include <dirent.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
 #include <sys/stat.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <setupapi.h>
+#include <hidsdi.h>
+#include <hidpi.h>
+#define strcasecmp _stricmp
+#else
+#include <dirent.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #include <linux/hidraw.h>
+#endif
 
 #define VND_ID      2           /* the vendor collection's report */
 #define VND_LEN     36
 #define HOSTAUTH    0x64
-#define REFUSED     0xEE
 #define KEY_LEN     8
 #define MAX_BOARDS  16
+
+/* 16c0:27db is obdev's shared ID for keyboards told apart by serial number,
+   and their terms say both ends must do the telling: a board's serial starts
+   with its author's domain and a colon, and this looks for that before it
+   believes a device is a DigiMacro. Firmware 5 and older predate the prefix,
+   and are known instead by their manufacturer and product names. */
+#define SERIAL_PREFIX   "postcogito.org:"
+#define OLD_NAME        "digimacro.postcogito.org DigiMacro"
 
 struct key { char serial[16]; unsigned char key[KEY_LEN]; int last; };
 static struct key keys[MAX_BOARDS];
 static int nkeys;
+
+/* ---- the key file ---------------------------------------------------- */
 
 static int hexval(int c)
 {
@@ -52,13 +72,15 @@ static int hexval(int c)
 static int load_keys(const char *path)
 {
     char line[256], serial[64], hex[64];
-    struct stat st;
     FILE *f = fopen(path, "r");
 
     if (!f) { perror(path); return -1; }
+#ifndef _WIN32
     /* A key anyone can read is a key anyone can send. */
+    struct stat st;
     if (fstat(fileno(f), &st) == 0 && (st.st_mode & 077))
         fprintf(stderr, "%s: readable by others; chmod 600 it\n", path);
+#endif
 
     while (fgets(line, sizeof line, f) && nkeys < MAX_BOARDS) {
         if (line[0] == '#' || sscanf(line, "%63s %63s", serial, hex) != 2)
@@ -93,33 +115,63 @@ static struct key *key_for(const char *serial)
     return NULL;
 }
 
-/* 1 if the board took it, 0 if it refused, -1 if it could not be asked. */
-static int send_key(const char *dev, const unsigned char *key)
+/* The board's own digits, if this is a DigiMacro at all; NULL if not. */
+static const char *digits_of(const char *serial, const char *name)
 {
-    unsigned char buf[1 + VND_LEN];
-    int fd = open(dev, O_RDWR), ok;
+    size_t n = strlen(SERIAL_PREFIX);
+    if (!strncmp(serial, SERIAL_PREFIX, n)) return serial + n;
+    if (!strcmp(name, OLD_NAME)) return serial;
+    return NULL;
+}
 
-    if (fd < 0) return -1;
-    memset(buf, 0, sizeof buf);
+/* The request: a feature report to set, then one to get. The answer comes
+   back with or without the report ID in front, which is the one thing the
+   HID specification leaves to taste; no command is 2, so it can tell. */
+static void fill_request(unsigned char *buf, const unsigned char *key)
+{
+    memset(buf, 0, 1 + VND_LEN);
     buf[0] = VND_ID;
     buf[1] = HOSTAUTH;
     buf[4] = KEY_LEN;
     memcpy(buf + 5, key, KEY_LEN);
-    if (ioctl(fd, HIDIOCSFEATURE(sizeof buf), buf) < 0) { close(fd); return -1; }
+}
 
+static int accepted(const unsigned char *buf)
+{
+    return (buf[0] == VND_ID ? buf[1] : buf[0]) == HOSTAUTH;
+}
+
+/* Say what changed, so a loop running for hours stays quiet. */
+static void report(struct key *k, const char *digits, int r, int verbose)
+{
+    if (verbose || r != k->last)
+        printf("%s: %s\n", digits, r > 0 ? "trusted" : r == 0
+               ? "refused: wrong key, or asked again within a second"
+               : "could not be reached");
+    k->last = r;
+}
+
+/* ---- Linux: hidraw ------------------------------------------------------ */
+#ifndef _WIN32
+
+/* 1 if the board took it, 0 if it refused, -1 if it could not be asked. */
+static int send_key(const char *dev, const unsigned char *key)
+{
+    unsigned char buf[1 + VND_LEN];
+    int fd = open(dev, O_RDWR);
+
+    if (fd < 0) return -1;
+    fill_request(buf, key);
+    if (ioctl(fd, HIDIOCSFEATURE(sizeof buf), buf) < 0) { close(fd); return -1; }
     memset(buf, 0, sizeof buf);
     buf[0] = VND_ID;
     if (ioctl(fd, HIDIOCGFEATURE(sizeof buf), buf) < 0) { close(fd); return -1; }
     close(fd);
-
-    /* The answer comes back with or without the report ID in front, which is
-       the one thing the HID specification leaves to taste; no command is 2. */
-    ok = buf[0] == VND_ID ? buf[1] : buf[0];
-    return ok == HOSTAUTH ? 1 : 0;
+    return accepted(buf);
 }
 
-/* Every DigiMacro plugged in, by its hidraw node's uevent: the kernel names
-   the board's serial number there as HID_UNIQ. */
+/* Every DigiMacro plugged in, by its hidraw node's uevent: the kernel gives
+   the serial number as HID_UNIQ and the two names as HID_NAME. */
 static int sweep(int verbose)
 {
     DIR *d = opendir("/sys/class/hidraw");
@@ -128,7 +180,8 @@ static int sweep(int verbose)
 
     if (!d) { perror("/sys/class/hidraw"); return 2; }
     while ((e = readdir(d))) {
-        char path[512], line[256], serial[64] = "";
+        char path[512], line[256], serial[256] = "", name[256] = "";
+        const char *digits;
         int ours = 0;
         FILE *f;
 
@@ -136,59 +189,164 @@ static int sweep(int verbose)
         snprintf(path, sizeof path, "/sys/class/hidraw/%s/device/uevent", e->d_name);
         if (!(f = fopen(path, "r"))) continue;
         while (fgets(line, sizeof line, f)) {
+            line[strcspn(line, "\n")] = 0;
             if (!strncmp(line, "HID_ID=", 7) && strstr(line, ":000016C0:000027DB"))
                 ours = 1;
             if (!strncmp(line, "HID_UNIQ=", 9))
-                sscanf(line + 9, "%63s", serial);
+                snprintf(serial, sizeof serial, "%s", line + 9);
+            if (!strncmp(line, "HID_NAME=", 9))
+                snprintf(name, sizeof name, "%s", line + 9);
         }
         fclose(f);
-        if (!ours) continue;
+        if (!ours || !(digits = digits_of(serial, name))) continue;
         seen++;
 
-        struct key *k = key_for(serial);
+        struct key *k = key_for(digits);
         if (!k) {
-            if (verbose) fprintf(stderr, "%s: no key for this board\n", serial);
+            if (verbose) fprintf(stderr, "%s: no key for this board\n", digits);
             continue;
         }
         snprintf(path, sizeof path, "/dev/%s", e->d_name);
         int r = send_key(path, k->key);
-        if (r < 0) {
-            fprintf(stderr, "%s: %s: %s\n", serial, path, strerror(errno));
-            bad = 1;
-        } else if (!r) {
-            bad = 1;
-        }
-        /* Say what changed, so a loop running for hours stays quiet. */
-        if (verbose || r != k->last)
-            printf("%s: %s\n", serial, r > 0 ? "trusted" : r == 0
-                   ? "refused: wrong key, or asked again within a second"
-                   : "could not be reached");
-        k->last = r;
+        if (r < 0) fprintf(stderr, "%s: %s: %s\n", digits, path, strerror(errno));
+        if (r <= 0) bad = 1;
+        report(k, digits, r, verbose);
     }
     closedir(d);
     if (!seen && verbose) fprintf(stderr, "no DigiMacro plugged in\n");
     return bad ? 1 : seen ? 0 : 2;
 }
 
+static void pause_s(int s) { sleep(s); }
+
+static const char *default_file(char *buf, size_t n)
+{
+    const char *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
+    if (xdg && *xdg) snprintf(buf, n, "%s/digimacro/host.key", xdg);
+    else snprintf(buf, n, "%s/.config/digimacro/host.key", home ? home : ".");
+    return buf;
+}
+
+/* ---- Windows: hid.dll ---------------------------------------------------- */
+#else
+
+static void narrow(char *out, size_t n, const wchar_t *in)
+{
+    size_t i = 0;
+    for (; in[i] && i + 1 < n; i++) out[i] = in[i] < 128 ? (char)in[i] : '?';
+    out[i] = 0;
+}
+
+/* Windows hands out each top-level collection as a device of its own, and
+   keeps the keyboard one for itself, so the one to open is the vendor
+   collection -- usage page 0xFF00 -- which it lets anybody have. */
+static int sweep(int verbose)
+{
+    GUID g;
+    HDEVINFO set;
+    SP_DEVICE_INTERFACE_DATA ifd;
+    int seen = 0, bad = 0;
+
+    HidD_GetHidGuid(&g);
+    set = SetupDiGetClassDevsA(&g, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    if (set == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "cannot list HID devices: error %lu\n", GetLastError());
+        return 2;
+    }
+    ifd.cbSize = sizeof ifd;
+    for (DWORD i = 0; SetupDiEnumDeviceInterfaces(set, NULL, &g, i, &ifd); i++) {
+        SP_DEVICE_INTERFACE_DETAIL_DATA_A *det;
+        DWORD need = 0;
+        HANDLE h;
+        HIDD_ATTRIBUTES a;
+        PHIDP_PREPARSED_DATA pp;
+        HIDP_CAPS caps;
+        wchar_t w[128];
+        char serial[128] = "", manu[64] = "", prod[64] = "", name[160];
+        const char *digits;
+
+        SetupDiGetDeviceInterfaceDetailA(set, &ifd, NULL, 0, &need, NULL);
+        if (!need || !(det = malloc(need))) continue;
+        det->cbSize = sizeof *det;
+        if (!SetupDiGetDeviceInterfaceDetailA(set, &ifd, det, need, NULL, NULL)) {
+            free(det);
+            continue;
+        }
+        h = CreateFileA(det->DevicePath, GENERIC_READ | GENERIC_WRITE,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+        free(det);
+        if (h == INVALID_HANDLE_VALUE) continue;    /* a keyboard, or not ours */
+
+        a.Size = sizeof a;
+        if (!HidD_GetAttributes(h, &a) || a.VendorID != 0x16C0 || a.ProductID != 0x27DB
+            || !HidD_GetPreparsedData(h, &pp)) {
+            CloseHandle(h);
+            continue;
+        }
+        HidP_GetCaps(pp, &caps);
+        HidD_FreePreparsedData(pp);
+        if (caps.UsagePage != 0xFF00) { CloseHandle(h); continue; }
+
+        if (HidD_GetSerialNumberString(h, w, sizeof w)) narrow(serial, sizeof serial, w);
+        if (HidD_GetManufacturerString(h, w, sizeof w)) narrow(manu, sizeof manu, w);
+        if (HidD_GetProductString(h, w, sizeof w))      narrow(prod, sizeof prod, w);
+        snprintf(name, sizeof name, "%s %s", manu, prod);
+        if (!(digits = digits_of(serial, name))) { CloseHandle(h); continue; }
+        seen++;
+
+        struct key *k = key_for(digits);
+        if (!k) {
+            if (verbose) fprintf(stderr, "%s: no key for this board\n", digits);
+            CloseHandle(h);
+            continue;
+        }
+
+        unsigned char buf[1 + VND_LEN];
+        int r;
+        fill_request(buf, k->key);
+        if (!HidD_SetFeature(h, buf, sizeof buf)) {
+            r = -1;
+        } else {
+            memset(buf, 0, sizeof buf);
+            buf[0] = VND_ID;
+            r = HidD_GetFeature(h, buf, sizeof buf) ? accepted(buf) : -1;
+        }
+        if (r < 0) fprintf(stderr, "%s: error %lu\n", digits, GetLastError());
+        if (r <= 0) bad = 1;
+        report(k, digits, r, verbose);
+        CloseHandle(h);
+    }
+    SetupDiDestroyDeviceInfoList(set);
+    if (!seen && verbose) fprintf(stderr, "no DigiMacro plugged in\n");
+    return bad ? 1 : seen ? 0 : 2;
+}
+
+static void pause_s(int s) { Sleep(1000 * (DWORD)s); }
+
+static const char *default_file(char *buf, size_t n)
+{
+    const char *app = getenv("APPDATA");
+    snprintf(buf, n, "%s\\digimacro\\host.key", app ? app : ".");
+    return buf;
+}
+
+#endif
+
+/* ---- both ----------------------------------------------------------------- */
+
 int main(int argc, char **argv)
 {
     char def[512];
-    const char *file = NULL, *home = getenv("HOME"), *xdg = getenv("XDG_CONFIG_HOME");
-    int every = 0, opt;
+    const char *file = NULL;
+    int every = 0;
 
-    while ((opt = getopt(argc, argv, "k:e:")) != -1) {
-        if (opt == 'k') file = optarg;
-        else if (opt == 'e') every = atoi(optarg);
-        else goto usage;
-        if (opt == 'e' && every <= 0) goto usage;
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-k") && i + 1 < argc) file = argv[++i];
+        else if (!strcmp(argv[i], "-e") && i + 1 < argc) {
+            if ((every = atoi(argv[++i])) <= 0) goto usage;
+        } else goto usage;
     }
-    if (optind != argc) goto usage;
-
-    if (!file) {
-        if (xdg && *xdg) snprintf(def, sizeof def, "%s/digimacro/host.key", xdg);
-        else snprintf(def, sizeof def, "%s/.config/digimacro/host.key", home ? home : ".");
-        file = def;
-    }
+    if (!file) file = default_file(def, sizeof def);
     if (load_keys(file) <= 0) {
         fprintf(stderr, "%s: no keys\n", file);
         return 2;
@@ -196,7 +354,7 @@ int main(int argc, char **argv)
     if (!every) return sweep(1);
     for (;;) {
         sweep(0);
-        sleep(every);
+        pause_s(every);
     }
 
 usage:

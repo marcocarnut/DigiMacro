@@ -22,21 +22,12 @@
 #               Commit the result: the page carries it, so serving the page
 #               needs no AVR toolchain.
 #
-#   spikehid    build spikehid/ instead -- the spike that showed a keyboard
-#               can carry a vendor collection WebHID can reach. Kept as
-#               history: against today's library it answers INFO only,
-#               since nothing in it opens the window
-#   loadtable   build tools/loadtable/ instead -- writes a known sample table
-#               into EEPROM without the app, the same one test/table_test.cpp
-#               plays
-#
 # Needs arduino-cli and the Digistump AVR core; it says how to get them if
 # either is missing.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 FQBN="digistump:avr:digispark-tiny:clock=clock165"
-SKETCH=.
 ISP=0
 DO_UPLOAD=0
 RELEASE=0
@@ -46,8 +37,6 @@ LEDECHO=0
 TOUCHDEBUG=0
 for a in "$@"; do
     case "$a" in
-        spikehid)  SKETCH=spikehid ;;
-        loadtable) SKETCH=tools/loadtable ;;
         button)    BUTTON=1 ;;
         rc)        RC=1 ;;
         ledecho)   LEDECHO=1 ;;
@@ -59,7 +48,7 @@ for a in "$@"; do
     esac
 done
 
-if [ "$RELEASE" = 1 ] && { [ "$SKETCH" != . ] || [ "$ISP$BUTTON$RC$LEDECHO$TOUCHDEBUG" != 00000 ]; }; then
+if [ "$RELEASE" = 1 ] && [ "$ISP$BUTTON$RC$LEDECHO$TOUCHDEBUG" != 00000 ]; then
     echo "release is the stock firmware, so it takes no other options" >&2; exit 1
 fi
 
@@ -108,10 +97,9 @@ EXTRA=()
 # ~/Arduino/libraries, so the whole project stays in this directory.
 # --output-dir pins the artefacts somewhere upload can find them without
 # having to resolve the sketch again (upload takes neither flag).
-BUILD="${SKETCH%/}/build"
-[ "$SKETCH" = "." ] && BUILD=build
+BUILD=build
 "$CLI" compile --fqbn "$FQBN" --libraries . --output-dir "$BUILD" \
-    "${EXTRA[@]}" "$SKETCH"
+    "${EXTRA[@]}" .
 
 if [ "$ISP" = 1 ]; then
     echo
@@ -133,5 +121,5 @@ fi
 if [ "$DO_UPLOAD" = 1 ]; then
     echo
     echo "Unplug the Digispark now; plug it back in when micronucleus asks."
-    "$CLI" upload --fqbn "$FQBN" --input-dir "$BUILD" "$SKETCH"
+    "$CLI" upload --fqbn "$FQBN" --input-dir "$BUILD" .
 fi

@@ -128,7 +128,9 @@ Digispark target.
 has its reset pin disabled: some boards ship with a high fuse of `0x5D`
 instead of `0xDD`, turning P5 into an ordinary pin. A programmer like this one
 cannot talk to such a chip, and it needs a high-voltage programmer to turn
-reset back on first. Most Digisparks keep reset enabled.
+reset back on first — an XGecu TL866 or T48, say, which `minipro` drives on
+Linux and which does high-voltage serial programming for the ATtiny85. Most
+Digisparks keep reset enabled.
 
 Then, in this order:
 
@@ -203,7 +205,14 @@ Delete the EEPROM backup, or put it where the secrets themselves belong.
   changes none of that.
 - **The firmware:** erase the chip with the programmer. That clears the lock
   bits and the EEPROM together. Then start again from step 1. The board comes
-  back with a new serial number, unless you restore a backup.
+  back with a new serial number, unless you restore a backup. A high-voltage
+  programmer does all of this too, without the reset pin.
+
+  **Your macros do not come back by themselves.** A locked chip cannot be read,
+  so the only copy of the table is on the board, and the erase takes it. Keep
+  what you need to re-enter it somewhere you would keep the secrets
+  themselves. The step 1 backup can only be made while the chip is open, so
+  it is only as recent as the last time the board was unlocked.
 - **Going back to an ordinary board:** erase the chip, write the upstream
   Micronucleus 2.6 bootloader (`t85_default.hex`, which DigiISP's repository
   carries in `firmware/bootloader/`) with the programmer, and set the extended

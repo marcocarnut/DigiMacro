@@ -136,6 +136,10 @@ static uint32_t entropy(void)
     return s;
 }
 
+static const char PROGMEM serialPrefix[] = DM_SERIAL_PREFIX;
+static_assert(sizeof DM_SERIAL_PREFIX - 1 == DM_SERIAL_PREFIX_LEN,
+              "DM_SERIAL_PREFIX_LEN must match DM_SERIAL_PREFIX");
+
 static void initSerial(void)
 {
     uint32_t serial = eeprom_read_dword((uint32_t *)DM_SERIAL_ADDR);
@@ -144,9 +148,11 @@ static void initSerial(void)
         serial = entropy();
         eeprom_write_dword((uint32_t *)DM_SERIAL_ADDR, serial);
     }
-    for (uint8_t i = 0; i < DM_SERIAL_LEN; i++) {
+    for (uint8_t i = 0; i < DM_SERIAL_PREFIX_LEN; i++)
+        usbDescriptorStringSerialNumber[1 + i] = pgm_read_byte(&serialPrefix[i]);
+    for (uint8_t i = 0; i < DM_SERIAL_DIGITS; i++) {
         uint8_t n = (serial >> (28 - 4 * i)) & 0x0F;
-        usbDescriptorStringSerialNumber[1 + i] =
+        usbDescriptorStringSerialNumber[1 + DM_SERIAL_PREFIX_LEN + i] =
             n < 10 ? '0' + n : 'A' - 10 + n;
     }
 }
@@ -398,12 +404,6 @@ void hidTypeChar(char c, uint8_t mod)
     if (entry == 0) return;
     if (entry & KEYMAP_SHIFT) mod |= 0x02;
     hidKey(mod, entry & 0x7F);
-}
-
-void hidType_P(const char *s)
-{
-    char c;
-    while ((c = (char)pgm_read_byte(s++)) != 0) hidTypeChar(c, 0);
 }
 
 /* ===================================================================== */

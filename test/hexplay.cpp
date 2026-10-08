@@ -35,7 +35,6 @@ void hidKey(uint8_t mod, uint8_t key)
         typedn += sprintf(typed + typedn, "<%02X/%02X>", mod, key);
 }
 void hidTypeChar(char, uint8_t){}
-void hidType_P(const char*){}
 
 #include "DigiMacro.ino"
 

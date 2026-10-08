@@ -19,4 +19,3 @@ uint8_t hidAllowed(void);
 #define DM_HOST_LEN    8
 void    hidKey(uint8_t modifier, uint8_t key);
 void    hidTypeChar(char c, uint8_t mod);
-void    hidType_P(const char *s);

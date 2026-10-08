@@ -87,7 +87,7 @@ $('connect').onclick = async () => {
   if (!navigator.hid) { say('navigator.hid is missing — Chrome or Edge', 'bad'); return; }
   try {
     const got = await navigator.hid.requestDevice(
-      { filters: [{ vendorId: 0x16c0, usagePage: 0xFF00 }] });
+      { filters: [{ vendorId: 0x16c0, productId: 0x27db, usagePage: 0xFF00 }] });
     if (!got.length) { say('nothing chosen', 'bad'); return; }
     dev = got[0];
     if (!dev.opened) await dev.open();

@@ -2,3 +2,4 @@ build/
 web/node_modules/
 web/dist/
 tools/hostauth/digimacro-host
+tools/hostauth/digimacro-host.exe

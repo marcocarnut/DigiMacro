@@ -773,6 +773,31 @@ testable, which is why they are in this order rather than firmware-then-app.
    Still true, and said in the README: none of this stops someone reading the
    EEPROM directly. That is the lock bits' job.
 
+9. **Ready to publish — housekeeping.** Three read-throughs, of the docs,
+   the firmware and the web side, found a build that did not compile
+   (`touchdebug`, still calling DigiModeUSB), an unknown command that echoed
+   back as if it had worked, a raw-protocol page whose write test scribbled on
+   the serial number, and a test that did not test what it said; the README
+   was rewritten for a first-time reader. Firmware 5.
+
+   **obdev's terms, read at last.** `16c0:27db` is one of the IDs for devices
+   told apart *by serial number*, and the terms say the serial must start with
+   a domain or e-mail the author owns, then a colon, and that host software
+   must look devices up by it. So the serial is now `postcogito.org:` and the
+   eight hex digits: 30 bytes of RAM, and Chrome asks once more for each board,
+   since to Chrome it is a new device. Firmware 6. The client looks for the
+   prefix, and knows older boards by their manufacturer and product names
+   instead. WebHID cannot do as the terms ask: a page is never shown a
+   device's serial number. The app narrows by vendor, product, the vendor
+   collection and the "DM" answer to INFO, which is as far as a browser goes.
+
+   **The client on Windows**, by Marco's condition that it need no Windows
+   tooling: the same file, `#ifdef _WIN32`, built on Linux with MinGW-w64
+   into a static `.exe` that depends only on DLLs every Windows has. Windows
+   presents each top-level collection as a device of its own and keeps the
+   keyboard one, so the client opens the vendor collection, which it does let
+   anybody have.
+
 ## The first spike: passed on hardware, and since replaced
 
 Kept for the record. Everything here about the BOS, the MS OS 2.0 set, the

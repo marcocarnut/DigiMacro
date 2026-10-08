@@ -370,6 +370,11 @@ mostly V-USB.
   trust only an answer that echoes its own command and address, and check
   each page by reading the flash back rather than by its acknowledgement.
   The v2 page needs the same from the start.
+- **Chrome stretches timers in a tab that is not in front** to a second or
+  more: the page's first update took 17 s instead of 0.7. The update loop
+  now waits on HID requests, which are not slowed, by reading each page back
+  until the flash holds it. About 200 of those requests meet a halted board
+  in an update and fail within a millisecond each, harmlessly.
 - **Linux writes a keyboard's lock lights only when one is on.** An app
   waiting for `hidAwake()` alone never types with every light off; v1's
   fallback to a longer wait is needed, as v1 already knew.
@@ -392,11 +397,18 @@ Answered by the spike:
   anything else is written, and a CRC-16 over the image checked at boot and
   at commit.
 - **Protocol 2 or 3:** 3.
+- **Windows:** the spike page (`spike/page.html`, `make page`), in Chrome on
+  Windows 10 under VMware, put on apps A, B and C, and survived a cable
+  pulled in the middle of a slow update. It reconnected by itself and showed
+  "no app". VMware complained for a while each time the board reappeared --
+  after a commit, and on these boards through Micronucleus's own device after
+  a replug -- until it had handed the new device to the guest; the page then
+  worked. A board without Micronucleus appears once per replug.
 
 Still open:
 
-- **Windows.** Its HID stack may treat the 4.5 ms halts differently from
-  Linux's. A spike page in Chrome, tried on Windows 10, will say.
+- **Windows on bare hardware.** Tried so far only in a VMware guest; see
+  below.
 - **The wipe-before-update option** for hardened boards: default off?
 - **The hardening check in v2.** Every board writes its own flash, so what
   "(hardened)" means has to be rethought: SELFPRGEN programmed becomes

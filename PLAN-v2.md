@@ -3,9 +3,10 @@
 The firmware updates itself, and Micronucleus goes.
 
 Marco's idea, written down while v1 was being finished so that none of it
-was lost. Nothing here is built yet. v1 — `PLAN.md`, tagged **v1.0** at
-firmware 9 — is the working version, and stays the shipping one until v2 has
-earned its place.
+was lost. The spike is built and proven on a board — see *The spike, as
+built*, which supersedes the guesses before it — and DigiMacro has not yet
+moved onto it. v1 — `PLAN.md`, tagged **v1.0** at firmware 9 — is the working
+version, and stays the shipping one until v2 has earned its place.
 
 ## The idea
 
@@ -108,7 +109,9 @@ In rough order of difficulty.
 | the app | today's firmware less its USB half, plus the jump tables |
 | gain | Micronucleus's 1.5 KB, less jump tables, padding to a page boundary and lost link-time optimisation: perhaps **1–1.3 KB net** |
 
-Measure, don't trust this table: the spike will say.
+Measure, don't trust this table: the spike will say. *It did: a 3862-byte
+core, a boundary near `0xF80`, and about 1.2–1.5 KB free — see* The spike, as
+built.
 
 ## Security
 
@@ -210,15 +213,158 @@ What it must prove, on hardware:
 If the spike works, porting the app is mostly mechanical. The installer for
 boards without a programmer comes last.
 
+## The spike, as built
+
+Built on branch `v2`, in `spike/`, and tried on a stock Digispark beside a
+Linux PC, October 2026. Every item on the list above held on the board.
+
+### What it is
+
+- **A core at `0x0000`** and **an app at the boundary**, linked separately
+  by a plain avr-gcc `Makefile`. `layout.h` is the only thing they share:
+  where each lives, the two jump tables, the app's header, the RAM split and
+  INFO's layout. Once a core is on a board that file is frozen for it: add at
+  the end, never move or renumber.
+- **The app's header**, at the boundary:
+  - a table of rjmps the core calls through: setup, loop, request,
+    may-update, then the chip's fourteen interrupt vectors;
+  - then the magic `DM`, the image's length, the app's version, and the core
+    API it was built for. A CRC-16 of the image follows the image.
+  - The app has no C runtime of its own. Its first slot runs the `.init`
+    sections, which copy `.data` and clear `.bss`, then calls its setup.
+- **The core's table**, sixteen rjmps just below the boundary: poll, ready,
+  awake, send a report, restart, the report buffer, and the four password
+  calls. An app calls a slot, never a function.
+- **The update:**
+  - PAGE takes half a page per report. The second half asks for the write,
+    and the main loop does it once the host has seen its answer: never from
+    a callback.
+  - Every page but the header's erases the header first, so the header goes
+    last.
+  - COMMIT runs the same check the core runs at boot (magic, API, length,
+    CRC), then restarts into the new app without a reset. The spike's boards
+    still have Micronucleus, which owns the reset vector.
+- **Each erase and each write waits for its moment.** It hands the host an
+  empty keyboard report, and halts the instant it has been taken: the next
+  poll of the interrupt endpoint is then a whole interval away, room for one
+  4.5 ms halt. Without that, the halts would meet the host's polls, and
+  Linux's usbhid resets a HID device whose errors last a second. There were
+  no USB errors in the kernel log through dozens of updates.
+- **Tools:**
+  - `spikectl.py` drives the protocol over hidraw: info, flash, read,
+    unlock, setpass, and slow or stopped updates for testing interruptions.
+  - `test/` compiles the real `core.c` and `proto.c` for the host and asks
+    them everything: 1307 checks. Each deliberate breakage tried was caught.
+
+### What was decided, and why
+
+- **The core keeps only what nothing else can do.** Marco's line:
+  - enumerate and identify (V-USB, the descriptors, the serial read from
+    EEPROM);
+  - read flash and fuses;
+  - write the app's pages, and decide whether there is an app to run;
+  - a minimal INFO;
+  - check the password.
+
+  Everything else moved into the app, in `proto.c`, linked into every app:
+  - the clock, the window, typing with its timeouts;
+  - RESTART, READ, WRITE, SETPASS and HOSTAUTH;
+  - INFO's other state bits;
+  - making the serial, in the app's setup, which runs before USB connects so
+    that a second with interrupts off costs nothing.
+
+  It took about 950 bytes out of the core. More to the point, v1's gate
+  matrix and its READ/WRITE clamping, where v1's last review found bugs, are
+  now code an update can fix.
+- **The app owns time, so the core forwards interrupts.** Every vector but
+  V-USB's jumps to a slot in the app's header. Before taking a page, the core
+  switches off every source an app may have enabled, the watchdog included,
+  since the code they would jump to is about to be rewritten. The core's own
+  waits are counted turns of poll and 100 µs.
+- **The core checks the password; the app sets it.** Again Marco's call:
+  verification is the core's and the app calls it as a subroutine. The reason
+  is the board left with no app by an update cut short: its EEPROM still
+  holds every secret, and a core that took pages from anyone then would let
+  someone flash an app that reads them out.
+  - The core compares the guess in full, so timing gives nothing away.
+  - A wrong guess costs a second, taken in the loop and never in a callback;
+    guesses in that second are turned away unread.
+  - The core keeps "unlocked" for the session.
+  - PAGE needs it whenever a password is set, app or no app. With an app,
+    the app's window is needed too.
+  - With no app the core answers UNLOCK itself; there is no hold, since
+    touch is the app's. A board with no password is as open as v1 was to
+    Micronucleus.
+  - The lockout stays the app's: a wrong password is a wrong code, and the
+    right one clears it.
+
+  This costs about 300 bytes.
+- **FREAD is ungated.** Flash is published firmware; the secrets are in
+  EEPROM.
+- **Protocol 3.**
+  - INFO keeps v1's first twelve bytes where they were, and adds the core's
+    state, the app's version, the API, the app region and the page size.
+  - The core fills its own bytes, plus the password and unlocked bits.
+  - The app fills the EEPROM size and the rest of the state byte.
+- **The core carries its own copy of V-USB** (`spike/vusb`). It is pinned
+  forever anyway, and its `usbconfig.h` lets V-USB build the device and
+  configuration descriptors itself.
+
+### What it measured
+
+| | |
+|---|---|
+| the core | **3862 bytes**: V-USB about 1.7 KB of it (C 930, assembler about 790), the descriptors, the request plumbing, the page writer, the app check, the password |
+| boundary | **about `0xF80`**, to be fixed once the core is trimmed: it can never move afterwards |
+| for the app | 4224 bytes below `0x2000` |
+| v1's app half plus `proto.c` | roughly 2.7–3 KB, so **about 1.2–1.5 KB free**, against v1's 684 |
+| an update | 18–22 pages in under a second |
+
+The first estimate, 2.5–3 KB, was before the core had a password, a page
+writer and an app check. The plain port of v1's library measured 4552
+bytes. Moving the protocol into the app is what made v2 worth its space.
+
+### What it taught
+
+- **Two clients share one report.** Twice an update stalled. The v1 app in
+  a Chrome tab had the board open, and its INFO landed between the update
+  tool's question and its read of the answer. The board has one report
+  buffer for everybody. The core was right throughout: nothing was written
+  wrong, and the cut-short update left no app to boot. The host has to cope:
+  trust only an answer that echoes its own command and address, and check
+  each page by reading the flash back rather than by its acknowledgement.
+  The v2 page needs the same from the start.
+- **Linux writes a keyboard's lock lights only when one is on.** An app
+  waiting for `hidAwake()` alone never types with every light off; v1's
+  fallback to a longer wait is needed, as v1 already knew.
+- **An rjmp to a plain number is assembled as an offset.** Jumps to fixed
+  addresses go through symbols the linker places (`--defsym`).
+- **make's built-in rules will build `apphex.py` from `apphex.py.o`,** and
+  from `app.c` at that, overwriting the script with an ELF. The Makefile
+  says it is a source.
+
 ## Open questions
 
-- The boundary address, once the spike measures the core.
-- The recovery-mode gate: password only, and what a board with no password
-  does then.
-- Whether touch sensing belongs in the core after all.
-- The update verb's shape: one page per pair of 32-byte reports and a commit,
-  or a page buffer filled at offsets.
-- How an app proves it is valid: a CRC over the region, or a mark written
-  last — the way Micronucleus writes its last page last.
-- The wipe-before-update option for hardened boards: default off?
-- Whether v2 keeps protocol version 2 with new verbs, or becomes protocol 3.
+Answered by the spike:
+- **The boundary:** about `0xF80`, measured, and fixed after trimming.
+- **The recovery-mode gate:** the password alone, checked by the core. A
+  board with no password takes an update from anyone, as with Micronucleus.
+- **Touch in the core:** no. The core is minimal; recovery needs no hold.
+- **The update verb's shape:** half a page per report, the second half
+  writing it, and the header page last.
+- **How an app proves it is valid:** both. The header erased before
+  anything else is written, and a CRC-16 over the image checked at boot and
+  at commit.
+- **Protocol 2 or 3:** 3.
+
+Still open:
+
+- **Trimming, then the boundary.** A few dozen bytes may yet come out of the
+  core. After that the boundary is fixed for good.
+- **Windows.** Its HID stack may treat the 4.5 ms halts differently from
+  Linux's. A spike page in Chrome, tried on Windows 10, will say.
+- **The wipe-before-update option** for hardened boards: default off?
+- **The hardening check in v2.** Every board writes its own flash, so what
+  "(hardened)" means has to be rethought: SELFPRGEN programmed becomes
+  required, and the wipe option, if built, joins the list.
+- **The installer** for boards without a programmer, last, on a spare board.

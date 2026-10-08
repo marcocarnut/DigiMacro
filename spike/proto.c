@@ -70,6 +70,7 @@ uint8_t hidAllowed(void)
 {
     if (allowOpen && (int16_t)(ticks() - allowUntil) >= 0) {
         allowOpen = 0;
+        hidLock();              /* the session ends with the window */
         wipe();
     }
     return allowOpen;
@@ -164,12 +165,11 @@ void hidKey(uint8_t modifier, uint8_t key)
 /* Requests                                                              */
 /* ===================================================================== */
 
-/* The core asks this before it takes the first page of an update, and
-   for the same reasons as everything else behind both gates: somebody at
-   the board, and the right somebody. */
+/* The core asks this before it takes the first page of an update, having
+   checked the password itself: is somebody at the board? */
 uint8_t app_may_update(void)
 {
-    return hidAllowed() && hidUnlocked();
+    return hidAllowed();
 }
 
 /* From inside the USB driver: answer at once, and leave anything slow for
@@ -188,11 +188,9 @@ uint8_t app_request(uint8_t *v)
            gates say: it tells a page what it would have to do. */
         v[DM_INFO_EESIZE]     = (uint8_t)(E2END + 1);
         v[DM_INFO_EESIZE + 1] = (uint8_t)((E2END + 1) >> 8);
-        v[DM_INFO_STATE] = (hidAllowed()  ? DM_ST_OPEN     : 0)
-                         | (hidPassSet()  ? DM_ST_PASSWORD : 0)
-                         | (hidUnlocked() ? DM_ST_UNLOCKED : 0)
-                         | hidLockState()
-                         | hidHostState();
+        v[DM_INFO_STATE] |= (hidAllowed() ? DM_ST_OPEN : 0)
+                          | hidLockState()
+                          | hidHostState();
         return 1;
 
     case DM_FUNC_HOSTAUTH:
@@ -227,13 +225,34 @@ uint8_t app_request(uint8_t *v)
         restartAsked = ticks();
         break;
 
-    case DM_FUNC_UNLOCK:
-        if (!hidUnlock(d, n)) v[0] = DM_REFUSED;
+    case DM_FUNC_UNLOCK: {
+        /* The core checks it and keeps the session; what it means for the
+           lockout is the firmware's. One turned away unread counts for
+           nothing. */
+        uint8_t r = hidUnlock(d, n);
+        if (r == DM_PASS_RIGHT) {
+            if (hidPassSet()) hidPassRight();
+        } else {
+            if (r == DM_PASS_WRONG) hidPassWrong();
+            v[0] = DM_REFUSED;
+        }
         wipe();
         break;
+    }
 
     case DM_FUNC_SETPASS:
-        hidSetPass(d, n);
+        /* Zero bytes clears it. Reaching here at all meant getting past both
+           gates; the new one is then given to the core, so the session goes
+           on under it. */
+        if (n > DM_PASS_LEN) {
+            v[0] = DM_REFUSED;
+        } else {
+            for (uint8_t i = 0; i < DM_PASS_LEN; i++)
+                eeprom_update_byte((uint8_t *)(DM_PASS_ADDR + i),
+                                   n == 0 ? 0xFF : (i < n ? d[i] : 0));
+            hidPassChanged();
+            hidUnlock(d, n);
+        }
         wipe();
         break;
 

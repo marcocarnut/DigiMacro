@@ -25,6 +25,21 @@
 #define DM_PROTOCOL_VERSION 3       /* 2 was v1's, with Micronucleus */
 #define DM_CORE_VERSION     1
 
+/* The password: twelve bytes at the top of the EEPROM, zero-padded, the
+   first 0xFF for none. The core checks it; the app sets it. */
+#define DM_PASS_ADDR        0x1F4
+#define DM_PASS_LEN         12
+
+/* INFO's state byte [7]: the core's two bits. The app adds the rest. */
+#define DM_ST_PASSWORD      0x02    /* a password is stored */
+#define DM_ST_UNLOCKED      0x04    /* ...and has been given this session */
+
+/* What hidUnlock() says */
+#define DM_PASS_WRONG       0       /* compared, and wrong: costs a second */
+#define DM_PASS_RIGHT       1       /* right, or there is no password */
+#define DM_PASS_UNCHECKED   2       /* turned away unread: within a second
+                                       of a wrong one, or too long */
+
 /* Four bytes in EEPROM the core reads as the serial: see initSerial(). */
 #define DM_SERIAL_ADDR      0x1E0
 #define DM_SERIAL_PREFIX    "postcogito.org:"
@@ -48,6 +63,12 @@ void     hidRestart(void);      /* off the bus and back, the serial read
                                    again, as if replugged */
 uint8_t *hidReport(void);       /* the vendor report, DM_VND_LEN bytes:
                                    for wiping it when a secret is done */
+uint8_t  hidPassSet(void);      /* is there a password? */
+uint8_t  hidUnlock(const uint8_t *p, uint8_t n);
+                                /* check one: DM_PASS_*. Right unlocks the
+                                   session; wrong pauses guessing a second */
+uint8_t  hidUnlocked(void);     /* no password, or it has been given */
+void     hidLock(void);         /* the session is over: the window closed */
 
 /* The app's side: what the core calls, through the app's header.
  *
@@ -61,8 +82,8 @@ uint8_t *hidReport(void);       /* the vendor report, DM_VND_LEN bytes:
  * app's to answer, gates and all, returning 1 -- or 0 for a command it
  * does not know, which the core then refuses. Never poll USB from here.
  *
- * app_may_update() is asked before the core takes the first page: the
- * window and the password are both the app's.
+ * app_may_update() is asked before the core takes the first page, on top
+ * of the password, which the core checks itself: the window is the app's.
  *
  * The app's interrupts go through its header (layout.h); before taking
  * any page the core switches off every interrupt source an app may have

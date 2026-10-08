@@ -8,6 +8,9 @@
   spikectl.py flash app.hex --slow S
                                 wait S seconds between pages: time to pull it
   spikectl.py read ADDR COUNT   flash, as the core reads it
+  spikectl.py unlock PASS       give the password (then flash in the same run
+                                with: flash app.hex --pass PASS)
+  spikectl.py setpass PASS      set the password; '' clears it
 
 Linux only; finds the board by its serial prefix, as digimacro-host does.
 """
@@ -15,6 +18,7 @@ import fcntl, glob, os, struct, sys, time
 
 VND_ID, VND_LEN, CHUNK = 2, 36, 32
 INFO, PAGE, FREAD, COMMIT, REFUSED = 0x40, 0x65, 0x66, 0x67, 0xEE
+UNLOCK, SETPASS = 0x62, 0x63
 
 
 def _ioc(dir_, nr, size):
@@ -57,6 +61,21 @@ class Board:
         self.set(cmd, addr, count, data)
         return self.get()
 
+    def ask_own(self, cmd, addr=0, count=0, data=b''):
+        """Ask, and make sure the answer is to this question. The board has
+        one report for everybody: another program with it open -- a browser
+        tab with the app, say, reading INFO for its status line -- can ask
+        between this one's question and its read, and then the answer read
+        is the other program's. Ours echoes the command, or is a refusal,
+        and keeps the address; anything else, ask again."""
+        for _ in range(10):
+            r = self.ask(cmd, addr, count, data)
+            if r[0] in (cmd, REFUSED) and (r[1] | r[2] << 8) == addr:
+                return r
+            time.sleep(0.005)
+        sys.exit('no answer of our own to 0x%02X: something else keeps '
+                 'asking the board' % cmd)
+
 
 def info(b):
     r = b.ask(INFO)
@@ -89,23 +108,25 @@ def read_hex(path):
     return mem
 
 
-def wait_page(b, addr):
-    """The board halts while it erases and writes: give it time, then ask,
-    and treat a failed ask as 'not yet'."""
+def wait_page(b, addr, page):
+    """The board halts while it erases and writes: give it time, then read
+    the page back. Its own answer to the write would do, if nothing else
+    could overwrite it before it is read -- see ask_own() -- so what decides
+    is the flash itself."""
     time.sleep(0.03)
-    for _ in range(20):
+    for _ in range(40):
         try:
-            r = b.get()
-        except OSError:
+            back = b''
+            for h in range(0, len(page), CHUNK):
+                r = b.ask_own(FREAD, addr + h, CHUNK)
+                back += r[4:4 + CHUNK]
+        except OSError:                 # a halt, still: not yet
             time.sleep(0.01)
             continue
-        if r[0] == 0:
-            time.sleep(0.01)
-            continue
-        if r[0] == PAGE and (r[1] | r[2] << 8) == addr:
+        if back == page:
             return
-        sys.exit('page 0x%04X refused: %s' % (addr, r[:4].hex()))
-    sys.exit('page 0x%04X: no answer' % addr)
+        time.sleep(0.01)
+    sys.exit('page 0x%04X: the flash does not hold it' % addr)
 
 
 def flash(b, path, stop_after=None, slow=0):
@@ -128,26 +149,38 @@ def flash(b, path, stop_after=None, slow=0):
             return
         page = bytes(mem.get(p + j, 0xFF) for j in range(size))
         for h in range(0, size, CHUNK):
-            b.set(PAGE, p + h, CHUNK, page[h:h + CHUNK])
-            if h == 0:
-                rr = b.get()
+            if h:                       # the second: answered later
+                b.set(PAGE, p + h, CHUNK, page[h:h + CHUNK])
+            else:
+                rr = b.ask_own(PAGE, p, CHUNK, page[:CHUNK])
                 if rr[0] != PAGE:
-                    sys.exit('page 0x%04X, first half refused' % p)
-        wait_page(b, p)
+                    sys.exit('page 0x%04X, first half refused%s (answer %s)' % (p,
+                             ': no password given?' if i == 0 else '',
+                             rr[:8].hex()))
+        wait_page(b, p, page)
         print('\rpage 0x%04X  %d/%d' % (p, i + 1, len(order)), end='', flush=True)
         time.sleep(slow)
     print('  %.1f s' % (time.time() - t))
-    b.set(COMMIT)
-    rr = b.get()
+    rr = b.ask_own(COMMIT)
     if rr[0] != COMMIT:
         sys.exit('commit refused: the app did not check out')
     print('committed; the board comes back as the new app')
+
+
+def unlock(b, pw):
+    r = b.ask_own(UNLOCK, 0, len(pw), pw.encode())
+    return r[0] == UNLOCK
 
 
 def main(a):
     if not a:
         sys.exit(__doc__)
     b = Board()
+    if '--pass' in a:
+        i = a.index('--pass')
+        pw = a[i + 1]
+        del a[i:i + 2]
+        print('unlock:', 'accepted' if unlock(b, pw) else 'REFUSED')
     if a[0] == 'info':
         _, out = info(b)
         for k, v in out.items():
@@ -161,12 +194,17 @@ def main(a):
         out = b''
         while len(out) < n:
             k = min(CHUNK, n - len(out))
-            r = b.ask(FREAD, addr + len(out), k)
+            r = b.ask_own(FREAD, addr + len(out), k)
             if r[0] != FREAD:
                 sys.exit('refused')
             out += r[4:4 + k]
         for i in range(0, n, 16):
             print('%04X  %s' % (addr + i, out[i:i + 16].hex(' ')))
+    elif a[0] == 'unlock' and len(a) == 2:
+        print('accepted' if unlock(b, a[1]) else 'REFUSED')
+    elif a[0] == 'setpass' and len(a) == 2:
+        r = b.ask(SETPASS, 0, len(a[1]), a[1].encode())
+        print('set' if r[0] == SETPASS else 'REFUSED')
     else:
         sys.exit(__doc__)
 

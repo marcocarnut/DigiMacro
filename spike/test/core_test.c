@@ -65,13 +65,12 @@ void usbDeviceConnect(void) { }
 void usbDeviceDisconnect(void) { }
 
 /* ---- the firmware's hooks, as proto.c calls them ---- */
-static uint8_t passSet, unlocked = 1, lockState, hostState, hostAuthOk;
-static int hostForgot, unlockCalls, setPassCalls;
+static uint8_t lockState, hostState, hostAuthOk;
+static int hostForgot, passWrongs, passRights, passChanges;
 static void    tVoid(void) { }
-uint8_t hidPassSet(void) { return passSet; }
-uint8_t hidUnlocked(void) { return unlocked; }
-uint8_t hidUnlock(const uint8_t *p, uint8_t n) { (void)p; unlockCalls++; return n == 4; }
-void    hidSetPass(const uint8_t *p, uint8_t n) { (void)p; (void)n; setPassCalls++; }
+void    hidPassWrong(void) { passWrongs++; }
+void    hidPassRight(void) { passRights++; }
+void    hidPassChanged(void) { passChanges++; }
 uint8_t hidLockState(void) { return lockState; }
 uint8_t hidHostState(void) { return hostState; }
 void    hidHostForget(void) { hostForgot++; }
@@ -197,12 +196,26 @@ static void setup(void)
     memset(EE, 0xFF, sizeof EE);
     EE[DM_SERIAL_ADDR] = 0x78; EE[DM_SERIAL_ADDR + 1] = 0x56;
     EE[DM_SERIAL_ADDR + 2] = 0x34; EE[DM_SERIAL_ADDR + 3] = 0x12;
-    passSet = 0; unlocked = 1; lockState = hostState = hostAuthOk = 0;
+    lockState = hostState = hostAuthOk = 0;
+    passWrongs = passRights = passChanges = 0;
+    unlocked = passWait = 0;
     erases = writes = softResets = belowBoundary = 0;
     headerErasedFirst = -1;
     makeImage(300, 1, 0x11);
     install();
     boot();
+}
+
+/* A password as the app stores it: zero-padded, or 0xFF for none. */
+static void storePass(const char *p)
+{
+    for (int i = 0; i < DM_PASS_LEN; i++)
+        EE[DM_PASS_ADDR + i] = !p ? 0xFF : i < (int)strlen(p) ? p[i] : 0;
+}
+
+static const uint8_t *askPass(uint8_t cmd, const char *p)
+{
+    return ask(cmd, 0, strlen(p), (const uint8_t *)p);
 }
 
 static int coreIntact(void)
@@ -229,7 +242,7 @@ int main(void)
     CHECK((r[DM_INFO_START] | r[DM_INFO_START + 1] << 8) == APP_START);
     CHECK((r[DM_INFO_END] | r[DM_INFO_END + 1] << 8) == APP_END);
     CHECK(r[DM_INFO_PAGE] == PAGE);
-    passSet = 1; unlocked = 0; lockState = DM_ST_SOFTLOCK; hostState = DM_ST_HOSTKEY;
+    storePass("test"); lockState = DM_ST_SOFTLOCK; hostState = DM_ST_HOSTKEY;
     r = ask(DM_FUNC_INFO, 0, 0, NULL);
     CHECK(r[7] == (DM_ST_PASSWORD | DM_ST_SOFTLOCK | DM_ST_HOSTKEY));
     hidAllow(1000);
@@ -260,19 +273,90 @@ int main(void)
     CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_REFUSED);
     CHECK(ask(DM_FUNC_FREAD, 0, 4, NULL)[0] == DM_FUNC_FREAD);  /* public */
     CHECK(ask(DM_FUNC_RESTART, 0, 0, NULL)[0] == DM_REFUSED);
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_REFUSED);  /* no window */
     hidAllow(1000);
     CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_FUNC_READ);
-    unlocked = 0;
-    CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_REFUSED);
-    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_REFUSED);
-    CHECK(ask(DM_FUNC_SETPASS, 0, 4, data)[0] == DM_REFUSED && setPassCalls == 0);
-    CHECK(ask(DM_FUNC_UNLOCK, 0, 3, data)[0] == DM_REFUSED && unlockCalls == 1);
-    CHECK(ask(DM_FUNC_UNLOCK, 0, 4, data)[0] == DM_FUNC_UNLOCK && unlockCalls == 2);
-    unlocked = 1;
-    CHECK(ask(DM_FUNC_SETPASS, 0, 4, data)[0] == DM_FUNC_SETPASS && setPassCalls == 1);
     CHECK(ask(0x41, 0, 0, NULL)[0] == DM_REFUSED);             /* no REBOOT */
     CHECK(ask(0x99, 0, 0, NULL)[0] == DM_REFUSED);
     CHECK(ask(DM_FUNC_COMMIT, 0, 0, NULL)[0] == DM_REFUSED);   /* not updating */
+
+    printf("the password: the core checks it, with an app\n");
+    /* A long window: the stub's clock runs a millisecond a poll, and a
+       wrong password's pause is ten thousand of them. */
+    setup(); storePass("test"); hidAllow(30000);
+    r = ask(DM_FUNC_INFO, 0, 0, NULL);
+    CHECK((r[7] & (DM_ST_PASSWORD | DM_ST_UNLOCKED)) == DM_ST_PASSWORD);
+    CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_REFUSED);
+    CHECK(askPass(DM_FUNC_SETPASS, "x")[0] == DM_REFUSED && passChanges == 0);
+    /* the app says yes to an update -- the window is open -- and the core
+       still says no: the password is not the app's to waive */
+    CHECK(app_may_update());
+    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_REFUSED);
+    r = askPass(DM_FUNC_UNLOCK, "tesT");
+    CHECK(r[0] == DM_REFUSED && passWrongs == 1 && r[4] == 0);  /* wiped */
+    /* within the second, even the right one is turned away, uncounted */
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_REFUSED && passWrongs == 1);
+    CHECK(!hidUnlocked());
+    hidPoll();                                  /* the second passes */
+    CHECK(askPass(DM_FUNC_UNLOCK, "tes")[0] == DM_REFUSED && passWrongs == 2);
+    hidPoll();
+    CHECK(askPass(DM_FUNC_UNLOCK, "test\0")[0] == DM_FUNC_UNLOCK);  /* padded */
+    CHECK(passRights == 1 && hidUnlocked());
+    hidLock(); hidAllow(30000);
+    CHECK(askPass(DM_FUNC_UNLOCK, "0123456789abc")[0] == DM_REFUSED);  /* 13 */
+    CHECK(passWrongs == 2 && !passWait);        /* unread, uncounted */
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_FUNC_UNLOCK);
+    r = ask(DM_FUNC_INFO, 0, 0, NULL);
+    CHECK((r[7] & (DM_ST_PASSWORD | DM_ST_UNLOCKED)) == (DM_ST_PASSWORD | DM_ST_UNLOCKED));
+    CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_FUNC_READ);
+    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_FUNC_PAGE);
+    pageHalf = 0;
+    /* a new password: written, and the session goes on under it */
+    CHECK(askPass(DM_FUNC_SETPASS, "newpass")[0] == DM_FUNC_SETPASS);
+    CHECK(EE[DM_PASS_ADDR] == 'n' && EE[DM_PASS_ADDR + 7] == 0 && passChanges == 1);
+    CHECK(hidUnlocked() && unlocked);
+    CHECK(getReport()[4] == 0);                 /* wiped */
+    CHECK(ask(DM_FUNC_SETPASS, 0, 13, data)[0] == DM_REFUSED);
+    CHECK(EE[DM_PASS_ADDR] == 'n');
+    /* the window closing ends the session */
+    ms += 40000;
+    CHECK(!hidAllowed() && !unlocked && !hidUnlocked());
+    /* and none at all */
+    hidAllow(1000);
+    CHECK(askPass(DM_FUNC_UNLOCK, "newpass")[0] == DM_FUNC_UNLOCK);
+    CHECK(ask(DM_FUNC_SETPASS, 0, 0, NULL)[0] == DM_FUNC_SETPASS);
+    CHECK(EE[DM_PASS_ADDR] == 0xFF && !hidPassSet() && hidUnlocked());
+    /* a restart, as a replug, locks */
+    storePass("test");
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_FUNC_UNLOCK);
+    hidRestart();
+    CHECK(!hidUnlocked());
+
+    printf("the password: the core checks it with no app\n");
+    setup(); storePass("test");
+    memset(FLASH + APP_START, 0xFF, PAGE); boot();
+    CHECK(mode == 0);
+    r = ask(DM_FUNC_INFO, 0, 0, NULL);
+    CHECK((r[7] & (DM_ST_PASSWORD | DM_ST_UNLOCKED)) == DM_ST_PASSWORD);
+    makeImage(900, 7, 0x77);
+    CHECK(sendImage(1, -1) < 0);                /* no pages */
+    CHECK(erases == 0 && writes == 0);
+    CHECK(askPass(DM_FUNC_UNLOCK, "nope")[0] == DM_REFUSED);
+    CHECK(passWrongs == 0);                     /* no app to count it */
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_REFUSED);  /* the second */
+    hidPoll();
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_FUNC_UNLOCK);
+    CHECK(getReport()[4] == 0);                 /* wiped */
+    CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_REFUSED);  /* still the app's */
+    CHECK(sendImage(1, -1) > 0);
+    CHECK(ask(DM_FUNC_COMMIT, 0, 0, NULL)[0] == DM_FUNC_COMMIT);
+    boot();
+    CHECK(mode == DM_CORE_APP && !hidUnlocked());   /* a new session */
+
+    printf("no password, no app: open, as v1 was to Micronucleus\n");
+    setup(); memset(FLASH + APP_START, 0xFF, PAGE); boot();
+    makeImage(900, 8, 0x88);
+    CHECK(sendImage(1, -1) > 0);
 
     printf("the host check needs no gate, and does nothing else\n");
     setup();
@@ -290,6 +374,11 @@ int main(void)
     ask(DM_FUNC_WRITE, 500, 32, data);
     CHECK(EE[511] == 0xAB && EE[499] == 0xFF);
     CHECK(getReport()[4] == 0);                          /* wiped */
+    /* that wrote a password over the last twelve bytes, and it holds at
+       once: the session was not unlocked under it */
+    CHECK(hidPassSet() && !hidUnlocked());
+    CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_REFUSED);
+    storePass(NULL);
     hostForgot = 0;
     ask(DM_FUNC_WRITE, DM_HOST_ADDR + 7, 1, data);
     CHECK(hostForgot == 1);

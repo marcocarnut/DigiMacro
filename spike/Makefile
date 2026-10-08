@@ -17,7 +17,7 @@ OBJCOPY = $(AVR)avr-objcopy
 SIZE    = $(AVR)avr-size
 NM      = $(AVR)avr-nm
 MCU     = attiny85
-VUSB    = ../DigiHidUSB/src/vusb
+VUSB    = vusb
 
 # The boundary can be moved from here, to measure: make APPSTART=0x1000
 LAYOUT  = $(if $(APPSTART),-DAPP_START=$(APPSTART))

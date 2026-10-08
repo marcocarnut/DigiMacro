@@ -7,9 +7,11 @@
  * forever for that board: add at the end, never move or renumber.
  *
  * The core is kept to what nothing else can do: be a USB device that
- * enumerates and says who it is, read flash and fuses, and write the app's
- * pages. Everything else -- time, the window, the password, typing, the
- * protocol -- is the app's, where it can be fixed by an update.
+ * enumerates and says who it is, read flash and fuses, write the app's
+ * pages -- and check the password, since it is what guards those pages even
+ * when there is no app to ask. Everything else -- time, the window, setting
+ * the password, typing, the protocol -- is the app's, where it can be fixed
+ * by an update.
  *
  * Included from C and from assembler, hence only #defines.
  */
@@ -81,8 +83,12 @@
     X(2, hidAwake)                      \
     X(3, hidSend)                       \
     X(4, hidRestart)                    \
-    X(5, hidReport)
-#define CORE_USED       6
+    X(5, hidReport)                     \
+    X(6, hidPassSet)                    \
+    X(7, hidUnlock)                     \
+    X(8, hidUnlocked)                   \
+    X(9, hidLock)
+#define CORE_USED       10
 
 /* ---- RAM ------------------------------------------------------------
  *
@@ -94,13 +100,15 @@
 /* ---- the verbs the core answers ------------------------------------- */
 
 #define DM_FUNC_INFO    0x40    /* who this is; the app adds its part */
+#define DM_FUNC_UNLOCK  0x62    /* count, password: the core's with no app,
+                                   the app's (calling the core) with one */
 #define DM_FUNC_PAGE    0x65    /* address, 32 bytes: half a page. The
                                    second half writes it. */
 #define DM_FUNC_FREAD   0x66    /* address, count -> flash */
 #define DM_FUNC_COMMIT  0x67    /* check the new app, and start it */
 
-/* INFO, as the core fills it. [5..7] are the app's: EEPROM size and v1's
-   state byte, both about the app's business. */
+/* INFO, as the core fills it. [5..6] are the app's, and so is [7], v1's
+   state byte, but for the two bits about the password: see core.h. */
 #define DM_INFO_PROTO   3       /* [3] DM_PROTOCOL_VERSION */
 #define DM_INFO_COREVER 4       /* [4] DM_CORE_VERSION */
 #define DM_INFO_FUSES   8       /* [8..11] low, high, extended, lock */

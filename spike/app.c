@@ -67,12 +67,11 @@ void app_loop(void)
     }
 }
 
-/* No password, no lockout, no host key: the gates as v1's library had them
-   by default. */
-uint8_t hidPassSet(void)                         { return 0; }
-uint8_t hidUnlocked(void)                        { return 1; }
-uint8_t hidUnlock(const uint8_t *p, uint8_t n)   { (void)p; (void)n; return 1; }
-void    hidSetPass(const uint8_t *p, uint8_t n)  { (void)p; (void)n; }
+/* No lockout and no host key. The password is real: the core checks it,
+   and SETPASS sets it. */
+void    hidPassWrong(void)                       { }
+void    hidPassRight(void)                       { }
+void    hidPassChanged(void)                     { }
 uint8_t hidLockState(void)                       { return 0; }
 uint8_t hidHostState(void)                       { return 0; }
 void    hidHostForget(void)                      { }

@@ -26,6 +26,7 @@ extern uchar usbConfiguration;
 #define USB_CFG_MAX_BUS_POWER 100
 #define USB_PROP_IS_RAM (1u << 15)
 #define USB_PROP_LENGTH(len) ((len) & 0x3fff)
+#define USB_CFG_DESCR_PROPS_HID_REPORT 88
 #define USB_CFG_DESCR_PROPS_STRING_SERIAL_NUMBER (USB_PROP_IS_RAM | USB_PROP_LENGTH(2 + 2 * 23))
 #define USB_STRING_DESCRIPTOR_HEADER(n) (((2 * (n) + 2) & 0xff) | (3 << 8))
 extern uint8_t USB_INTR_ENABLE, USB_INTR_PENDING;

@@ -4,9 +4,10 @@
  *
  * It does what nothing above it could: it is the USB device -- V-USB, the
  * descriptors, the serial, the feature report's plumbing -- it reads flash
- * and fuses, and it writes the app's pages and decides whether there is an
- * app to run. Everything else, time included, is the app's (layout.h), so
- * that a bug there is one update away from fixed.
+ * and fuses, it writes the app's pages and decides whether there is an app
+ * to run, and it checks the password that guards those pages, app or no
+ * app. Everything else, time included, is the app's (layout.h), so that a
+ * bug there is one update away from fixed.
  *
  * It cannot be fixed without a programmer, so it is kept small and dull,
  * and test/core_test.c compiles this very file for the host.
@@ -45,24 +46,19 @@ typedef uint8_t (*appByte)(void);
 typedef uint8_t (*appReq)(uint8_t *);
 
 /* ===================================================================== */
-/* Descriptors -- as v1's                                                */
+/* Descriptors                                                           */
 /* ===================================================================== */
 
-static const uint8_t PROGMEM devDesc[18] = {
-    18, USBDESCR_DEVICE,
-    0x10, 0x01,
-    0x00, 0x00, 0x00,
-    8,
-    0xc0, 0x16,
-    0xdb, 0x27,
-    0x00, 0x02,             /* v2 */
-    1, 2, 3,
-    1
-};
+/* V-USB builds the device and configuration descriptors itself, from
+   vusb/usbconfig.h: one HID interface, one interrupt endpoint polled every
+   10 ms, version 2.00. This is the rest of what the host reads.
 
-#define HID_REPORT_DESC_LEN 88
-
-static const uint8_t PROGMEM hidReportDesc[HID_REPORT_DESC_LEN] = {
+   The keyboard, with a report ID in front of it, and three key slots
+   rather than six: ID, modifier, reserved and three keys is six bytes, and
+   usbSetInterrupt() will not send more than eight. Then a second
+   collection on vendor page 0xFF00, carrying the one feature report, which
+   is what WebHID will hand to a page. */
+PROGMEM const uchar usbDescriptorHidReport[] = {
     0x05, 0x01, 0x09, 0x06, 0xA1, 0x01,
     0x85, HID_REPORT_KBD,
     0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7,
@@ -80,29 +76,8 @@ static const uint8_t PROGMEM hidReportDesc[HID_REPORT_DESC_LEN] = {
     0x75, 0x08, 0x95, DM_VND_LEN, 0xB1, 0x02,
     0xC0
 };
-
-static const uint8_t PROGMEM cfgDesc[34] = {
-    9, USBDESCR_CONFIG, 34, 0, 1, 1, 0, 0x80, USB_CFG_MAX_BUS_POWER / 2,
-    9, USBDESCR_INTERFACE, 0, 0, 1, 0x03, 0x00, 0x00, 0,
-    9, USBDESCR_HID, 0x01, 0x01, 0x00, 1, USBDESCR_HID_REPORT,
-       HID_REPORT_DESC_LEN, 0,
-    7, USBDESCR_ENDPOINT, 0x81, 0x03, 8, 0, 10
-};
-
-usbMsgLen_t usbFunctionDescriptor(usbRequest_t *rq)
-{
-    switch (rq->wValue.bytes[1]) {
-    case USBDESCR_DEVICE:
-        usbMsgPtr = (usbMsgPtr_t)devDesc;        return sizeof(devDesc);
-    case USBDESCR_CONFIG:
-        usbMsgPtr = (usbMsgPtr_t)cfgDesc;        return sizeof(cfgDesc);
-    case USBDESCR_HID:
-        usbMsgPtr = (usbMsgPtr_t)(cfgDesc + 18); return 9;
-    case USBDESCR_HID_REPORT:
-        usbMsgPtr = (usbMsgPtr_t)hidReportDesc;  return sizeof(hidReportDesc);
-    }
-    return 0;
-}
+_Static_assert(sizeof usbDescriptorHidReport == (USB_CFG_DESCR_PROPS_HID_REPORT & 0x3FFF),
+               "vusb/usbconfig.h has the report descriptor's length");
 
 /* ===================================================================== */
 /* Serial number                                                         */
@@ -150,6 +125,8 @@ static uint8_t writingVnd;
 
 static uint8_t  fuses[4];       /* low, high, extended, lock, read at boot */
 static uint8_t  mode;           /* DM_CORE_APP, DM_CORE_UPDATE */
+static uint8_t  unlocked;       /* this session; RAM, so a replug locks */
+static uint8_t  passWait;       /* a wrong password: see passPause() */
 
 /* The page being received. Half a page per report, so the first half
    waits here for the second; the second asks for the write, which happens
@@ -168,6 +145,59 @@ static void turn(void)
 {
     usbPoll();
     _delay_us(100);
+}
+
+/* ===================================================================== */
+/* The password                                                          */
+/* ===================================================================== */
+
+/* The core checks it because it guards the pages, and with no app there
+   would be nobody else to: a board left with no app by an update cut short
+   still has every secret in its EEPROM. Setting it is the app's. */
+
+/* Not inlined: asked from several places, it is smaller as one. */
+uint8_t __attribute__((noinline)) hidPassSet(void)
+{
+    return eeprom_read_byte((const uint8_t *)DM_PASS_ADDR) != 0xFF;
+}
+
+uint8_t __attribute__((noinline)) hidUnlocked(void)
+{
+    return !hidPassSet() || unlocked;
+}
+void    hidLock(void)     { unlocked = 0; }
+
+/* Compared in full whatever happens, so that how long it takes says nothing
+   about how much of it was right. A wrong one costs a second, for which
+   any other is turned away unread: a rate limit, not a lockout -- it holds
+   up nobody but whoever is guessing. The counting of wrong ones toward a
+   lockout is the app's, if it wants it (DM_PASS_WRONG). */
+uint8_t __attribute__((noinline)) hidUnlock(const uint8_t *p, uint8_t n)
+{
+    uint8_t diff = 0;
+
+    if (!hidPassSet()) return DM_PASS_RIGHT;
+    if (passWait || n > DM_PASS_LEN) return DM_PASS_UNCHECKED;
+
+    const uint8_t *e = (const uint8_t *)DM_PASS_ADDR;
+    for (uint8_t i = 0; i < DM_PASS_LEN; i++, n--)
+        diff |= eeprom_read_byte(e++) ^ ((int8_t)n > 0 ? *p++ : 0);
+    if (diff) {
+        passWait = 1;
+        return DM_PASS_WRONG;
+    }
+    unlocked = 1;
+    return DM_PASS_RIGHT;
+}
+
+/* The second a wrong password costs, taken here in the loop and never in
+   the USB callback that heard it: polling USB from in there is what
+   crashed v1. USB is served throughout, and guesses are turned away. */
+static void passPause(void)
+{
+    if (!passWait) return;
+    for (uint16_t i = 10000; i; i--) turn();
+    passWait = 0;
 }
 
 /* ===================================================================== */
@@ -263,6 +293,8 @@ static void vndAnswer(void)
         memcpy_P(vnd + 1, infoFixed, sizeof infoFixed);
         memset(vnd + 1 + sizeof infoFixed, 0, DM_VND_LEN - 1 - sizeof infoFixed);
         memcpy(vnd + DM_INFO_FUSES, fuses, 4);
+        vnd[7] = (hidPassSet()  ? DM_ST_PASSWORD : 0)
+               | (hidUnlocked() ? DM_ST_UNLOCKED : 0);
         vnd[DM_INFO_CORE] = mode;
         if (app) {
             vnd[DM_INFO_APPVER] = flashByte(APP_VERSION);
@@ -270,12 +302,20 @@ static void vndAnswer(void)
         }
         break;
 
+    case DM_FUNC_UNLOCK:
+        /* With an app, the app's: it has the window and the lockout, and
+           asks hidUnlock() itself. Without one, the core's alone. */
+        if (app) goto toApp;
+        if (hidUnlock(vnd + DM_VND_DATA, n) != DM_PASS_RIGHT) refuse();
+        memset(vnd + DM_VND_DATA, 0, DM_VND_CHUNK);     /* the password */
+        break;
+
     case DM_FUNC_PAGE:
-        /* With an app, it decides: the window and the password are its.
-           Without one, an update is under way or never finished, and there
-           is nobody to ask. SPIKE: which gate the core keeps for itself
-           then is one of PLAN-v2's open questions. */
-        if (app && !APP(APP_MAYUPDATE, appByte)())
+        /* The password always, checked here, app or no app; and with an
+           app, its say as well -- the window, somebody at the board. With
+           no app there is no window to ask about: the password alone, and
+           a board with none is as open as v1's was to Micronucleus. */
+        if (!hidUnlocked() || (app && !APP(APP_MAYUPDATE, appByte)()))
             refuse();
         else
             takePage(addr, n);
@@ -299,6 +339,7 @@ static void vndAnswer(void)
         break;
 
     default:
+    toApp:
         if (!app || !APP(APP_REQUEST, appReq)(vnd)) refuse();
         break;
     }
@@ -389,6 +430,7 @@ static void reconnect(void)
 void hidRestart(void)
 {
     awake = 0;
+    unlocked = 0;
     USB_INTR_ENABLE &= ~(1 << USB_INTR_ENABLE_BIT);
     usbDeviceDisconnect();
     initSerial();
@@ -485,6 +527,7 @@ static void pageWrite(void)
 static void updateStep(void)
 {
     turn();
+    passPause();
     if (pageWanted == 1) {
         pageWanted = 2;
         pageWait = 0;
@@ -521,6 +564,7 @@ static void readFuses(void)
 void hidPoll(void)
 {
     usbPoll();
+    passPause();
     if (pageWanted) update();
 }
 

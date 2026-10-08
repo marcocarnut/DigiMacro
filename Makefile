@@ -1,8 +1,9 @@
 # DigiMacro v2: a core below 0x1000, and the app above it.
 #
 #   make            DigiMacro: digimacro.hex (the app, for updates over USB)
-#                   and digimacro-full.hex (core and app, for Micronucleus
-#                   or a programmer); options as build.sh had them:
+#                   and digimacro-full.hex (core and app, for a programmer --
+#                   it runs past Micronucleus); options as v1's build.sh had
+#                   them:
 #                   make BUTTON=1 RC=1 LEDECHO=1 TOUCHDEBUG=1
 #   make release    DigiMacro as it ships, into web/firmware/: the app for
 #                   the page to update a v2 board with, the core alone for
@@ -16,10 +17,10 @@
 #                   one file to open in Chrome anywhere, no server needed
 #   make test       the core's request handling, built for the host
 #   make size       what each part takes
-#   make upload     digimacro-full.hex onto a Digispark, through Micronucleus
 #
-# Everything lands in build/v2/. v1, the Arduino build, is build.sh, and
-# tagged v1.0.
+# Everything lands in build/v2/. A board gets v2 from the page (Set up a new
+# board, or Move to v2), or digimacro-full.hex from a programmer. v1, the
+# Arduino build, lives at tag v1.0.
 #
 # Two links. The core's is ordinary, with its table pinned just below the
 # boundary. An app's has no C runtime, starts at the boundary, keeps its
@@ -34,7 +35,6 @@ NM      = $(AVR)avr-nm
 MCU     = attiny85
 O       = build/v2$(if $(MICRONUCLEUS_SAFE),-spike)
 VUSB    = core/vusb
-MICRONUCLEUS ?= $(HOME)/.arduino15/packages/digistump/tools/micronucleus/2.6/micronucleus
 
 # The boundary can be moved from here, to measure: make APPSTART=0x1100.
 # The spike's builds keep below Micronucleus, at 0x1A00, in their own
@@ -190,9 +190,6 @@ $(O)/spike-page.html: app/spike.html $(O)/appA.hex $(O)/appB.hex $(O)/appC.hex
 size: $(O)/core.elf $(O)/digimacro.elf $(O)/hidusb.o
 	$(SIZE) $^
 
-upload: $(O)/digimacro-full.hex
-	$(MICRONUCLEUS) --run $<
-
 test:
 	$(MAKE) -C core/test
 
@@ -200,5 +197,5 @@ clean:
 	rm -rf $(O)
 	$(MAKE) -C core/test clean
 
-.PHONY: all release spike page size upload test clean
+.PHONY: all release spike page size test clean
 .SECONDARY:

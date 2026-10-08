@@ -1,4 +1,6 @@
-/* Checks web/micronucleus.js against the firmware the app actually ships.
+/* Checks web/micronucleus.js against the v1 firmware the app ships for v1
+ * boards -- v1.0's firmware 9, frozen; v2 boards update without a bootloader
+ * (test/coreupdate.js), and get their core through this same layout.
  *
  * An upgrade that lays the reset vector out wrong is a board that sits in its
  * bootloader for ever, and nothing short of hardware would say so -- unless the
@@ -26,9 +28,7 @@ const app = mn.parseIntelHex(fs.readFileSync(path.join(FW, 'digimacro.hex'), 'ut
 check(app.end > 1000, `suspiciously small: ${app.end} bytes`);
 check(app.end <= APP_MAX, `${app.end} bytes, and Micronucleus 2.6 leaves ${APP_MAX}`);
 const version = JSON.parse(fs.readFileSync(path.join(FW, 'digimacro.json'), 'utf8')).fw;
-const header = fs.readFileSync(path.join(__dirname, '../DigiHidUSB/src/hidusb.h'), 'utf8');
-check(version === Number(/#define DM_FW_VERSION\s+(\d+)/.exec(header)[1]),
-      `web/firmware says ${version}, hidusb.h disagrees: rebuild with ./build.sh release`);
+check(version === 9, `web/firmware says v1 is firmware ${version}; v1.0 shipped 9, and v1 is frozen`);
 
 console.log('2. laid out for Micronucleus 2, reset goes to the bootloader');
 const img = mn.layoutApplication(app, APP_MAX, BOOT);

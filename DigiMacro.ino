@@ -33,7 +33,7 @@
  *        fast flicker     hard lock: taps ignored until the password
  *
  * The pad wants no external parts. When it misbehaves, build with
- * TOUCH_DEBUG=1 (./build.sh touchdebug) and the board types its own readings
+ * TOUCH_DEBUG=1 (make TOUCHDEBUG=1) and the board types its own readings
  * twice a second instead of staying quiet -- the only diagnostic channel a
  * device with no serial port has:
  *
@@ -228,8 +228,8 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  * for; anything more will have to come out of the table.
  *
  *   0x1E0   the board's serial number, four random bytes made once
- *           (DM_SERIAL_ADDR -- see DigiHidUSB, which needs it to exist
- *           before anything here runs)
+ *           (DM_SERIAL_ADDR -- the core reads it as the serial number,
+ *           and hidBegin() makes it on a blank chip)
  *   0x1E4   the host key, eight random bytes (DM_HOST_ADDR); all 0xFF
  *           for none
  *   0x1EC   lockout: wrong codes before a soft lock, 0 or 0xFF for none
@@ -265,9 +265,8 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 /* ==================================================================== */
 
 /* In GPIOR1, which is a register the compiler reaches with SBI and CBI
-   rather than a load-modify-store through a pointer. Not GPIOR0: micronucleus
-   leaves the reset reason there, and a flag that comes up set by itself after
-   a power cycle is a bug that takes a long evening to find. */
+   rather than a load-modify-store through a pointer. GPIOR0 is the core's
+   flags and GPIOR2 its update window (core/layout.h); GPIOR1 is the app's. */
 #define FLAG_CODE_OPEN  1       /* symbols tapped, waiting for the silence */
 #define FLAG_CODE_OVER  2       /* more symbols than any code can have     */
 #define FLAG_CONSUMED   4       /* this press opened the window, not a symbol */
@@ -1132,7 +1131,7 @@ void update_led(void)
 /* Called by the core once, before it connects to USB (core.h). */
 void app_setup(void)
 {
-    FLAGS = 0;                  /* take nothing on trust: the bootloader
+    FLAGS = 0;                  /* take nothing on trust: whatever ran before
                                    leaves things in these registers */
     DDRB  |=  (1 << PIN_LED);
 #if HAVE_TOUCH

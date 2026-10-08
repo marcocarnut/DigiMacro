@@ -1,5 +1,6 @@
-/* Stub of the library header, for the host build. Shadows DigiHidUSB/src
-   because the test compiles with -I. ahead of anything else. */
+/* Stub of the app library's header (app/hidusb.h), for the host build: the
+   test compiles with -I. ahead of anything else, so the sketch's
+   #include <hidusb.h> finds this. */
 #pragma once
 #include <stdint.h>
 void    hidBegin(void);

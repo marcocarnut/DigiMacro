@@ -221,8 +221,9 @@ en: {
   'fw-continue':    'Continue',
   'fw-who':         'updating the firmware…',
   'fw-too-old':     'That firmware cannot restart itself into the bootloader, '
-                  + 'so update it once with "./build.sh upload"; from then on '
-                  + 'this page can do it.',
+                  + 'so update it once by hand -- "micronucleus --run '
+                  + 'web/firmware/digimacro.hex", then plug the board in -- and '
+                  + 'from then on this page can do it.',
   'fw-none-here':   'The board runs firmware {on}. This page has no firmware to '
                   + 'offer; serve it from the project\'s web folder.',
   'fw-newer':       'The board runs firmware {on}, and firmware {here} is '
@@ -657,8 +658,9 @@ pt: {
   'fw-continue':    'Continuar',
   'fw-who':         'atualizando o firmware…',
   'fw-too-old':     'Esse firmware não sabe reiniciar no bootloader, então '
-                  + 'atualize-o uma vez com "./build.sh upload"; daí em diante '
-                  + 'esta página consegue.',
+                  + 'atualize-o uma vez à mão -- "micronucleus --run '
+                  + 'web/firmware/digimacro.hex", e conecte a placa -- e daí em '
+                  + 'diante esta página consegue.',
   'fw-none-here':   'A placa roda o firmware {on}. Esta página não tem firmware '
                   + 'para oferecer; sirva-a a partir da pasta web do projeto.',
   'fw-newer':       'A placa roda o firmware {on}, e o firmware {here} está '

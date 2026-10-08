@@ -46,7 +46,8 @@ const DATA_AT   = 4;
 const CHUNK     = VND_LEN - DATA_AT;
 const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61, F_REFUSED = 0xEE;
 const ST_NAMES = ['window open', 'password set', 'unlocked', 'soft lock',
-                  'hard lock', 'host trusted', 'host key set', 'no bootloader'];
+                  'hard lock', 'host trusted', 'host key set',
+                  'no bootloader (v1)'];
 
 let dev = null, idInPayload = null;
 
@@ -133,7 +134,10 @@ $('info').onclick = async () => {
     $('hex').textContent = hex(r);
     $('hex').className = '';
     const magic = String.fromCharCode(r[1], r[2]);
-    say(`INFO -> magic "${magic}", protocol ${r[3]}, firmware ${r[4]}, `
+    /* v1 (protocol 2) says its firmware in [4]; v2 says its core there and
+       the firmware above it in [13] */
+    const fw = r[3] >= 3 ? `core ${r[4]}, firmware ${r[13] || 'none'}` : `firmware ${r[4]}`;
+    say(`INFO -> magic "${magic}", protocol ${r[3]}, ${fw}, `
       + `${r[5] | (r[6] << 8)} bytes of EEPROM`, magic === 'DM' ? 'ok' : 'bad');
     const st = ST_NAMES.filter((n, i) => r[7] & (1 << i));
     say(`state 0x${r[7].toString(16).padStart(2, '0')}: ${st.join(', ') || 'nothing set'}`);

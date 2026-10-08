@@ -34,17 +34,21 @@ const cuText = (key, p = {}) =>
   typeof t === 'function' ? t(key, p) : `${key} ${JSON.stringify(p)}`;
 
 /* Whether `b` answers `cmd` at `addr`: it echoes the command, or refuses it,
-   and keeps the address. INFO answers over the address with its magic. */
+   and keeps the address. INFO answers over the address -- but any INFO
+   answer says the same, whoever asked for it. */
 function isOwnAnswer(cmd, addr, b) {
-  if (cmd === CU.INFO) return b[0] === CU.INFO && b[1] === 0x44 && b[2] === 0x4D;
+  if (cmd === CU.INFO) return b[0] === CU.INFO;
   return (b[0] === cmd || b[0] === CU.REFUSED) && (b[1] | (b[2] << 8)) === addr;
 }
 
 /* `io.send(report)` and `io.receive()` move one 36-byte report each way.
    Asks until the answer is its own; another program answered in between is
-   not an error, only a reason to ask again. */
-async function askOwn(io, cmd, addr = 0, count = 0, data = null) {
-  for (let i = 0; i < 20; i++) {
+   not an error, only a reason to ask again. `once` is for what must not be
+   asked twice -- a password, which a v1 board counts each time it is wrong:
+   then a lost answer comes back as null, and the caller finds out another
+   way. */
+async function askOwn(io, cmd, addr = 0, count = 0, data = null, once = false) {
+  for (let i = 0; i < (once ? 1 : 20); i++) {
     const out = new Uint8Array(CU_LEN);
     out[0] = cmd; out[1] = addr & 0xFF; out[2] = addr >> 8; out[3] = count;
     if (data) out.set(data, CU_DATA);
@@ -52,6 +56,7 @@ async function askOwn(io, cmd, addr = 0, count = 0, data = null) {
     const b = await io.receive();
     if (isOwnAnswer(cmd, addr, b)) return b;
   }
+  if (once) return null;
   throw new Error(cuText('cu-crowded'));
 }
 
@@ -85,13 +90,16 @@ function appPages(img, info) {
 const hex4 = n => '0x' + n.toString(16).toUpperCase().padStart(4, '0');
 
 /* Reads the page back until it holds what was sent: a request that meets a
-   halt fails, and old contents mean not yet. */
+   halt fails, and the core refuses FREAD while the page waits to be
+   written -- before then the flash still holds the old page, which may be
+   the same, and would pass for written. */
 async function pageHolds(io, addr, page) {
   for (let tries = 0; tries < 400; tries++) {
     try {
       let same = true;
       for (let h = 0; h < page.length && same; h += CU_CHUNK) {
         const b = await askOwn(io, CU.FREAD, addr + h, CU_CHUNK);
+        if (b[0] !== CU.FREAD) { same = false; break; }
         for (let i = 0; i < CU_CHUNK && same; i++)
           if (b[CU_DATA + i] !== page[h + i]) same = false;
       }
@@ -125,8 +133,13 @@ async function writeApp(io, img, info, { onPage, pause } = {}) {
     if (onPage) onPage(i + 1, pages.length);
     if (pause) await pause();
   }
-  const c = await askOwn(io, CU.COMMIT);
-  if (c[0] !== CU.COMMIT) throw new Error(cuText('cu-commit-refused'));
+  /* Asked once: a board that took it restarts a tenth of a second later,
+     and asking again would meet it gone. Only a refusal is a failure; an
+     answer lost to another program, or to the restart, is not -- and the
+     board, when it comes back, says which it was. */
+  let c = null;
+  try { c = await askOwn(io, CU.COMMIT, 0, 0, null, true); } catch (e) {}
+  if (c && c[0] === CU.REFUSED) throw new Error(cuText('cu-commit-refused'));
 }
 
 if (typeof module !== 'undefined')

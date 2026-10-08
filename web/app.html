@@ -114,10 +114,12 @@
 
 <div class="bar">
   <button id="connect" class="primary" data-t="connect">Connect</button>
+  <button id="newboard" data-t="new-board">Set up a new board</button>
   <span id="who" class="dim"></span>
   <span class="spacer"></span>
   <button id="write" class="primary" data-t="write" hidden>Write to the board</button>
 </div>
+<progress id="newbar" max="1" value="0" hidden></progress>
 <p class="note" id="connect-note"></p>
 <p class="note" id="write-note"></p>
 
@@ -136,7 +138,7 @@
 <!-- A v2 board whose core runs with no DigiMacro on it: an update cut off,
      or a firmware the watchdog had to stop. All it takes is the firmware. -->
 <section id="recovery" hidden>
-  <h2 data-t="rec-summary">No firmware on this board</h2>
+  <h2 data-t="rec-summary">DigiMacro is not running on this board</h2>
   <p id="recwhy" class="prose"></p>
   <div class="bar">
     <input id="recpass" type="password" size="16" spellcheck="false"
@@ -309,6 +311,10 @@
   <h2 data-t="fw-summary">Firmware</h2>
   <p id="fwwhy" class="prose"></p>
   <p class="dim prose" id="fwhow"></p>
+  <div class="form" id="fwmoverow" hidden>
+    <label class="check"><input id="fwmove" type="checkbox">
+      <span id="fwmovelabel"></span></label>
+  </div>
   <div class="form" id="fwbootrow">
     <label class="check"><input id="fwboot" type="checkbox" checked>
       <span data-t="fw-boot"></span></label>
@@ -436,6 +442,13 @@ function renderWho() {
       const b = document.createElement('button');
       b.className = 'link';
       b.textContent = t('fw-link-update');
+      b.onclick = openFirmware;
+      el.append(b);
+    } else if (!core && fwLatest() === fwOnBoard && fwHereV2 && stage === 'board') {
+      /* v1's latest, and v2 to move to */
+      const b = document.createElement('button');
+      b.className = 'link';
+      b.textContent = t('fw-link-move');
       b.onclick = openFirmware;
       el.append(b);
     } else {
@@ -631,7 +644,7 @@ $('auto').onchange = () => {
    name a code the board does not hold yet, which would type nothing. */
 function drawAutoSave() {
   const pending = savedAuto !== null && auto !== savedAuto;
-  const tableFirst = pending && saved !== null && snapshot() !== saved;
+  const tableFirst = pending && auto !== AUTO_NONE && !savedCodes.has(auto);
   $('autosave').disabled = !dev || busy || !pending || tableFirst;
   if (tableFirst) note('auto-note', t('auto-write-first'), 'dim');
   else if ($('auto-note').textContent === t('auto-write-first')) note('auto-note', '');
@@ -652,6 +665,14 @@ $('autosave').onclick = () => run('auto-note', async () => {
    change, and changing the keyboard layout is one when it changes the bytes. */
 let saved = null;               /* table bytes as on the board */
 let savedAuto = null;           /* the power-on byte as on the board */
+let savedCodes = new Set();     /* the headers of the codes the board holds */
+
+/* The headers of the codes on screen, the ones that encode. */
+function codesOf(rows) {
+  const out = new Set();
+  for (const m of rows) { try { out.add(header(m.code)); } catch (e) {} }
+  return out;
+}
 
 function snapshot() {
   try { return encodeTable(macros).join(','); }
@@ -711,6 +732,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 function show(s) {
   stage = s;
   $('connect').hidden = s !== 'none';
+  $('newboard').hidden = s !== 'none';
   $('gate').hidden = s !== 'gate';
   $('recovery').hidden = s !== 'recovery';
   $('board').hidden = s !== 'board';
@@ -723,7 +745,7 @@ function show(s) {
    origin was already given and stops there rather than failing noisily. */
 let connecting = false;          /* the connect event and a retry can race */
 
-async function connect(mayAsk) {
+async function connect(mayAsk, prefer = null) {
   if (dev || connecting) return;
   if (mayAsk) note('connect-note', '');   /* a board coming back by itself
                                               keeps what the upgrade said */
@@ -731,9 +753,10 @@ async function connect(mayAsk) {
   connecting = true;
   try {
     /* A device this origin already knows comes back without the picker. */
-    const known = await navigator.hid.getDevices();
-    dev = known.find(d => d.vendorId === 0x16c0 && d.productId === 0x27db
-                       && d.collections.some(c => c.usagePage === 0xFF00));
+    const known = (await navigator.hid.getDevices())
+      .filter(d => d.vendorId === 0x16c0 && d.productId === 0x27db
+                && d.collections.some(c => c.usagePage === 0xFF00));
+    dev = known.includes(prefer) ? prefer : known[0];
     if (!dev && mayAsk)
       dev = (await navigator.hid.requestDevice(
                { filters: [{ vendorId: 0x16c0, productId: 0x27db, usagePage: 0xFF00 }] }))[0];
@@ -811,13 +834,19 @@ const wantsPassword = s =>
 
 /* The password, once the window is open. False if the board said no; a wrong
    one is forgotten, so it is never tried twice and never counted twice. */
+/* Asked once, never again on its own: a v1 board counts every wrong one
+   toward the lockout. If another program's answer took the place of this
+   one's, the board's state says how it went. */
+async function unlockOnce(bytes) {
+  if (runDev && dev !== runDev) throw new Error(t('board-left'));
+  const b = await askOwn(io, F_UNLOCK, 0, bytes.length, bytes, true);
+  if (b) return b[0] !== F_REFUSED;
+  return !!(await refreshState() & ST_UNLOCKED);
+}
+
 async function tryUnlock(noteId) {
   const hard = !!(state_byte & ST_HARDLOCK);
-  const bytes = bytesOf(password);
-  try {
-    await ask(F_UNLOCK, 0, bytes.length, bytes);
-  } catch (e) {
-    if (e.message !== 'REFUSED') throw e;
+  if (!await unlockOnce(bytesOf(password))) {
     /* No to a shut window and no to a wrong password look the same, so ask
        which before saying which. */
     await refreshState();
@@ -902,6 +931,7 @@ async function readTable() {
                                        catch (e) { return false; } });
   saved = snapshot();
   savedAuto = auto;
+  savedCodes = codesOf(macros);
   draw();
   note('auto-note', dangling ? t('auto-dangling') : '', 'dim');
   return got.length;
@@ -952,7 +982,7 @@ async function access(noteId) {
 const ACTION_BUTTONS = ['write', 'sample', 'setpass', 'clearpass', 'locksave',
                         'fwupdate', 'fwclose', 'hostnew', 'hostdel', 'hostsave',
                         'bksave', 'bkrestore', 'bkfile', 'recinstall',
-                        'autosave'];
+                        'autosave', 'newboard'];
 
 function setBusy() {
   busy = true;
@@ -964,7 +994,7 @@ function idle() {
   busy = false;
   runDev = null;
   for (const id of ['sample', 'clearpass', 'fwupdate', 'fwclose', 'hostnew',
-                    'hostdel', 'bksave', 'bkfile']) $(id).disabled = false;
+                    'hostdel', 'bksave', 'bkfile', 'newboard']) $(id).disabled = false;
   $('bkrestore').disabled = bkText === null;
   if (stage === 'recovery') drawRecovery();
   draw();                       /* Write and the Save buttons: each enables
@@ -1006,6 +1036,13 @@ $('write').onclick = () => {
     }
     onSample = false;           /* what is on screen is on the board now */
     saved = snapshot();
+    savedCodes = codesOf(macros);
+    /* A power-on macro the table no longer has would wait on the board for
+       the next macro given its code: it goes with its macro. */
+    if (savedAuto !== AUTO_NONE && !savedCodes.has(savedAuto)) {
+      await eeWrite(AUTO_ADDR, Uint8Array.from([AUTO_NONE]));
+      savedAuto = AUTO_NONE;
+    }
     note('table-note', '');
     note('write-note', t('write-ok', { n: bytes.length }), 'ok');
   });
@@ -1418,13 +1455,13 @@ let upgrading = false;
    older ignores the request, so it has to be updated the old way once. */
 const FW_FIRST_REBOOT = 3;
 
-fetch('firmware/digimacro.json').then(r => r.json())
+fetch('firmware/digimacro.json', { cache: 'no-cache' }).then(r => r.json())
   .then(j => { fwHere = j.fw; drawFirmware(); }).catch(() => {});
 
 /* For v2 boards: the firmware above the core, and the core API it was built
    for -- it goes only on a core that speaks the same. */
 let fwHereV2 = null;            /* { app, core, api } */
-fetch('firmware/digimacro-v2.json').then(r => r.json())
+fetch('firmware/digimacro-v2.json', { cache: 'no-cache' }).then(r => r.json())
   .then(j => { fwHereV2 = j; drawFirmware();
                if (stage === 'recovery') drawRecovery(); }).catch(() => {});
 
@@ -1448,11 +1485,16 @@ function drawFirmware() {
     return;
   }
   const tooOld = fwOnBoard < FW_FIRST_REBOOT;
-  $('fwwhy').textContent = fwHere === null ? t('fw-none-here', { on: fwOnBoard })
+  const moving = !!fwHereV2 && $('fwmove').checked;
+  $('fwmoverow').hidden = !fwHereV2;
+  $('fwmovelabel').textContent = fwHereV2 ? t('fw-move', { fw: fwHereV2.app }) : '';
+  $('fwbootrow').hidden = moving;       /* Micronucleus is about to go */
+  $('fwwhy').textContent = moving ? t('fw-move-why', { fw: fwHereV2.app })
+    : fwHere === null ? t('fw-none-here', { on: fwOnBoard })
     : t(fwOnBoard < fwHere ? 'fw-newer' : 'fw-same', { on: fwOnBoard, here: fwHere })
       + (tooOld ? ' ' + t('fw-too-old') : '');
-  $('fwwhy').className = 'prose' + (fwHere !== null && fwOnBoard < fwHere ? ' ok' : ' dim');
-  $('fwupdate').disabled = busy || fwHere === null || tooOld;
+  $('fwwhy').className = 'prose' + (moving || (fwHere !== null && fwOnBoard < fwHere) ? ' ok' : ' dim');
+  $('fwupdate').disabled = busy || (!moving && fwHere === null) || tooOld;
   renderWho();
 }
 
@@ -1511,6 +1553,7 @@ function openFirmware() {
   $('fwdialog').showModal();
 }
 $('fwclose').onclick = () => $('fwdialog').close();
+$('fwmove').addEventListener('change', drawFirmware);
 /* Not while an update runs: the board is half way to somewhere. */
 $('fwdialog').addEventListener('cancel', e => { if (busy) e.preventDefault(); });
 
@@ -1529,13 +1572,12 @@ function nextClick() {
   });
 }
 
-async function writeVia(m, app, what) {
-  const bar = $('fwbar');
+async function writeVia(m, app, what, noteId = 'fw-note', bar = $('fwbar')) {
   const image = m.prepare(app);
   bar.hidden = false; bar.value = 0;
-  note('fw-note', t('fw-erasing', { what }), 'dim');
+  note(noteId, t('fw-erasing', { what }), 'dim');
   await m.erase();
-  note('fw-note', t('fw-writing', { what }), 'dim');
+  note(noteId, t('fw-writing', { what }), 'dim');
   await m.write(image, f => bar.value = f);
   bar.hidden = true;
   await m.run();
@@ -1557,11 +1599,16 @@ $('fwupdate').onclick = async () => {
   }
 
   setBusy();
-  const upgradeBoot = $('fwboot').checked;
+  /* Moving to v2: v2's core goes on through Micronucleus, and the board
+     comes back asking for its firmware, which goes on over WebHID and over
+     Micronucleus too. No point upgrading a bootloader about to go. */
+  const moving = !!fwHereV2 && $('fwmove').checked;
+  const upgradeBoot = !moving && $('fwboot').checked;
   let done = false;
   try {
     /* Both fetched before anything changes on the board. */
-    const app = parseIntelHex(await fetchText('firmware/digimacro.hex'), 8192);
+    const app = parseIntelHex(await fetchText(moving ? 'firmware/digimacro-v2-core.hex'
+                                                     : 'firmware/digimacro.hex'), 8192);
     const upgrader = upgradeBoot ? parseIntelHex(await fetchText(
       'firmware/micronucleus-2.6-t85_default-upgrade.hex'), 8192) : null;
 
@@ -1593,7 +1640,7 @@ $('fwupdate').onclick = async () => {
       m.checkChip();
     }
 
-    await writeVia(m, app, `DigiMacro ${fwHere}`);
+    await writeVia(m, app, moving ? t('core-name') : `DigiMacro ${fwHere}`);
     done = true;
   } catch (e) {
     note('fw-note', e.message === 'REFUSED' ? t('refused')
@@ -1609,15 +1656,57 @@ $('fwupdate').onclick = async () => {
          hold and the password again, as after any replug. */
       upgrading = false;
       password = null;
+      serial = '';
       dev = null;
       show('none');
       who('board-left', {}, 'dim');
       if (done) {
         $('fwdialog').close();
-        note('connect-note', t('fw-done', { fw: fwHere }), 'ok');
+        note('connect-note', moving ? t('fw-moved', { fw: fwHereV2.app })
+                                    : t('fw-done', { fw: fwHere }), 'ok');
       }
       setTimeout(() => connect(false), done ? 1500 : 0);
     }
+  }
+};
+
+/* ---- a new board ---------------------------------------------------
+ *
+ * A Digispark straight from the bag has only Micronucleus, which shows up
+ * for a few seconds after it is plugged in. v2's core goes on through it,
+ * and the board then comes back as DigiMacro, asking for its firmware --
+ * the recovery view takes it from there. Two clicks: the first says what to
+ * do, the second has to come within those seconds, and opens the picker.
+ */
+let newArmed = false;
+$('newboard').onclick = async () => {
+  if (busy) return;
+  if (!navigator.usb) { note('connect-note', t('fw-no-webusb'), 'bad'); return; }
+  if (!fwHereV2) { note('connect-note', t('new-no-v2'), 'bad'); return; }
+  if (!newArmed) {
+    newArmed = true;
+    note('connect-note', t('new-plug'), 'dim');
+    return;
+  }
+  newArmed = false;
+  setBusy();
+  const bar = $('newbar');
+  try {
+    const app = parseIntelHex(await fetchText('firmware/digimacro-v2-core.hex'), 8192);
+    note('connect-note', t('fw-pick'), 'dim');
+    const m = await Micronucleus.request();
+    if (!m) throw new Error(t('new-none'));
+    m.checkChip();
+    note('connect-note', t('fw-found', { version: m.info.version }), 'dim');
+    await writeVia(m, app, t('core-name'), 'connect-note', bar);
+    note('connect-note', t('new-done'), 'ok');
+  } catch (e) {
+    note('connect-note', t('fw-failed', { msg: e.message }), 'bad');
+    if (navigator.userAgent.includes('Linux') && /access|open/i.test(e.message))
+      note('connect-note', t('fw-failed', { msg: e.message }) + ' ' + t('fw-udev'), 'bad');
+  } finally {
+    bar.hidden = true;
+    idle();
   }
 };
 
@@ -1645,9 +1734,9 @@ async function updateV2(noteId, bar, recovering) {
     } else if (state_byte & ST_PASSWORD && !(state_byte & ST_UNLOCKED)) {
       const pw = $('recpass').value;
       if (!pw) throw new Error(t('rec-pass'));
-      const p = bytesOf(pw);
-      try { await ask(F_UNLOCK, 0, p.length, p); }
-      catch (e) { throw e.message === 'REFUSED' ? new Error(t('wrong-password')) : e; }
+      /* The core turns every password away for a second after a wrong
+         one, so a refusal may mean that rather than wrong. */
+      if (!await unlockOnce(bytesOf(pw))) throw new Error(t('rec-pass-refused'));
     }
     upgrading = true;
     who('fw-who', {}, 'dim');
@@ -1664,19 +1753,35 @@ async function updateV2(noteId, bar, recovering) {
     if (upgrading) {
       /* Gone, on purpose or not: a new connection when it comes back -- the
          new firmware asking for the hold, or the core with no firmware if
-         this was cut off, asking for it again. */
+         this was cut off, asking for it again. A board that never left,
+         only stopped half way, may still be busy writing: it is asked
+         again until it answers, and then says where it stands. */
       upgrading = false;
       password = null;
+      serial = '';
+      const was = dev;
       dev = null;
       show('none');
       who('board-left', {}, 'dim');
-      if (done) {
-        if ($('fwdialog').open) $('fwdialog').close();
-        note('connect-note', t('fw-done', { fw }), 'ok');
-      }
-      setTimeout(() => connect(false), done ? 1500 : 0);
+      if ($('fwdialog').open) $('fwdialog').close();
+      if (done) note('connect-note', t('fw-done', { fw }), 'ok');
+      else note('connect-note', $(noteId).textContent, 'bad');
+      reconnectAfter(done ? 1500 : 300, was);
     }
   }
+}
+
+/* Back to the board after an update, a few times if it is slow to answer:
+   the one just updated, if it is still there, rather than whichever this
+   page met first. */
+function reconnectAfter(ms, was) {
+  let tries = 0;
+  const go = async () => {
+    if (dev || upgrading) return;
+    await connect(false, was);
+    if (!dev && ++tries < 5) setTimeout(go, 700);
+  };
+  setTimeout(go, ms);
 }
 
 /* What a v2 board with only its core running needs: why, and the firmware. */

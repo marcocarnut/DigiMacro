@@ -78,7 +78,10 @@ uint8_t hidAllowed(void)
     if (allowOpen && (int16_t)(ticks() - allowUntil) >= 0) {
         allowOpen = 0;
         hidLock();              /* the session ends with the window */
-        wipe();
+        /* Not INFO's answer, which holds nothing secret -- and INFO asks
+           this while filling itself in, so wiping would wipe the core's
+           half of it: its version, the region, the page size. */
+        if (hidReport()[0] != DM_FUNC_INFO) wipe();
     }
     return allowOpen;
 }
@@ -237,6 +240,7 @@ uint8_t app_request(uint8_t *v)
        set; UNLOCK is how the second is passed. */
     if (!hidAllowed() || (v[0] != DM_FUNC_UNLOCK && !hidUnlocked())) {
         v[0] = DM_REFUSED;
+        wipe();                 /* refused, it may still carry a password */
         return 1;
     }
 

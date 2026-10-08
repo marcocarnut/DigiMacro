@@ -32,6 +32,7 @@
 #ifndef CORE_HOST_TEST
 #define flashByte(a)        pgm_read_byte((const uint8_t *)(a))
 #define flashWord(a)        pgm_read_word((const uint16_t *)(a))
+#define flashCopy(d, a, n)  memcpy_P((d), (const void *)(a), (n))
 /* Function pointers on the AVR hold word addresses. */
 #define APP(slot, type)     ((type)(uintptr_t)(APP_START / 2 + (slot)))
 #define FOREVER             for (;;)
@@ -80,34 +81,63 @@ _Static_assert(sizeof usbDescriptorHidReport == (USB_CFG_DESCR_PROPS_HID_REPORT 
                "vusb/usbconfig.h has the report descriptor's length");
 
 /* ===================================================================== */
-/* Serial number                                                         */
+/* Strings: the maker, the product, the serial                           */
 /* ===================================================================== */
 
-/* The prefix is fixed, so it is simply there; the eight digits are filled
-   in from EEPROM. */
-int usbDescriptorStringSerialNumber[1 + DM_SERIAL_LEN] = {
-    USB_STRING_DESCRIPTOR_HEADER(DM_SERIAL_LEN),
-    'p','o','s','t','c','o','g','i','t','o','.','o','r','g',':',
-};
-_Static_assert(sizeof DM_SERIAL_PREFIX - 1 == DM_SERIAL_PREFIX_LEN,
-               "DM_SERIAL_PREFIX_LEN must match DM_SERIAL_PREFIX");
-_Static_assert((USB_CFG_DESCR_PROPS_STRING_SERIAL_NUMBER & 0x3FFF)
-               == 2 * (sizeof usbDescriptorStringSerialNumber
-                       / sizeof usbDescriptorStringSerialNumber[0]),
-               "usbconfig.h's serial descriptor length must match the serial");
+/* USB wants them in UTF-16, which for these names is every other byte a
+   zero. So they are kept as ASCII and widened when the host asks, into one
+   buffer the length of the longest: the maker's name. The serial has no
+   text of its own -- "postcogito.org:", the domain obdev's rules want in
+   front of it, is the tail of the maker's name -- and its eight digits come
+   from the EEPROM as it is asked for, so a restored one is what the next
+   enumeration sees. A board with no app and a blank EEPROM says FFFFFFFF
+   until the app has made it one (hidusb.c). */
+_Static_assert(USB_CFG_DESCR_PROPS_STRING_VENDOR && USB_CFG_DESCR_PROPS_STRING_PRODUCT
+               && USB_CFG_DESCR_PROPS_STRING_SERIAL_NUMBER,
+               "usbconfig.h must give each string a non-zero property, or the "
+               "device descriptor tells the host there is none to ask for");
+static const char PROGMEM vendorName[]  = "digimacro.postcogito.org";
+static const char PROGMEM productName[] = "DigiMacro";
+#define SERIAL_PREFIX_AT 10             /* "postcogito.org" in vendorName */
+_Static_assert(sizeof vendorName - 1 - SERIAL_PREFIX_AT == DM_SERIAL_PREFIX_LEN - 1,
+               "the serial's prefix is the maker's name from SERIAL_PREFIX_AT on");
 
-/* The four bytes as v1 stored them, a little-endian word, written out
-   most significant first. Making them is the app's job, in its setup
-   before USB starts: it takes a second with interrupts off. A board with
-   no app and a blank EEPROM says FFFFFFFF until it has one. */
-static void initSerial(void)
+/* UTF-16 by halves: only the low bytes are ever written, and the high
+   ones stay the zeros .bss started them as. The language, whose high byte
+   is not zero, has a descriptor of its own. */
+static uint8_t strBuf[2 + 2 * (sizeof vendorName - 1)];
+static uint8_t langDesc[4] = { 4, 3, 0x09, 0x04 };      /* US English */
+
+usbMsgLen_t usbFunctionDescriptor(usbRequest_t *rq)
 {
-    for (uint8_t i = 0; i < DM_SERIAL_DIGITS; i++) {
-        uint8_t b = eeprom_read_byte((const uint8_t *)(DM_SERIAL_ADDR + 3 - i / 2));
-        uint8_t n = i & 1 ? b & 0x0F : b >> 4;
-        usbDescriptorStringSerialNumber[1 + DM_SERIAL_PREFIX_LEN + i] =
-            n < 10 ? '0' + n : 'A' - 10 + n;
+    uint8_t which = rq->wValue.bytes[0];
+    uint8_t *p = strBuf + 2;
+    const char *s = vendorName;
+
+    if (which == 0) {
+        usbMsgPtr = (usbMsgPtr_t)langDesc;
+        return sizeof langDesc;
     }
+    if (which == 2) s = productName;
+    else if (which == 3) s = vendorName + SERIAL_PREFIX_AT;
+    else if (which != 1) return 0;
+    for (char c; (c = pgm_read_byte(s)); s++, p += 2) *p = c;
+    if (which == 3) {
+        /* The four bytes as v1 stored them, a little-endian word, written
+           out most significant first. */
+        *p = ':';
+        for (uint8_t i = 0; i < DM_SERIAL_DIGITS; i++) {
+            uint8_t b = eeprom_read_byte((const uint8_t *)(DM_SERIAL_ADDR + 3 - i / 2));
+            uint8_t d = i & 1 ? b & 0x0F : b >> 4;
+            p += 2;
+            *p = d < 10 ? '0' + d : 'A' - 10 + d;
+        }
+        p += 2;
+    }
+    strBuf[0] = p - strBuf;
+    strBuf[1] = 3;                      /* a string descriptor */
+    usbMsgPtr = (usbMsgPtr_t)strBuf;
+    return strBuf[0];
 }
 
 /* ===================================================================== */
@@ -154,7 +184,18 @@ static uint8_t  pageBuf[PAGE];
 static uint16_t pageAt;
 static uint8_t  pageWanted;     /* 1 asked; 2 the answer is on its way */
 static uint8_t  pageWait;
-static uint8_t  halted;         /* DM_CORE_HALTED: see main() */
+static uint8_t  halted;         /* DM_CORE_HALTED: see mayRun() */
+
+/* A board with Micronucleus still on it: the spike's builds, which stop
+   below it. Everything else owns the whole chip. */
+#define HAS_BOOTLOADER  (APP_END <= 0x1A00)
+
+/* softReset()'s word to the next start: the reset was the core's own.
+   In a section no start-up code clears, so it outlives the reset. */
+#if !HAS_BOOTLOADER
+#define RESTART_MARK    0xD1A6
+static uint16_t restartMark __attribute__((section(".noinit")));
+#endif
 static uint16_t commitWait;
 
 /* The core keeps no clock -- time is the app's -- so its few waits are
@@ -334,8 +375,10 @@ static void vndAnswer(void)
            window too (layout.h): the seconds after a replug, or after the
            app has opened it again. Beyond opening the window, the app has
            no say: an app that could refuse an update could keep itself on
-           the board for good. */
-        if (!hidUnlocked() || (app && DM_WINDOW >= DM_WINDOW_TENTHS))
+           the board for good. Nothing after a commit: the app it checked
+           is the one that starts. */
+        if (!hidUnlocked() || commitWanted
+            || (app && DM_WINDOW >= DM_WINDOW_TENTHS))
             refuse();
         else
             takePage(addr, n);
@@ -343,7 +386,14 @@ static void vndAnswer(void)
 
     case DM_FUNC_FREAD:
         /* Ungated: it is the published firmware, the core's or an app's,
-           and the secrets are all in the EEPROM. */
+           and the secrets are all in the EEPROM. Not while a page waits to
+           be written, though: the flash still holds the old page then, and
+           a host checking its write by reading it back would take an
+           unchanged page for written and send the next too soon. */
+        if (pageWanted) {
+            refuse();
+            break;
+        }
         for (uint8_t i = 0; i < n; i++)
             vnd[DM_VND_DATA + i] = (addr + i) <= FLASHEND
                                  ? flashByte(addr + i) : 0xFF;
@@ -453,7 +503,6 @@ void hidRestart(void)
     unlocked = 0;
     USB_INTR_ENABLE &= ~(1 << USB_INTR_ENABLE_BIT);
     usbDeviceDisconnect();
-    initSerial();
     vnd[0] = DM_FUNC_INFO;
     vndAnswer();                /* so the first read after it is INFO's */
     reconnect();
@@ -481,35 +530,101 @@ static void spmSlot(void)
 }
 
 #ifndef CORE_HOST_TEST
-static void spmErase(uint16_t a)
+/* Erase the page at `a`, or write `p` to it, or both, with interrupts off
+   throughout -- and after any EEPROM write the app left running, since SPM
+   and an EEPROM write do not overlap. Both at once is for page 0 alone:
+   between its erase and its write the interrupt vectors are blank, and an
+   interrupt then -- V-USB takes one per packet -- jumps into erased flash. */
+static void __attribute__((noinline)) spm(uint16_t a, const uint8_t *p, uint8_t erase)
 {
+    eeprom_busy_wait();
     cli();
-    boot_page_erase(a);
-    boot_spm_busy_wait();
+    if (erase) {
+        boot_page_erase(a);
+        boot_spm_busy_wait();
+    }
+    if (p) {
+        for (uint8_t i = 0; i < PAGE; i += 2)
+            boot_page_fill(a + i, p[i] | ((uint16_t)p[i + 1] << 8));
+        boot_page_write(a);
+        boot_spm_busy_wait();
+    }
     sei();
 }
 
-static void spmWrite(uint16_t a, const uint8_t *p)
-{
-    cli();
-    for (uint8_t i = 0; i < PAGE; i += 2)
-        boot_page_fill(a + i, p[i] | ((uint16_t)p[i + 1] << 8));
-    boot_page_write(a);
-    boot_spm_busy_wait();
-    sei();
-}
+/* After a commit: off the bus, and a real reset, so that the new app
+   starts on a chip in its power-on state -- every register, not only the
+   ones the core knows to clear; an old app's clock prescaler or power
+   reduction would otherwise outlive it. The watchdog does it, and leaves a
+   mark in RAM no start-up clears, so that main() knows this reset was the
+   core's own and not a hung app's (mayRun()).
 
-/* As if from power-on, without the reset that would hand the board to
-   Micronucleus -- which on the spike's boards is still there, and owns the
-   reset vector. Off the bus first; main() comes back onto it. */
+   The spike's builds keep Micronucleus, which owns the reset vector and
+   would take six seconds of every reset: there, a jump to the start. */
 static void NORETURN softReset(void)
 {
     cli();
     quiet();
     usbDeviceDisconnect();
+#if HAS_BOOTLOADER
     GPIOR0 = 0;                 /* or main() reads the flags as a reset reason */
     asm volatile ("rjmp __init");
+#else
+    restartMark = RESTART_MARK;
+    wdt_enable(WDTO_15MS);
+    for (;;)
+        ;
+#endif
     __builtin_unreachable();
+}
+#endif
+
+/* A page of the app erased and written, each in its own moment (spmSlot()),
+   so that neither halt meets the host's next poll. */
+static void spmPage(uint16_t a, const uint8_t *p)
+{
+    spmSlot();
+    spm(a, 0, 1);
+    spmSlot();
+    spm(a, p, 0);
+}
+
+#if !HAS_BOOTLOADER
+/* A core put on a board by Micronucleus, as the page's install does (stage
+   one of two), starts with a reset vector that is not its own: Micronucleus
+   points it at itself, at 0x1A00, and keeps the core's start in a jump just
+   below. The app goes on top of Micronucleus, which would then leave a
+   reset jumping into the middle of the app.
+
+   So before its first page the core takes the vector back -- page 0 as it
+   is, with its first word its own again -- and Micronucleus is never run
+   again. It is the one page below the boundary the core ever writes, and
+   only ever with that one word changed: nothing a host sends reaches it.
+   Power lost in the few milliseconds of it would need a programmer, the
+   same risk as every Micronucleus upload, which rewrites page 0 each time;
+   it happens once in a board's life.
+
+   Erased and written in one go, interrupts off throughout: page 0 holds the
+   interrupt vectors. The first version of this waited between the two for
+   the host's poll, as app pages do, and the next USB packet jumped through
+   an erased vector: a bricked board. One halt meeting one poll costs the
+   host a retry. */
+#ifndef RESET_WORD
+extern void __init(void);
+#define RESET_WORD      (0xC000 | (((uint16_t)(uintptr_t)__init - 1) & 0x0FFF))
+#endif
+
+static void ownResetVector(void)
+{
+    uint8_t page[PAGE];
+    uint16_t want = RESET_WORD;
+
+    if (flashWord(0) == want) return;
+    flashCopy(page, 0, PAGE);
+    page[0] = (uint8_t)want;
+    page[1] = want >> 8;
+    spmSlot();
+    spm(0, page, 1);
 }
 #endif
 
@@ -519,14 +634,14 @@ static void pageWrite(void)
 {
     uint16_t a = pageAt;
 
+#if !HAS_BOOTLOADER
+    ownResetVector();
+#endif
     if (a != APP_START && flashWord(APP_START) != 0xFFFF) {
         spmSlot();
-        spmErase(APP_START);
+        spm(APP_START, 0, 1);
     }
-    spmSlot();
-    spmErase(a);
-    spmSlot();
-    spmWrite(a, pageBuf);
+    spmPage(a, pageBuf);
 
     /* The answer the host reads next: the page, or a refusal if the flash
        does not hold what was sent. */
@@ -591,32 +706,55 @@ void corePoll(void)
     if (pageWanted) update();
 }
 
-/* The watchdog, if it reset the board, did it because the app stopped
-   calling corePoll(): then the app is not started again, and the core alone
-   answers -- it can be replaced, behind the password. A replug is a
+/* Whether the app may run, from why the chip started (MCUSR's flags).
+
+   A watchdog reset means the app stopped calling corePoll(), unless the
+   core caused it itself after a commit (softReset()'s mark). A start with
+   no reason at all is a jump to address 0 -- a crash, which would only
+   crash again. Either way the app is not started, and the core alone
+   answers: it can be replaced, behind the password. A replug is a
    power-on, and runs it again.
 
-   The app is set up before USB: that is what gives it its variables, so
+   On the spike's boards Micronucleus runs first and takes the flags, so
+   only its copy of them in GPIOR0 is to be had, and no crash can be told
+   from a start. */
+static uint8_t mayRun(uint8_t why)
+{
+#if HAS_BOOTLOADER
+    return !(why & (1 << WDRF));
+#else
+    uint8_t own = restartMark == RESTART_MARK;
+    restartMark = 0;
+    if (why & (1 << WDRF)) return own;
+    return why != 0;
+#endif
+}
+
+/* The app is set up before USB: that is what gives it its variables, so
    nothing may call into it before -- INFO included -- and it may want a
-   second with interrupts off for a serial. */
+   second with interrupts off for a serial. The watchdog watches that too,
+   with longer to spare: a setup that hangs would otherwise hold the board
+   for good, USB and all, replug after replug. */
 static void appStart(uint8_t why)
 {
+    uint8_t run = mayRun(why);
     if (!appValid()) return;
-    if (why & (1 << WDRF)) {
+    if (!run) {
         halted = DM_CORE_HALTED;
         return;
     }
     F.app = 1;
+    wdt_enable(WDTO_8S);
     APP(APP_SETUP, appVoid)();
-    wdt_enable(WDTO_2S);
+    wdt_enable(WDTO_2S);        /* setup may have borrowed it, for entropy */
 }
 
 #ifndef CORE_HOST_TEST
 int main(void)
 {
-    /* Why we are here: in MCUSR, or in GPIOR0 where a Micronucleus built
-       with SAVE_MCUSR leaves it, having passed through it on the way. */
-    uint8_t why = MCUSR | GPIOR0;
+    /* Why we are here: in MCUSR -- or on the spike's boards, in GPIOR0,
+       where a Micronucleus built with SAVE_MCUSR leaves it. */
+    uint8_t why = MCUSR | (HAS_BOOTLOADER ? GPIOR0 : 0);
     MCUSR = 0;
     GPIOR0 = 0;
     DM_WINDOW = 0;              /* the seconds after a replug: layout.h */

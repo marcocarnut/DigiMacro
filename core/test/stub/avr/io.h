@@ -17,5 +17,7 @@ extern uint8_t SREG, OCR1C, OCR1A, TCCR1, TIMSK, OSCCAL, TCCR0B, TCNT0,
 #define WDIF 7
 #define WDIE 6
 #define WDRF 3
+#define PORF 0
+#define EXTRF 1
 #define E2END 511
 #define FLASHEND 8191

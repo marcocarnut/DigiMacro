@@ -5,8 +5,10 @@
 #                   or a programmer); options as build.sh had them:
 #                   make BUTTON=1 RC=1 LEDECHO=1 TOUCHDEBUG=1
 #   make release    DigiMacro as it ships, into web/firmware/: the app for
-#                   the page to update a v2 board with, the full image for
-#                   a programmer, and a json naming the core API it needs.
+#                   the page to update a v2 board with, the core alone for
+#                   the page to put on a board through Micronucleus, the
+#                   full image for a programmer, and a json naming the core
+#                   API the app needs.
 #                   Commit the result: the page carries it.
 #   make spike      the core, the spike's apps A, B and C, and spikeA.hex,
 #                   all below Micronucleus, in build/v2-spike/
@@ -71,15 +73,15 @@ $(O):
 
 CORE_OBJ = $(O)/core.o $(O)/coretab.o $(O)/usbdrv.o $(O)/usbdrvasm.o $(O)/osccal.o
 
-$(O)/core.o: core/core.c core/core.h core/layout.h | $(O)
+$(O)/core.o: core/core.c core/core.h core/layout.h $(VUSB)/usbconfig.h | $(O)
 	$(CC) $(CFLAGS) -c -o $@ $<
 $(O)/coretab.o: core/coretab.S core/layout.h | $(O)
 	$(CC) $(ASFLAGS) -c -o $@ $<
-$(O)/usbdrv.o: $(VUSB)/usbdrv.c | $(O)
+$(O)/usbdrv.o: $(VUSB)/usbdrv.c $(VUSB)/usbconfig.h | $(O)
 	$(CC) $(CFLAGS) -c -o $@ $<
-$(O)/usbdrvasm.o: $(VUSB)/usbdrvasm.S | $(O)
+$(O)/usbdrvasm.o: $(VUSB)/usbdrvasm.S $(VUSB)/usbconfig.h | $(O)
 	$(CC) $(ASFLAGS) -c -o $@ $<
-$(O)/osccal.o: $(VUSB)/osccal.c | $(O)
+$(O)/osccal.o: $(VUSB)/osccal.c $(VUSB)/usbconfig.h | $(O)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # The core must end below its table, and its variables below the app's.
@@ -88,7 +90,7 @@ $(O)/core.elf: $(CORE_OBJ)
 	    -Wl,--section-start=.coretab=$(call hexaddr,$(CORE_TABLE)) \
 	    -Wl,--defsym=__app_vectors=$(APP_VECS) -o $@ $^
 	@end=$$(( 0x$$($(NM) $@ | awk '$$3=="__data_load_end"{print $$1}') )); \
-	 ram=$$(( 0x$$($(NM) $@ | awk '$$3=="__bss_end"{print $$1}') - 0x800000 )); \
+	 ram=$$(( 0x$$($(NM) $@ | awk '$$3=="_end"{print $$1}') - 0x800000 )); \
 	 printf 'core: %d bytes of flash (table at %d), RAM to 0x%03X (app from 0x%03X)\n' \
 	     $$end $(CORE_TABLE) $$ram $(APP_RAM); \
 	 [ $$end -le $(CORE_TABLE) ] || { echo "core overruns its table"; exit 1; }; \
@@ -128,6 +130,9 @@ CXXFLAGS = $(filter-out -std=gnu11,$(CFLAGS)) -x c++ -std=gnu++11 \
           -fno-exceptions -fno-rtti -fno-threadsafe-statics $(DMDEFS)
 APPVER_DM := $(shell sed -n 's/^\#define DM_FW_VERSION *\([0-9]*\).*/\1/p' app/hidusb.h)
 
+# Its header carries DM_FW_VERSION, which lives in hidusb.h
+$(O)/apphdrDM.o: app/hidusb.h
+
 $(O)/digimacro.o: DigiMacro.ino app/hidusb.h core/core.h core/layout.h | $(O)
 	$(CC) $(CXXFLAGS) -c -o $@ $<
 $(O)/digimacro.elf: $(O)/apphdrDM.o $(O)/digimacro.o $(O)/hidusb.o $(O)/coreapi.o
@@ -145,6 +150,7 @@ release: $(O)/digimacro.hex $(O)/digimacro-full.hex
 	@[ -z "$(strip $(DMDEFS))" ] || { echo "release is the stock firmware: no options"; exit 1; }
 	cp $(O)/digimacro.hex web/firmware/digimacro-v2.hex
 	cp $(O)/digimacro-full.hex web/firmware/digimacro-v2-full.hex
+	cp $(O)/core.hex web/firmware/digimacro-v2-core.hex
 	printf '{ "app": %s, "core": %s, "api": %s }\n' $(APPVER_DM) $(CORE_VER) $(CORE_API) \
 	    > web/firmware/digimacro-v2.json
 	@cat web/firmware/digimacro-v2.json

@@ -79,9 +79,13 @@ class FakeBoard {
     this.window = 0;            /* tenths since it opened: the app's count */
     this.vnd = new Uint8Array(36);
     this.halt = 0;              /* requests still to fail: an erase, a write */
-    this.lead = 0;              /* requests answered first, from the old flash:
+    this.lead = 0;              /* requests answered first, before the halt:
                                    the core waits for the host's next keyboard
-                                   poll before it halts (core.c, spmSlot()) */
+                                   poll before it erases (core.c, spmSlot()) */
+    this.leadEach = 6;          /* how many, per page */
+    this.passWait = false;      /* a wrong password: a second of refusals */
+    this.gone = 0;              /* requests after a commit before the board
+                                   drops off the bus to restart */
     this.badBit = null;         /* a page whose write the flash gets wrong */
     this.pending = null;
     this.clobber = 0;           /* 0..1: how often a foreign INFO cuts in */
@@ -101,6 +105,7 @@ class FakeBoard {
   }
   maybeHalted() {
     if (this.pulled) throw new Error('the device is gone');
+    if (this.committed && --this.gone < 0) throw new Error('the device is gone');
     if (this.lead > 0) { this.lead--; return; }
     if (this.halt > 0) {
       if (--this.halt === 0) this.finishWrite();
@@ -128,8 +133,9 @@ class FakeBoard {
     case cu.CU.UNLOCK: {
       const want = new Uint8Array(12); if (this.password) want.set(this.password);
       const got = new Uint8Array(12); got.set(r.subarray(4, 4 + n));
-      if (!this.password || got.every((b, i) => b === want[i])) this.unlocked = true;
-      else refuse();
+      if (this.password && this.passWait) refuse();         /* within the second */
+      else if (!this.password || got.every((b, i) => b === want[i])) this.unlocked = true;
+      else { this.passWait = true; refuse(); }
       this.vnd.fill(0, 4);
       break;
     }
@@ -137,21 +143,22 @@ class FakeBoard {
       if (app) this.window = 0; else refuse();
       break;
     case cu.CU.FREAD:
+      if (this.pending) { refuse(); break; }  /* the old page: not yet */
       for (let i = 0; i < n; i++) this.vnd[4 + i] = this.flash[addr + i];
       break;
     case cu.CU.PAGE: {
       const locked = this.password && !this.unlocked;
-      if (locked || (app && this.window >= 60) || this.pending
+      if (locked || this.committed || (app && this.window >= 60) || this.pending
           || addr % 32 || addr < APP_START || addr >= APP_END || n !== 32) { refuse(); break; }
-      this.mode = cu.CU_CORE_UPDATE;   /* app or none: see core.c's update() */
       if (addr % PAGE === 0) { this.half = { at: addr, buf: new Uint8Array(PAGE) };
                                this.half.buf.set(r.subarray(4, 36)); }
       else if (!this.half || this.half.at !== addr - 32) { refuse(); break; }
       else {
         this.half.buf.set(r.subarray(4, 36), 32);
         this.pending = this.half; this.half = null;
+        this.mode = cu.CU_CORE_UPDATE;   /* app or none, as core.c's update() */
         this.vnd[0] = 0;
-        this.lead = 2;
+        this.lead = this.leadEach;
         this.halt = 3;          /* the header's erase, the page's, the write */
       }
       break;
@@ -161,10 +168,10 @@ class FakeBoard {
       const len = f[m + 2] | (f[m + 3] << 8);
       const ok = this.mode === cu.CU_CORE_UPDATE && !this.pending
                && f[m] === 0x44 && f[m + 1] === 0x4D && f[m + 5] === API
-               && len < APP_END - APP_START
+               && len >= 2 * SLOTS + 6 && len <= APP_END - APP_START - 2
                && crc16(f.subarray(APP_START, APP_START + len))
                   === (f[APP_START + len] | (f[APP_START + len + 1] << 8));
-      if (ok) this.committed = true; else refuse();
+      if (ok) { this.committed = true; this.gone = 2; } else refuse();
       break;
     }
     default: refuse();
@@ -255,6 +262,31 @@ async function main() {
     check(b.committed, 'the second update was refused');
   }
 
+  console.log('6a. the same firmware again, and versions that share pages');
+  for (const lead of [0, 3, 8, 20]) {
+    /* The core answers for a while before it halts -- however long the
+       host's next keyboard poll takes -- with the old page still there. */
+    const same = makeApp(1500, 10, 5);
+    const b = new FakeBoard({ app: same });
+    b.leadEach = lead;
+    let msg = null;
+    try { await cu.writeApp(b, imgOf(same), await infoOf(b)); } catch (e) { msg = e.message; }
+    check(b.committed, `the same firmware again, lead ${lead}: ${msg}`);
+  }
+  {
+    const old = makeApp(1500, 10, 5), next = makeApp(1500, 11, 5);
+    next[2 * SLOTS + 6 + 400] ^= 1;     /* one page differs, the rest do not */
+    const len = 2 * SLOTS + 6 + 1500, c = crc16(next.subarray(0, len));
+    next[len] = c & 0xFF; next[len + 1] = c >> 8;
+    const b = new FakeBoard({ app: old });
+    b.leadEach = 8;
+    let msg = null;
+    try { await cu.writeApp(b, imgOf(next), await infoOf(b)); } catch (e) { msg = e.message; }
+    check(b.committed, `versions sharing pages: ${msg}`);
+    check(b.flash.subarray(APP_START, APP_START + next.length).every((v, i) => v === next[i]),
+          'and the flash holds the new one');
+  }
+
   console.log('6b. a page the flash did not take is caught, not committed');
   {
     const b = new FakeBoard({ app: makeApp(300, 10, 1) });
@@ -275,6 +307,27 @@ async function main() {
       const { version } = cu.appPages(img, { start: APP_START, end: APP_END, page: PAGE, api: API });
       check(version === meta.app, `the hex says app ${version}, the json ${meta.app}`);
       check(meta.api === API, `the json says API ${meta.api}, layout.h ${API}`);
+    } else {
+      console.log('  (not built yet: make release)');
+    }
+  }
+
+  console.log('8. the core, laid out for Micronucleus, starts where the core will put its reset back');
+  {
+    const FW = path.join(__dirname, '../web/firmware');
+    const f = path.join(FW, 'digimacro-v2-core.hex');
+    if (fs.existsSync(f)) {
+      const { layoutApplication } = require('../web/micronucleus.js');
+      const core = parseIntelHex(fs.readFileSync(f, 'utf8'), 8192);
+      check(core.end <= 0x1A00 - 6, `the core is ${core.end} bytes: past Micronucleus`);
+      check(core.end <= APP_START, `the core runs to 0x${core.end.toString(16)}, past the boundary`);
+      const own = core.data[0] | (core.data[1] << 8);       /* rjmp __init */
+      const img = layoutApplication(core, 8192, 0x1A00);
+      const w = at => img[at] | (img[at + 1] << 8);
+      const to = (at, word) => ((((at >> 1) + (word & 0x0FFF) + 1) & 0x0FFF) << 1);
+      check(to(0, w(0)) === 0x1A00, 'the reset does not go to Micronucleus');
+      check(to(0x1A00 - 4, w(0x1A00 - 4)) === to(0, own),
+            "Micronucleus's exit does not land on the core's own start");
     } else {
       console.log('  (not built yet: make release)');
     }

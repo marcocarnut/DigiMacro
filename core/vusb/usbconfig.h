@@ -347,10 +347,13 @@ section at the end of this file).
 
 #define USB_CFG_DESCR_PROPS_DEVICE 0
 #define USB_CFG_DESCR_PROPS_CONFIGURATION 0
-#define USB_CFG_DESCR_PROPS_STRINGS                 0
+#define USB_CFG_DESCR_PROPS_STRINGS                 (USB_PROP_IS_DYNAMIC | USB_PROP_IS_RAM)
 #define USB_CFG_DESCR_PROPS_STRING_0                0
-#define USB_CFG_DESCR_PROPS_STRING_VENDOR           0
-#define USB_CFG_DESCR_PROPS_STRING_PRODUCT          0
+/* Built on demand by the core (usbFunctionDescriptor()), all of them; these
+   only have to be non-zero, so that the device descriptor names strings 1
+   and 2 for the host to ask for. Left at 0 they would read "none". */
+#define USB_CFG_DESCR_PROPS_STRING_VENDOR           USB_PROP_IS_DYNAMIC
+#define USB_CFG_DESCR_PROPS_STRING_PRODUCT          USB_PROP_IS_DYNAMIC
 /* Chrome keeps a WebHID permission only for a device that has a serial
  * number; without one, every replug means picking the board out of the
  * chooser again. Ours is random per board, so two boards are also told apart

@@ -339,10 +339,12 @@ en: {
   'cu-not-held':    'the page at {at} did not read back as written',
   'cu-commit-refused': 'the board would not start the new firmware: it did not '
                   + 'check out',
-  'rec-summary':    'No firmware on this board',
+  'rec-summary':    'DigiMacro is not running on this board',
+  'rec-pass-refused': 'The board said no: the password is wrong, or came within '
+                  + 'a second of a wrong one. Try again in a moment.',
   'rec-none':       'The board\'s core is running, with no DigiMacro on top of '
-                  + 'it: most likely an update was cut off half way. Install it '
-                  + 'again from here.',
+                  + 'it: either this is a first install, or an update was cut '
+                  + 'off half way. Either way, it picks up from here.',
   'rec-halted':     'DigiMacro stopped answering, and the board\'s watchdog reset '
                   + 'it, so the core did not start it again. Install it again '
                   + 'from here -- or unplug the board and plug it back in, to '
@@ -368,6 +370,29 @@ en: {
   'auto-write-first': 'Write the macros first: the board does not hold this '
                   + 'one yet.',
   'serial-tag':     'serial {serial}',
+  'fw-link-move':   '(move to v2…)',
+  'fw-move':        'Move this board to v2: DigiMacro {fw}',
+  'fw-move-why':    'v2 has no bootloader: the board updates itself from here, '
+                  + 'over the same connection, and is safe from a cut-off '
+                  + 'update. This writes v2\'s core through Micronucleus; the '
+                  + 'board then comes back asking for DigiMacro {fw}, which goes '
+                  + 'on over Micronucleus, and Micronucleus is gone. The macros, '
+                  + 'the password, the host key and the serial number all stay. '
+                  + 'A power cut in the first moments of that second step needs '
+                  + 'a programmer to put right, as with any upload through '
+                  + 'Micronucleus.',
+  'fw-moved':       'v2\'s core is on. The board is coming back asking for '
+                  + 'DigiMacro {fw}: install it below.',
+  'core-name':      'v2\'s core',
+  'new-board':      'Set up a new board',
+  'new-plug':       'Plug the new board in, and within five seconds press Set up '
+                  + 'a new board again: the browser will ask you to pick '
+                  + '"Micronucleus".',
+  'new-none':       'Micronucleus was not picked, so nothing was written. Plug '
+                  + 'the board in again and start over.',
+  'new-done':       'v2\'s core is on. Press Connect and pick the board: it is '
+                  + 'DigiMacro now, asking for its firmware.',
+  'new-no-v2':      'This page has no v2 firmware to set a board up with.',
   'hd-raw':         'As the chip reads them: low fuse {low}, high {high}, '
                   + 'extended {ext}, lock {lock}.',
   close:            'Close',
@@ -753,10 +778,12 @@ pt: {
   'cu-not-held':    'a página em {at} não foi lida de volta como gravada',
   'cu-commit-refused': 'a placa não iniciou o novo firmware: ele não foi '
                   + 'validado',
-  'rec-summary':    'Sem firmware nesta placa',
+  'rec-summary':    'O DigiMacro não está rodando nesta placa',
+  'rec-pass-refused': 'A placa recusou: a senha está errada, ou veio menos de um '
+                  + 'segundo depois de uma errada. Tente de novo daqui a pouco.',
   'rec-none':       'O núcleo da placa está rodando, sem o DigiMacro em cima '
-                  + 'dele: provavelmente uma atualização foi interrompida no '
-                  + 'meio. Instale de novo daqui.',
+                  + 'dele: ou esta é a primeira instalação, ou uma atualização '
+                  + 'foi interrompida no meio. Em qualquer caso, continua daqui.',
   'rec-halted':     'O DigiMacro parou de responder, e o watchdog da placa a '
                   + 'reiniciou, então o núcleo não o iniciou de novo. Instale de '
                   + 'novo daqui -- ou desconecte a placa e conecte de novo, para '
@@ -781,6 +808,29 @@ pt: {
   'auto-saved-none': 'Salvo: a placa não digita nada ao ser conectada.',
   'auto-write-first': 'Grave as macros antes: a placa ainda não tem esta.',
   'serial-tag':     'série {serial}',
+  'fw-link-move':   '(mudar para a v2…)',
+  'fw-move':        'Mudar esta placa para a v2: DigiMacro {fw}',
+  'fw-move-why':    'A v2 não tem bootloader: a placa se atualiza daqui, pela '
+                  + 'mesma conexão, e resiste a uma atualização interrompida. '
+                  + 'Isto grava o núcleo da v2 pelo Micronucleus; a placa então '
+                  + 'volta pedindo o DigiMacro {fw}, que é gravado por cima do '
+                  + 'Micronucleus, e o Micronucleus some. As macros, a senha, a '
+                  + 'chave do computador e o número de série ficam. Uma queda de '
+                  + 'energia nos primeiros instantes desse segundo passo precisa '
+                  + 'de um gravador para consertar, como qualquer gravação pelo '
+                  + 'Micronucleus.',
+  'fw-moved':       'O núcleo da v2 está gravado. A placa está voltando e pedindo '
+                  + 'o DigiMacro {fw}: instale-o abaixo.',
+  'core-name':      'o núcleo da v2',
+  'new-board':      'Preparar uma placa nova',
+  'new-plug':       'Conecte a placa nova e, em até cinco segundos, clique em '
+                  + 'Preparar uma placa nova de novo: o navegador vai pedir que '
+                  + 'você escolha "Micronucleus".',
+  'new-none':       'O Micronucleus não foi escolhido, então nada foi gravado. '
+                  + 'Conecte a placa de novo e recomece.',
+  'new-done':       'O núcleo da v2 está gravado. Clique em Conectar e escolha a '
+                  + 'placa: agora ela é um DigiMacro, pedindo o seu firmware.',
+  'new-no-v2':      'Esta página não tem firmware v2 para preparar uma placa.',
   'hd-raw':         'Como o chip os lê: fuse baixo {low}, alto {high}, '
                   + 'estendido {ext}, trava {lock}.',
   close:            'Fechar',

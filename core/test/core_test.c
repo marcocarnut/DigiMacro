@@ -19,6 +19,7 @@
 uint8_t FLASH[8192];
 #define flashByte(a)    FLASH[(uint16_t)(a)]
 #define flashWord(a)    (FLASH[(uint16_t)(a)] | FLASH[(uint16_t)((a) + 1)] << 8)
+#define flashCopy(d, a, n) memcpy((d), FLASH + (a), (n))
 #define FOREVER         /* once: the test turns the loop itself */
 #define NORETURN
 
@@ -26,17 +27,48 @@ uint8_t FLASH[8192];
 static void *appSlots[16];
 #define APP(slot, type) ((type)appSlots[slot])
 
-/* Flash writes, checked: nothing may ever land below the boundary. */
-static int erases, writes, softResets, belowBoundary;
+/* The core's own reset vector, as the linker would put it at address 0:
+   an rjmp to its start-up code. */
+#define RESET_WORD      0xC083
+
+/* Flash writes, checked: nothing may ever land below the boundary -- but
+   page 0, rewritten whole with only its reset vector changed back to the
+   core's own (core.c, ownResetVector()). */
+static int erases, writes, softResets, belowBoundary, page0Writes;
+static int vectorsBlank;                /* page 0 erased and left so, between
+                                           calls, interrupts on: a brick */
+static uint8_t page0Before[PAGE];
 static int headerErasedFirst = -1;      /* was the header gone before page 1? */
+static void spmErase(uint16_t a);
+static void spmWrite(uint16_t a, const uint8_t *p);
+
+/* core.c's spm(): what it may do to page 0 is erase and write it in the
+   same call, interrupts off throughout. Erased alone, the vectors stay
+   blank until the next call, and V-USB's interrupt finds them so. */
+static void spm(uint16_t a, const uint8_t *p, uint8_t erase)
+{
+    if (a == 0 && !(erase && p)) vectorsBlank++;
+    if (erase) spmErase(a);
+    if (p) spmWrite(a, p);
+}
+
 static void spmErase(uint16_t a)
 {
+    if (a == 0) { memcpy(page0Before, FLASH, PAGE); memset(FLASH, 0xFF, PAGE); erases++; return; }
     if (a < APP_START || a % PAGE) belowBoundary++;
     else memset(FLASH + a, 0xFF, PAGE);
     erases++;
 }
 static void spmWrite(uint16_t a, const uint8_t *p)
 {
+    if (a == 0) {
+        /* everything as it was but the first word, which is the core's own */
+        if ((p[0] | p[1] << 8) != RESET_WORD
+            || memcmp(p + 2, page0Before + 2, PAGE - 2)) belowBoundary++;
+        memcpy(FLASH, p, PAGE);
+        page0Writes++;
+        return;
+    }
     if (a < APP_START || a % PAGE) { belowBoundary++; return; }
     if (headerErasedFirst < 0 && a != APP_START)
         headerErasedFirst = FLASH[APP_MAGIC] == 0xFF;
@@ -69,6 +101,8 @@ void usbDeviceDisconnect(void) { }
 static uint8_t lockState, hostState, hostAuthOk;
 static int hostForgot, passWrongs, passRights, passChanges;
 static void    tVoid(void) { }
+static int setupSawWatchdog;            /* was it armed when setup ran? */
+static void    tSetup(void) { setupSawWatchdog = wdtEnabled; }
 void    hidPassWrong(void) { passWrongs++; }
 void    hidPassRight(void) { passRights++; }
 void    hidPassChanged(void) { passChanges++; }
@@ -153,7 +187,7 @@ static void boot(void)                  /* main(), without the loop */
     commitWait = 0; allowOpen = 0; restartWanted = 0;
     readFuses();
     halted = 0; wdtEnabled = 0;
-    appStart(0);
+    appStart(1 << PORF);                /* plugged in */
     hidRestart();
 }
 
@@ -192,10 +226,14 @@ static int sendImage(int headerLast, int stopAfter)
 
 static void setup(void)
 {
-    appSlots[APP_SETUP] = (void *)tVoid;       appSlots[APP_LOOP] = (void *)tVoid;
+    appSlots[APP_SETUP] = (void *)tSetup;       appSlots[APP_LOOP] = (void *)tVoid;
     appSlots[APP_REQUEST] = (void *)app_request;
     memset(FLASH, 0xFF, sizeof FLASH);
     memset(FLASH, 0x5A, APP_START);     /* the core, which must never change */
+    FLASH[0] = RESET_WORD & 0xFF;       /* its reset vector, as a programmer */
+    FLASH[1] = RESET_WORD >> 8;         /* would have left it */
+    page0Writes = 0;
+    vectorsBlank = 0;
     memset(EE, 0xFF, sizeof EE);
     EE[DM_SERIAL_ADDR] = 0x78; EE[DM_SERIAL_ADDR + 1] = 0x56;
     EE[DM_SERIAL_ADDR + 2] = 0x34; EE[DM_SERIAL_ADDR + 3] = 0x12;
@@ -221,9 +259,24 @@ static const uint8_t *askPass(uint8_t cmd, const char *p)
     return ask(cmd, 0, strlen(p), (const uint8_t *)p);
 }
 
+/* A string descriptor as the host would read it: UTF-16LE, its length and
+   type in front. */
+static int strDesc(uint8_t which, const char *want)
+{
+    usbRequest_t rq = { 0x80, 6, { .bytes = { which, 3 } } };
+    uint8_t len = usbFunctionDescriptor(&rq);
+    const uint8_t *d = usbMsgPtr;
+    size_t n = strlen(want);
+    if (len != 2 + 2 * n || d[0] != len || d[1] != 3) return 0;
+    for (size_t i = 0; i < n; i++)
+        if (d[2 + 2 * i] != (uint8_t)want[i] || d[3 + 2 * i] != 0) return 0;
+    return 1;
+}
+
 static int coreIntact(void)
 {
-    for (int i = 0; i < APP_START; i++) if (FLASH[i] != 0x5A) return 0;
+    if ((FLASH[0] | FLASH[1] << 8) != RESET_WORD) return 0;
+    for (int i = 2; i < APP_START; i++) if (FLASH[i] != 0x5A) return 0;
     return 1;
 }
 
@@ -252,9 +305,21 @@ int main(void)
     r = ask(DM_FUNC_INFO, 0, 0, NULL);
     CHECK(r[7] & DM_ST_OPEN);
     /* the serial, from EEPROM */
-    CHECK(usbDescriptorStringSerialNumber[1] == 'p'
-          && usbDescriptorStringSerialNumber[16] == '1'
-          && usbDescriptorStringSerialNumber[23] == '8');
+    CHECK(strDesc(3, "postcogito.org:12345678"));
+    CHECK(strDesc(1, "digimacro.postcogito.org"));
+    CHECK(strDesc(2, "DigiMacro"));
+    {
+        usbRequest_t rq = { 0x80, 6, { .bytes = { 0, 3 } } };
+        CHECK(usbFunctionDescriptor(&rq) == 4
+              && !memcmp(usbMsgPtr, "\x04\x03\x09\x04", 4));       /* US English */
+        rq.wValue.bytes[0] = 4;
+        CHECK(usbFunctionDescriptor(&rq) == 0);                     /* none */
+    }
+    /* A new serial is what the next enumeration sees, no restart of the
+       core's own needed */
+    EE[DM_SERIAL_ADDR] = 0xEF; EE[DM_SERIAL_ADDR + 3] = 0xAB;
+    CHECK(strDesc(3, "postcogito.org:AB3456EF"));
+    CHECK(strDesc(2, "DigiMacro"));                     /* nothing left over */
 
     printf("an app that does not check out is not run\n");
     setup(); FLASH[APP_CODE + 5] ^= 1; boot();
@@ -395,6 +460,7 @@ int main(void)
     printf("an app the watchdog had to reset is not started again\n");
     setup();
     CHECK(F.app && wdtEnabled);                 /* armed once it is set up */
+    CHECK(setupSawWatchdog);                    /* ...and while it was */
     wdtResets = 0; corePoll();
     CHECK(wdtResets > 0);                       /* and fed by corePoll() */
     GPIOR0 = 0; halted = 0; wdtEnabled = 0;
@@ -411,8 +477,74 @@ int main(void)
     pageHalf = 0;
     /* a reset for any other reason runs it */
     GPIOR0 = 0; halted = 0;
-    appStart(1 << 1);                           /* EXTRF */
+    appStart(1 << EXTRF);
     CHECK(F.app && !halted);
+#if !HAS_BOOTLOADER
+    printf("a crash is not run again; the core's own restart is\n");
+    /* No reason at all: a jump to address 0. */
+    GPIOR0 = 0; halted = 0;
+    appStart(0);
+    CHECK(!F.app && halted == DM_CORE_HALTED);
+    /* The watchdog, with softReset()'s mark: the core's own, after a commit */
+    GPIOR0 = 0; halted = 0;
+    restartMark = RESTART_MARK;
+    appStart(1 << WDRF);
+    CHECK(F.app && !halted && restartMark != RESTART_MARK);  /* used up */
+    /* ...and only once: the next watchdog reset is the app's again */
+    GPIOR0 = 0; halted = 0;
+    appStart(1 << WDRF);
+    CHECK(!F.app && halted == DM_CORE_HALTED);
+#else
+    printf("beside Micronucleus, no crash can be told from a start\n");
+    GPIOR0 = 0; halted = 0;
+    appStart(0);
+    CHECK(F.app && !halted);
+#endif
+
+    printf("a refusal wipes what it carried; INFO survives the window closing\n");
+    setup(); storePass("test");
+    r = askPass(DM_FUNC_UNLOCK, "test");               /* no window */
+    CHECK(r[0] == DM_REFUSED && r[4] == 0);
+    r = askPass(DM_FUNC_SETPASS, "newsecret");
+    CHECK(r[0] == DM_REFUSED && r[4] == 0);
+    hidAllow(1000);
+    ms += 2000;                                         /* expires unasked */
+    r = ask(DM_FUNC_INFO, 0, 0, NULL);
+    CHECK(r[DM_INFO_API] == CORE_API && r[DM_INFO_PAGE] == PAGE);
+    CHECK(!allowOpen);
+
+    printf("nothing read back before a page is written, nothing after a commit\n");
+    setup(); hidAllow(1000);
+    ask(DM_FUNC_PAGE, APP_START + PAGE, 32, image + PAGE);
+    usbTxLen = 4;
+    ask(DM_FUNC_PAGE, APP_START + PAGE + 32, 32, image + PAGE + 32);
+    CHECK(pageWanted);
+    /* the flash still holds the old page: no answer from it yet */
+    CHECK(ask(DM_FUNC_FREAD, APP_START + PAGE, 32, NULL)[0] == DM_REFUSED);
+    spin();
+    CHECK(!pageWanted && ask(DM_FUNC_FREAD, APP_START + PAGE, 32, NULL)[0] == DM_FUNC_FREAD);
+    makeImage(900, 9, 0x99);
+    CHECK(sendImage(1, -1) > 0);
+    CHECK(ask(DM_FUNC_COMMIT, 0, 0, NULL)[0] == DM_FUNC_COMMIT);
+    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_REFUSED);
+    CHECK(!pageHalf && FLASH[APP_MAGIC] == APP_MAGIC0);
+
+#if !HAS_BOOTLOADER
+    printf("a core Micronucleus put here takes its reset vector back, once\n");
+    setup(); memset(FLASH + APP_START, 0xFF, PAGE); boot();
+    FLASH[0] = 0xFF; FLASH[1] = 0xCC;                   /* rjmp 0x1A00 */
+    makeImage(900, 10, 0xAA);
+    CHECK(sendImage(1, 1) == 1);                        /* the first page */
+    CHECK(page0Writes == 1 && belowBoundary == 0 && coreIntact());
+    CHECK(vectorsBlank == 0);                           /* never left blank */
+    CHECK(sendImage(1, -1) > 0);                        /* and no more */
+    CHECK(page0Writes == 1 && coreIntact());
+    CHECK(ask(DM_FUNC_COMMIT, 0, 0, NULL)[0] == DM_FUNC_COMMIT);
+    printf("...and a core flashed by a programmer never touches page 0\n");
+    setup(); hidAllow(1000);
+    makeImage(900, 10, 0xAB);
+    CHECK(sendImage(1, -1) > 0 && page0Writes == 0);
+#endif
 
     printf("the host check needs no gate, and does nothing else\n");
     setup();
@@ -456,7 +588,7 @@ int main(void)
     printf("FREAD reads any flash, the core included, with no gate\n");
     setup();
     r = ask(DM_FUNC_FREAD, 0, 4, NULL);
-    CHECK(r[0] == DM_FUNC_FREAD && r[4] == 0x5A);
+    CHECK(r[0] == DM_FUNC_FREAD && (r[4] | r[5] << 8) == RESET_WORD && r[6] == 0x5A);
     r = ask(DM_FUNC_FREAD, APP_MAGIC, 2, NULL);
     CHECK(r[4] == 'D' && r[5] == 'M');
     r = ask(DM_FUNC_FREAD, 8190, 4, NULL);

@@ -3,3 +3,4 @@
 *.hex
 *.bin
 __pycache__/
+spike-page.html

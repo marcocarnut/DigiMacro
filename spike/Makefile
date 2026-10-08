@@ -3,6 +3,8 @@
 #   make            core.hex, appA.hex, appB.hex, appC.hex (which hangs after
 #                   ten seconds, for the watchdog), and spikeA.hex (core +
 #                   app A, the image that goes onto a board)
+#   make page       spike-page.html: the page, with apps A, B and C inside --
+#                   one file to open in Chrome anywhere, no server needed
 #   make test       the core's request handling, built for the host
 #   make size       what each part takes
 #   make upload     spikeA.hex onto a Digispark, through Micronucleus
@@ -99,6 +101,15 @@ apphex.py: ;
 spike%.hex: core.hex app%.hex
 	python3 apphex.py join $@ $^
 
+spike-page.html: page.html appA.hex appB.hex appC.hex
+	python3 -c 'import json,sys; \
+	    apps = {n: open("app%s.hex" % n).read() for n in "ABC"}; \
+	    page = open("page.html").read().replace("/*APPS*/{}", json.dumps(apps)); \
+	    open("spike-page.html", "w").write(page)'
+	@echo "spike-page.html: open it in Chrome"
+
+page: spike-page.html
+
 size: core.elf appA.elf proto.o
 	$(SIZE) core.elf appA.elf proto.o
 
@@ -109,8 +120,8 @@ test:
 	$(MAKE) -C test
 
 clean:
-	rm -f *.o *.elf *.hex *.bin
+	rm -f *.o *.elf *.hex *.bin spike-page.html
 	$(MAKE) -C test clean
 
-.PHONY: all size upload test clean
+.PHONY: all page size upload test clean
 .PRECIOUS: app%.o apphdr%.o app%.elf

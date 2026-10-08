@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DigiMacro v2 spike</title>
+<!--
+  The spike's page: talks to the v2 core over WebHID, as the real page will,
+  to try updates on hosts other than Linux -- Windows 10 first.
+
+  `make page` turns this into spike-page.html with apps A, B and C inside,
+  one file that needs no server: copy it anywhere and open it in Chrome.
+
+  Two rules learned on the board. The board has one report for everybody,
+  so another program with it open -- the v1 app in a tab -- can ask between
+  this page's question and its read of the answer: an answer counts only if
+  it echoes this page's command and address. And a page is known written
+  when the flash, read back, holds it -- not when the board says so.
+-->
+<style>
+:root {
+  --bg: #fbfaf7; --fg: #1d1d1b; --muted: #6b6a66; --line: #dddad2;
+  --ok: #1f7a3a; --bad: #b3261e; --accent: #2f5fb3; --panel: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161614; --fg: #e8e6e0; --muted: #9b9890; --line: #33322e;
+    --ok: #5cc97f; --bad: #ff8a80; --accent: #8fb3ff; --panel: #1f1f1c;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 15px/1.45 system-ui, sans-serif;
+}
+main { max-width: 760px; margin: 0 auto; padding: 20px 16px 40px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 18px; }
+section {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 14px; margin: 0 0 14px;
+}
+h2 { font-size: 15px; margin: 0 0 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+button {
+  font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+}
+button.main { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .45; cursor: default; }
+input[type=password], input[type=text] {
+  font: inherit; padding: 5px 8px; border-radius: 6px; width: 14em; max-width: 100%;
+  border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+}
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 0; }
+dt { color: var(--muted); }
+dd { margin: 0; font-variant-numeric: tabular-nums; }
+.ok { color: var(--ok); } .bad { color: var(--bad); }
+progress { width: 100%; height: 10px; }
+#log {
+  font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; margin: 0;
+  max-height: 260px; overflow: auto; color: var(--muted);
+}
+</style>
+</head>
+<body>
+<main>
+<h1>DigiMacro v2 spike</h1>
+<p class="sub">Replace the app above the core, over WebHID.</p>
+
+<section>
+  <h2>Board</h2>
+  <div class="row">
+    <button id="connect" class="main">Connect</button>
+    <button id="refresh" disabled>Read INFO</button>
+    <span id="conn" class="sub" style="margin:0"></span>
+  </div>
+  <dl id="info"></dl>
+</section>
+
+<section>
+  <h2>Password</h2>
+  <div class="row">
+    <input id="pass" type="password" autocomplete="off" placeholder="password">
+    <button id="unlock" disabled>Unlock</button>
+    <button id="setpass" disabled>Set it</button>
+    <button id="clearpass" disabled>Clear it</button>
+  </div>
+  <p class="sub" style="margin:4px 0 0">Unlock with no app answers to the
+  core alone; with one, the app's window must be open too (the spike's apps
+  keep it open).</p>
+</section>
+
+<section>
+  <h2>Update</h2>
+  <div class="row" id="apps"></div>
+  <div class="row">
+    <input id="file" type="file" accept=".hex">
+    <label><input id="arm" type="checkbox" checked> ask the app to open the
+      update window first</label>
+    <label><input id="slow" type="checkbox"> slowly: a second a page, time
+      to pull the cable</label>
+  </div>
+  <div class="row"><progress id="prog" max="1" value="0"></progress></div>
+  <div id="upd" class="sub" style="margin:0"></div>
+</section>
+
+<section>
+  <h2>Log</h2>
+  <pre id="log"></pre>
+</section>
+</main>
+
+<script>
+'use strict';
+/* APPS: filled in by `make page` -- { name: hex text } */
+const APPS = /*APPS*/{};
+
+const VND_ID = 2, VND_LEN = 36, DATA = 4, CHUNK = 32;
+const INFO = 0x40, UNLOCK = 0x62, SETPASS = 0x63, PAGE = 0x65,
+      FREAD = 0x66, COMMIT = 0x67, UPDATE = 0x68, REFUSED = 0xEE;
+
+const $ = id => document.getElementById(id);
+let dev = null, busy = false, idInPayload = null, region = null;
+
+function log(msg, cls) {
+  const t = (performance.now() / 1000).toFixed(2).padStart(8);
+  const line = document.createElement('div');
+  line.textContent = t + '  ' + msg;
+  if (cls) line.className = cls;
+  $('log').append(line);
+  $('log').scrollTop = $('log').scrollHeight;
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---- talking to it ------------------------------------------------- */
+
+async function send(cmd, addr = 0, count = 0, data = null) {
+  const out = new Uint8Array(VND_LEN);
+  out[0] = cmd; out[1] = addr & 0xFF; out[2] = addr >> 8; out[3] = count;
+  if (data) out.set(data, DATA);
+  await dev.sendFeatureReport(VND_ID, out);
+}
+
+async function receive() {
+  const view = await dev.receiveFeatureReport(VND_ID);
+  let b = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  /* No command is 2, so a leading 2 can only be the report ID: some hosts
+     hand it back, some do not. */
+  if (idInPayload === null) idInPayload = b[0] === VND_ID && b.length > VND_LEN;
+  return idInPayload ? b.slice(1) : b;
+}
+
+/* An answer to this question, not somebody else's: it echoes the command,
+   or refuses it, and keeps the address. Otherwise ask again. */
+async function askOwn(cmd, addr = 0, count = 0, data = null) {
+  for (let i = 0; i < 10; i++) {
+    await send(cmd, addr, count, data);
+    const b = await receive();
+    /* INFO answers over the address with its magic */
+    const mine = cmd === INFO ? b[0] === INFO && b[1] === 0x44
+               : (b[0] === cmd || b[0] === REFUSED) && (b[1] | b[2] << 8) === addr;
+    if (mine) return b;
+    log(`answer to 0x${cmd.toString(16)} was somebody else's (0x${b[0].toString(16)}): again`);
+    await sleep(5);
+  }
+  throw new Error('something else keeps asking the board');
+}
+
+/* ---- the board ----------------------------------------------------- */
+
+const hex2 = n => n.toString(16).toUpperCase().padStart(2, '0');
+const hex4 = n => n.toString(16).toUpperCase().padStart(4, '0');
+
+async function readInfo() {
+  const b = await askOwn(INFO);
+  if (b[1] !== 0x44 || b[2] !== 0x4D) throw new Error('not a DigiMacro');
+  const core = b[12], st = b[7];
+  const modes = [];
+  if (b[3] >= 3) {
+    if (core & 1) modes.push('app running');
+    if (core & 2) modes.push('taking pages');
+    if (core & 4) modes.push('halted by the watchdog');
+    if (!(core & 7)) modes.push('no app');
+  }
+  const bits = [];
+  if (st & 1) bits.push('window open');
+  if (st & 2) bits.push(st & 4 ? 'password given' : 'password set, not given');
+  else bits.push('no password');
+  region = b[3] >= 3 ? { start: b[15] | b[16] << 8, end: b[17] | b[18] << 8,
+                         page: b[19], app: !!(core & 1) } : null;
+  const rows = [
+    ['protocol', b[3]],
+    [b[3] >= 3 ? 'core' : 'firmware', b[4]],
+    ['state', modes.join(', ') || '-'],
+    ['app version', b[3] >= 3 ? (b[13] || '-') : '-'],
+    ['gates', bits.join(', ')],
+    ['app region', region ? `0x${hex4(region.start)}–0x${hex4(region.end)}, pages of ${region.page}` : '-'],
+    ['fuses', [...b.slice(8, 12)].map(hex2).join(' ') + '  (low high ext lock)'],
+  ];
+  $('info').replaceChildren(...rows.flatMap(([k, v]) => {
+    const dt = document.createElement('dt'), dd = document.createElement('dd');
+    dt.textContent = k; dd.textContent = v;
+    return [dt, dd];
+  }));
+  if (b[3] < 3) log('this board has no v2 core: protocol ' + b[3], 'bad');
+  return b;
+}
+
+function enable() {
+  const on = !!dev && !busy;
+  for (const id of ['refresh', 'unlock', 'setpass', 'clearpass', 'file'])
+    $(id).disabled = !on;
+  for (const b of $('apps').querySelectorAll('button')) b.disabled = !on;
+  $('connect').disabled = !!dev || busy;
+  $('conn').textContent = dev ? (dev.productName || 'connected') : 'not connected';
+}
+
+async function connect(mayAsk) {
+  if (dev || !navigator.hid) {
+    if (!navigator.hid) log('no WebHID here: Chrome or Edge, on https or a file', 'bad');
+    return;
+  }
+  try {
+    const want = d => d.vendorId === 0x16c0 && d.productId === 0x27db
+                   && d.collections.some(c => c.usagePage === 0xFF00);
+    let d = (await navigator.hid.getDevices()).find(want);
+    if (!d && mayAsk)
+      d = (await navigator.hid.requestDevice(
+             { filters: [{ vendorId: 0x16c0, productId: 0x27db, usagePage: 0xFF00 }] }))[0];
+    if (!d) return;
+    if (!d.opened) await d.open();
+    dev = d; idInPayload = null;
+    log('connected');
+    await readInfo();
+  } catch (e) {
+    dev = null;
+    log('connect: ' + e.message, 'bad');
+  }
+  enable();
+}
+
+navigator.hid?.addEventListener('disconnect', ev => {
+  if (ev.device !== dev) return;
+  dev = null; log('disconnected');
+  enable();
+});
+navigator.hid?.addEventListener('connect', ev => {
+  setTimeout(() => connect(false), 300);
+});
+
+/* ---- the password -------------------------------------------------- */
+
+async function withBoard(fn) {
+  if (busy) return;
+  busy = true; enable();
+  try { await fn(); } catch (e) { log(e.message, 'bad'); }
+  busy = false; enable();
+  if (dev) try { await readInfo(); } catch (e) {}
+}
+
+function passBytes() {
+  const p = new TextEncoder().encode($('pass').value);
+  if (p.length > 12) throw new Error('twelve bytes at most');
+  return p;
+}
+
+$('unlock').onclick = () => withBoard(async () => {
+  const p = passBytes();
+  const b = await askOwn(UNLOCK, 0, p.length, p);
+  log(b[0] === UNLOCK ? 'unlocked'
+      : 'refused: wrong, within a second of a wrong one, or the window shut',
+      b[0] === UNLOCK ? 'ok' : 'bad');
+});
+$('setpass').onclick = () => withBoard(async () => {
+  const p = passBytes();
+  if (!p.length) throw new Error('empty: use "Clear it"');
+  const b = await askOwn(SETPASS, 0, p.length, p);
+  log(b[0] === SETPASS ? 'password set' : 'refused', b[0] === SETPASS ? 'ok' : 'bad');
+});
+$('clearpass').onclick = () => withBoard(async () => {
+  const b = await askOwn(SETPASS, 0, 0);
+  log(b[0] === SETPASS ? 'password cleared' : 'refused', b[0] === SETPASS ? 'ok' : 'bad');
+});
+
+/* ---- the update ---------------------------------------------------- */
+
+function parseHex(text) {
+  const mem = new Map();
+  let base = 0;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line.startsWith(':')) continue;
+    const r = line.slice(1).match(/../g).map(h => parseInt(h, 16));
+    if (r.reduce((a, b) => a + b, 0) & 0xFF) throw new Error('bad checksum in the hex');
+    const [n, ah, al, kind] = r;
+    if (kind === 0) for (let i = 0; i < n; i++) mem.set(base + (ah << 8 | al) + i, r[4 + i]);
+    else if (kind === 2) base = (r[4] << 8 | r[5]) << 4;
+    else if (kind === 4) base = (r[4] << 8 | r[5]) << 16;
+  }
+  return mem;
+}
+
+/* Read the page back. The board halts while it erases and writes, and a
+   request that meets the halt fails: that, or the old contents, mean not
+   yet -- so ask again, at once.
+
+   No timers in here: Chrome stretches a timer in a tab that is not in front
+   to a second or more, which made one update take 17 s instead of 1. The
+   HID requests themselves are not slowed, and they are the wait. */
+async function pageHolds(addr, page) {
+  for (let tries = 0; tries < 300; tries++) {
+    try {
+      let same = true;
+      for (let h = 0; h < page.length && same; h += CHUNK) {
+        const b = await askOwn(FREAD, addr + h, CHUNK);
+        for (let i = 0; i < CHUNK; i++)
+          if (b[DATA + i] !== page[h + i]) { same = false; break; }
+      }
+      if (same) return true;
+    } catch (e) {
+      if (e.message.startsWith('something else')) throw e;
+    }
+  }
+  return false;
+}
+
+async function update(name, text) {
+  const mem = parseHex(text);
+  const addrs = [...mem.keys()];
+  const lo = Math.min(...addrs), hi = Math.max(...addrs) + 1;
+  const b = await readInfo();
+  if (!region) throw new Error('no v2 core on this board');
+  if (lo !== region.start || hi > region.end)
+    throw new Error(`the image, 0x${hex4(lo)}–0x${hex4(hi)}, does not fit the app region`);
+
+  if (region.app && $('arm').checked) {
+    const r = await askOwn(UPDATE);
+    log(r[0] === UPDATE ? 'update window opened' : 'the app would not open the update window',
+        r[0] === UPDATE ? '' : 'bad');
+  }
+
+  const size = region.page, pages = [];
+  for (let p = region.start; p < hi; p += size) pages.push(p);
+  pages.push(pages.shift());            /* the header page last */
+
+  const t0 = performance.now();
+  $('prog').max = pages.length; $('prog').value = 0;
+  for (const [i, p] of pages.entries()) {
+    const page = new Uint8Array(size);
+    for (let j = 0; j < size; j++) page[j] = mem.has(p + j) ? mem.get(p + j) : 0xFF;
+    const first = await askOwn(PAGE, p, CHUNK, page.subarray(0, CHUNK));
+    if (first[0] !== PAGE)
+      throw new Error(`page 0x${hex4(p)} refused` + (i ? '' :
+                      ': password not given, or the update window shut'));
+    await send(PAGE, p + CHUNK, CHUNK, page.subarray(CHUNK));
+    if (!await pageHolds(p, page)) throw new Error(`page 0x${hex4(p)}: the flash does not hold it`);
+    $('prog').value = i + 1;
+    if ($('slow').checked) await sleep(1000);
+    $('upd').textContent = `${name}: page 0x${hex4(p)}, ${i + 1} of ${pages.length}`;
+  }
+  const secs = ((performance.now() - t0) / 1000).toFixed(1);
+  const c = await askOwn(COMMIT);
+  if (c[0] !== COMMIT) throw new Error('commit refused: the app did not check out');
+  log(`${name}: ${pages.length} pages in ${secs} s, committed; the board restarts`, 'ok');
+  $('upd').textContent = `${name}: done in ${secs} s`;
+}
+
+for (const name of Object.keys(APPS)) {
+  const btn = document.createElement('button');
+  btn.textContent = 'Put on app ' + name;
+  btn.disabled = true;
+  btn.onclick = () => withBoard(() => update('app ' + name, APPS[name]));
+  $('apps').append(btn);
+}
+if (!Object.keys(APPS).length)
+  $('apps').textContent = 'No apps built in: run `make page`, or choose a .hex below.';
+
+$('file').onchange = () => {
+  const f = $('file').files[0];
+  if (!f) return;
+  withBoard(async () => update(f.name, await f.text()));
+  $('file').value = '';
+};
+
+$('connect').onclick = () => connect(true);
+$('refresh').onclick = () => withBoard(readInfo);
+enable();
+connect(false);
+</script>
+</body>
+</html>

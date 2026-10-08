@@ -315,6 +315,21 @@ static void takePage(uint16_t addr, uint8_t n)
     }
 }
 
+/* INFO from [1] on, as far as it never changes; the zeros are filled in. */
+static const uint8_t PROGMEM infoFixed[DM_VND_LEN - 1] = {
+    DM_MAGIC0, DM_MAGIC1, DM_PROTOCOL_VERSION, DM_CORE_VERSION,
+    (uint8_t)(E2END + 1), (uint8_t)((E2END + 1) >> 8),
+    0,                                  /* [7] state */
+    0, 0, 0, 0,                         /* [8..11] fuses */
+    0,                                  /* [12] core state */
+    0,                                  /* [13] app version */
+    CORE_API,
+    (uint8_t)APP_START, APP_START >> 8,
+    (uint8_t)APP_END, APP_END >> 8,
+    PAGE,
+};
+_Static_assert(DM_INFO_PAGE == 19, "infoFixed must match layout.h's INFO");
+
 static void vndAnswer(void)
 {
     uint16_t addr = vnd[1] | ((uint16_t)vnd[2] << 8);
@@ -355,13 +370,9 @@ static void vndAnswer(void)
 
     switch (cmd) {
     case DM_FUNC_INFO:
-        memset(vnd + 1, 0, DM_VND_LEN - 1);
-        vnd[1] = DM_MAGIC0;
-        vnd[2] = DM_MAGIC1;
-        vnd[3] = DM_PROTOCOL_VERSION;
-        vnd[4] = DM_CORE_VERSION;
-        vnd[5] = (uint8_t)(E2END + 1);
-        vnd[6] = (uint8_t)((E2END + 1) >> 8);
+        /* What never changes comes from a template; what does is filled
+           in over it. */
+        memcpy_P(vnd + 1, infoFixed, sizeof infoFixed);
         memcpy(vnd + DM_INFO_FUSES, fuses, 4);
         vnd[7] = hidAllowed() ? DM_ST_OPEN : 0;
         if (mode & DM_CORE_APP) {
@@ -371,13 +382,7 @@ static void vndAnswer(void)
                     | APP(APP_HOSTSTATE, appByte)();
             vnd[DM_INFO_APPVER] = flashByte(APP_VERSION);
         }
-        vnd[DM_INFO_CORE]    = mode;
-        vnd[DM_INFO_API]     = CORE_API;
-        vnd[DM_INFO_START]   = (uint8_t)APP_START;
-        vnd[DM_INFO_START+1] = APP_START >> 8;
-        vnd[DM_INFO_END]     = (uint8_t)APP_END;
-        vnd[DM_INFO_END+1]   = APP_END >> 8;
-        vnd[DM_INFO_PAGE]    = PAGE;
+        vnd[DM_INFO_CORE] = mode;
         break;
 
     case DM_FUNC_UNLOCK:

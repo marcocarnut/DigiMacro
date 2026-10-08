@@ -50,7 +50,9 @@ void app_loop(void)
         blinked = now;
         PINB = 1 << LED;                /* toggles it */
     }
-    if (!typed && hidAwake() && now - since > 1000) {
+    /* As v1's start-up macro: a second after the host writes the lock
+       lights, or three without -- a host with every light off never does. */
+    if (!typed && hidReady() && now - since > (hidAwake() ? 1000 : 3000)) {
         for (const char *p = line; *p; p++) typeChar(*p);
         typed = 1;
     }

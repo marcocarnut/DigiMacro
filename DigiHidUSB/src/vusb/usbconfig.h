@@ -163,6 +163,15 @@ section at the end of this file).
  * (besides debugging) is to flash a status LED on each packet.
  */
 /* #define USB_RESET_HOOK(resetStarts)     if(!resetStarts){hadUsbReset();} */
+
+/* DigiMacro: with no bootloader, nothing has tuned the RC oscillator, and
+ * 16.5 MHz USB needs it within about 1%. Micronucleus normally does this and
+ * leaves OSCCAL tuned when it starts the application; without it, the clock
+ * is calibrated here against the host's 1 ms frames at the end of every bus
+ * reset, which is what osccal.h's hook does. */
+#if DM_NO_BOOTLOADER
+#include "osccal.h"
+#endif
 /* This macro is a hook if you need to know when an USB RESET occurs. It has
  * one parameter which distinguishes between the start of RESET state and its
  * end.

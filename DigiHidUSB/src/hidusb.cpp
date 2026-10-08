@@ -249,7 +249,11 @@ static void vndAnswer(void)
                | (hidPassSet()  ? DM_ST_PASSWORD : 0)
                | (hidUnlocked() ? DM_ST_UNLOCKED : 0)
                | hidLockState()
-               | hidHostState();
+               | hidHostState()
+#if DM_NO_BOOTLOADER
+               | DM_ST_NOBOOT
+#endif
+               ;
         break;
 
     case DM_FUNC_UNLOCK:
@@ -262,6 +266,7 @@ static void vndAnswer(void)
         hidSetPass(vnd + DM_VND_DATA, n);
         break;
 
+#if !DM_NO_BOOTLOADER
     case DM_FUNC_REBOOT:
         /* Only noted here. This runs inside the USB driver, and the host
            has not yet seen the request complete -- see hidPoll(). Behind
@@ -271,6 +276,7 @@ static void vndAnswer(void)
         rebootWanted = 1;
         rebootAsked = ticks();
         break;
+#endif
 
     case DM_FUNC_READ:
         for (uint8_t i = 0; i < n; i++)

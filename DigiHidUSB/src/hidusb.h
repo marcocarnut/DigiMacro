@@ -53,6 +53,8 @@
 #define DM_ST_HARDLOCK      0x10    /* ...until the password is given */
 #define DM_ST_HOST          0x20    /* the host has proved itself lately */
 #define DM_ST_HOSTKEY       0x40    /* ...and there is a host key to prove */
+#define DM_ST_NOBOOT        0x80    /* built with no bootloader: no updates
+                                       over USB, and no REBOOT */
 
 /* Twelve bytes at the top of the EEPROM, zero-padded, 0xFF for none. The
  * firmware's map owns this address; it is here because guarding this channel

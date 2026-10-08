@@ -11,6 +11,22 @@ nothing on the device itself beyond reading and writing its own EEPROM.
 Sibling of [DigiMacroCDC](../DigiMacroCDC), which keeps an on-device CDC command
 line instead. That one is finished and in use.
 
+> ### ⚠️ Storing passwords or secrets? Read [HARDENED_MODE.md](HARDENED_MODE.md) first — all of it.
+>
+> **A board as it comes protects nothing from anyone who holds it.** Its
+> bootloader accepts a new sketch every time it is plugged in, and a sketch
+> that types out the EEPROM takes a minute to upload: every macro, the
+> password and the host key along with it. The password, the lockout and the
+> host check are all part of the firmware that sketch replaces, and nothing in
+> the app can change that.
+>
+> Hardened mode removes the bootloader, sets the chip's lock bits and leaves
+> EESAVE unprogrammed. It needs an ISP programmer — a second Digispark running
+> [DigiISP](https://digiisp.postcogito.org) will do — and it gives up
+> firmware updates from the page. Even then it stops a determined person, not
+> a laboratory, and it does nothing about the computer the board types into.
+> The document explains each of those trade-offs. Do not skip it.
+
 ## Status: working
 
 Tap a code, the board types the macro; touch the pad again to stop it. One
@@ -198,9 +214,9 @@ any computer could hard-lock the board without anyone touching it. A wrong
 key costs a second instead, on a clock of its own.
 
 What it cannot do is protect against someone who reads the EEPROM directly.
-That is the lock bits' job, with EESAVE unprogrammed and no bootloader. Host
-authentication stops the casual case, someone plugging the board in
-somewhere else and tapping; the lock bits stop the determined one.
+That is what [hardened mode](HARDENED_MODE.md) is for. Host authentication
+stops the casual case, someone plugging the board in somewhere else and
+tapping; hardened mode stops the determined one.
 
 | EEPROM | |
 |---|---|
@@ -325,6 +341,9 @@ demonstrates the repeat escape, `.-` sends Ctrl+Left, and `---` is longer than
 any DigiMacroCDC entry could be; anything else gets three quick blinks.
 `tools/loadtable/loadtable.ino` lists them, and micronucleus never erases
 EEPROM, so the table survives the second upload.
+
+For a board that will hold secrets, `./build.sh isp` builds the firmware with
+no bootloader, as [HARDENED_MODE.md](HARDENED_MODE.md) describes.
 
 Options: `button` for a pushbutton instead of a pad, `rc` for a pad read
 through a bleed resistor, `ledecho` to make the LED follow the input while
@@ -459,6 +478,7 @@ raw protocol page and the notes on reading the pad.
 | `spikehid/` | the sketch that derisked the vendor collection |
 | `web/` | `app.html` is the editor, `hid.html` the raw protocol tool, `table.js` and `i18n.js` what they share, `micronucleus.js` the uploader |
 | `web/firmware/` | what the app installs: the released firmware, and the Micronucleus 2.6 upgrader |
+| `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |
 | `PLAN.md` | design, decisions and what comes next |
 
 [DigiISP](../DigiISP) solved the BOS and MS OS 2.0 work that the WebUSB

@@ -673,7 +673,18 @@ testable, which is why they are in this order rather than firmware-then-app.
 
    What it does not stop is a laptop: micronucleus listens on every plug-in.
    The lockout is against tapping, which the README now says plainly.
-6. **A security section in the README**, for whoever wants the table really
+6. **Hardened mode — written up in `HARDENED_MODE.md`**, which the README
+   now warns, loudly, must be read before a board holds secrets. Writing it
+   found that the no-bootloader build had never been able to work. Micronucleus
+   is what tunes the RC oscillator for 16.5 MHz USB, and leaves it tuned for
+   the firmware; without it nothing did. `./build.sh isp` now sets
+   `DM_NO_BOOTLOADER`, which calibrates against the host's USB frames on every
+   reset (V-USB's own `osccal.c`, which was in the tree all along), drops
+   REBOOT, and tells the app through INFO so the status line can say so. The
+   extended fuse goes to `0xFF` as well as the lock bits, since nothing then
+   needs SPM. Tried on hardware by Marco, all seven steps, and it works.
+
+   The original note, for the record: a security section in the README, for whoever wants the table really
    protected. Marco's summary: real security means programming the **lock
    bits** *and* leaving **EESAVE unprogrammed**, so that any attempt to erase
    the chip -- the only way past the lock bits -- erases the EEPROM with it.

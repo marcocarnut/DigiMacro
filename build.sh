@@ -13,8 +13,10 @@
 #               input path only, since it shows a bystander the code
 #   touchdebug  type the pad readings twice a second, to see what the input
 #               is actually doing: raw, average, touched?, press open?
-#   isp         build for a chip with no bootloader: all 8192 bytes, and a
-#               .hex to feed to a programmer
+#   isp         build for a chip with no bootloader, as HARDENED_MODE.md
+#               describes: all 8192 bytes, the clock calibrated from USB
+#               since no bootloader has done it, no REBOOT, and a .hex to
+#               feed to a programmer
 #   release     the firmware as it ships, copied into web/firmware/ with its
 #               version, which is what the app's "Update the firmware" writes.
 #               Commit the result: the page carries it, so serving the page
@@ -70,6 +72,7 @@ FLAGS=""
 [ "$RC" = 1 ]      && FLAGS="$FLAGS -DTOUCH_PULLUP=0"
 [ "$LEDECHO" = 1 ] && FLAGS="$FLAGS -DLED_ECHO=1"
 [ "$TOUCHDEBUG" = 1 ] && FLAGS="$FLAGS -DTOUCH_DEBUG=1"
+[ "$ISP" = 1 ]     && FLAGS="$FLAGS -DDM_NO_BOOTLOADER=1"
 
 EXTRA=()
 [ -n "$FLAGS" ] && EXTRA=(--build-property "build.extra_flags=${FLAGS# }")

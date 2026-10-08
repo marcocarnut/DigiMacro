@@ -300,7 +300,7 @@ const F_UNLOCK = 0x62, F_SETPASS = 0x63, F_REFUSED = 0xEE;
 const F_REBOOT = 0x41;
 const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
 const ST_SOFTLOCK = 0x08, ST_HARDLOCK = 0x10;
-const ST_HOST = 0x20, ST_HOSTKEY = 0x40;
+const ST_HOST = 0x20, ST_HOSTKEY = 0x40, ST_NOBOOT = 0x80;
 
 /* The host key and how long it is trusted for, and the board's serial number,
    which names the key file so a client can tell boards apart. */
@@ -346,7 +346,10 @@ function renderWho() {
   if (whoKey !== 'connected') { el.textContent = t(whoKey, whoParams); return; }
   const [before, after] = t('connected', { ...whoParams, state: '\u0000' }).split('\u0000');
   el.append(before);
-  if (fwHere !== null) {
+  if (state_byte & ST_NOBOOT) {
+    /* Hardened: there is no bootloader to update through, by design. */
+    el.append(' ' + t('fw-link-noboot'));
+  } else if (fwHere !== null) {
     el.append(' ');
     if (fwOnBoard < fwHere && stage === 'board') {
       const b = document.createElement('button');

@@ -110,8 +110,8 @@ In rough order of difficulty.
 | gain | Micronucleus's 1.5 KB, less jump tables, padding to a page boundary and lost link-time optimisation: perhaps **1–1.3 KB net** |
 
 Measure, don't trust this table: the spike will say. *It did: a 3812-byte
-core, the boundary at `0x1000`, and about 1–1.3 KB free — see* The spike, as
-built.
+core, the boundary at `0x1000`, DigiMacro at 3216 bytes, and 880 free — see*
+The spike, as built.
 
 ## Security
 
@@ -347,15 +347,15 @@ Linux PC, October 2026. Every item on the list above held on the board.
 | the core | **3812 bytes**: V-USB about 1.7 KB of it (C 930, assembler about 790), the descriptors, the request plumbing, the page writer, the app check, the password, the window and the watchdog |
 | boundary | **`0x1000`**, Marco's call: 4 KB each side, with the core's table at `0xFE0` and 252 bytes to spare under it for fixes the port may need. It is final once a board ships with this core |
 | for the app | 4096 bytes below `0x2000` |
-| v1's app half plus `proto.c` | roughly 2.7–3 KB, so **about 1–1.3 KB free**, against v1's 684 |
+| DigiMacro, ported | **3216 bytes measured** (the estimate was 2.7–3 KB), so **880 bytes free**, against v1's 684. It does not fit below Micronucleus (2560): a v2 board has none |
 | an update | 18–22 pages in under a second |
 
 The first estimate, 2.5–3 KB, was before the core had a password, a page
 writer and an app check. The plain port of v1's library measured 4552
 bytes. Moving the protocol into the app is what made v2 worth its space.
 
-For the same features, v2's code will be larger than v1's, not smaller.
-v1 was 5966 bytes; v2 will be roughly 6.5–6.8 KB. The extra pays for the
+For the same features, v2's code is larger than v1's, not smaller. v1 was
+5966 bytes; v2 measures 7028 (core 3812, app 3216). The extra pays for the
 page writer, the app check, the password in the core, the two tables and the
 vector forwarding, `proto.c`'s own clock, two start-up codes, and the
 inlining lost at the boundary. What v2 wins is room: the whole chip rather

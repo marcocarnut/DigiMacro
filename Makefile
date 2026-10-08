@@ -1,12 +1,16 @@
 # DigiMacro v2: a core below 0x1000, and the app above it.
 #
-#   make            the core, the spike's apps A, B and C, and spikeA.hex
-#                   (core + app A: the image for Micronucleus or a programmer)
+#   make            DigiMacro: digimacro.hex (the app, for updates over USB)
+#                   and digimacro-full.hex (core and app, for Micronucleus
+#                   or a programmer); options as build.sh had them:
+#                   make BUTTON=1 RC=1 LEDECHO=1 TOUCHDEBUG=1
+#   make spike      the core, the spike's apps A, B and C, and spikeA.hex,
+#                   all below Micronucleus, in build/v2-spike/
 #   make page       spike-page.html: the spike page with A, B and C inside --
 #                   one file to open in Chrome anywhere, no server needed
 #   make test       the core's request handling, built for the host
 #   make size       what each part takes
-#   make upload     spikeA.hex onto a Digispark, through Micronucleus
+#   make upload     digimacro-full.hex onto a Digispark, through Micronucleus
 #
 # Everything lands in build/v2/. v1, the Arduino build, is build.sh, and
 # tagged v1.0.
@@ -22,12 +26,15 @@ OBJCOPY = $(AVR)avr-objcopy
 SIZE    = $(AVR)avr-size
 NM      = $(AVR)avr-nm
 MCU     = attiny85
-O       = build/v2
+O       = build/v2$(if $(MICRONUCLEUS_SAFE),-spike)
 VUSB    = core/vusb
 MICRONUCLEUS ?= $(HOME)/.arduino15/packages/digistump/tools/micronucleus/2.6/micronucleus
 
-# The boundary can be moved from here, to measure: make APPSTART=0x1100
-LAYOUT  = $(if $(APPSTART),-DAPP_START=$(APPSTART))
+# The boundary can be moved from here, to measure: make APPSTART=0x1100.
+# The spike's builds keep below Micronucleus, at 0x1A00, in their own
+# directory: `make spike` comes back here with MICRONUCLEUS_SAFE set.
+LAYOUT  = $(if $(APPSTART),-DAPP_START=$(APPSTART)) \
+          $(if $(MICRONUCLEUS_SAFE),-DAPP_END=0x1A00)
 OPT    ?= -Os -flto
 CFLAGS  = -mmcu=$(MCU) -DF_CPU=16500000L $(OPT) -Wall -std=gnu11 \
           -ffunction-sections -fdata-sections -Icore -Iapp -I$(VUSB) $(LAYOUT)
@@ -44,7 +51,14 @@ APP_VECS   := $(call val,APP_START + 2 * APP_VECTORS)
 APP_HDR    := $(call val,APP_MAGIC - APP_START)
 hexaddr     = $$(printf 0x%x $(1))
 
-all: $(O)/core.hex $(O)/appA.hex $(O)/appB.hex $(O)/appC.hex $(O)/spikeA.hex
+all: $(O)/digimacro.hex $(O)/digimacro-full.hex
+ifdef MICRONUCLEUS_SAFE
+spike: $(O)/core.hex $(O)/appA.hex $(O)/appB.hex $(O)/appC.hex $(O)/spikeA.hex
+page: $(O)/spike-page.html
+else
+spike page:
+	$(MAKE) MICRONUCLEUS_SAFE=1 $@
+endif
 
 $(O):
 	mkdir -p $@
@@ -101,6 +115,25 @@ define apphex
 	    || { echo "$@ runs past APP_END"; exit 1; }
 endef
 
+# ---- DigiMacro -------------------------------------------------------
+
+# The sketch, as C++ -- it was an Arduino sketch, and still is one in v1.0
+DMDEFS  = $(if $(BUTTON),-DHAVE_TOUCH=0) $(if $(RC),-DTOUCH_PULLUP=0) \
+          $(if $(LEDECHO),-DLED_ECHO=1) $(if $(TOUCHDEBUG),-DTOUCH_DEBUG=1)
+CXXFLAGS = $(filter-out -std=gnu11,$(CFLAGS)) -x c++ -std=gnu++11 \
+          -fno-exceptions -fno-rtti -fno-threadsafe-statics $(DMDEFS)
+APPVER_DM := $(shell sed -n 's/^\#define DM_FW_VERSION *\([0-9]*\).*/\1/p' app/hidusb.h)
+
+$(O)/digimacro.o: DigiMacro.ino app/hidusb.h core/core.h core/layout.h | $(O)
+	$(CC) $(CXXFLAGS) -c -o $@ $<
+$(O)/digimacro.elf: $(O)/apphdrDM.o $(O)/digimacro.o $(O)/hidusb.o $(O)/coreapi.o
+	$(CC) $(CFLAGS) $(APPLINK) -o $@ $^
+	@printf 'app: %d bytes of %d\n' $$(( 0x$$($(NM) $@ | awk '$$3=="__data_load_end"{print $$1}') - $(APP_START) )) $$(( $(APP_END) - $(APP_START) ))
+$(O)/digimacro.hex: $(O)/digimacro.elf app/apphex.py
+	$(apphex)
+$(O)/digimacro-full.hex: $(O)/core.hex $(O)/digimacro.hex
+	python3 app/apphex.py join $@ $^
+
 # ---- the spike's apps --------------------------------------------------
 
 APPVER_A  = 1
@@ -131,14 +164,12 @@ $(O)/spike-page.html: app/spike.html $(O)/appA.hex $(O)/appB.hex $(O)/appC.hex
 	    open("$@", "w").write(page)'
 	@echo "$@: open it in Chrome"
 
-page: $(O)/spike-page.html
-
 # ---- the rest --------------------------------------------------------
 
-size: $(O)/core.elf $(O)/appA.elf $(O)/hidusb.o
+size: $(O)/core.elf $(O)/digimacro.elf $(O)/hidusb.o
 	$(SIZE) $^
 
-upload: $(O)/spikeA.hex
+upload: $(O)/digimacro-full.hex
 	$(MICRONUCLEUS) --run $<
 
 test:
@@ -148,5 +179,5 @@ clean:
 	rm -rf $(O)
 	$(MAKE) -C core/test clean
 
-.PHONY: all page size upload test clean
+.PHONY: all spike page size upload test clean
 .SECONDARY:

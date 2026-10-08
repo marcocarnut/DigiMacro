@@ -28,11 +28,12 @@
 #define APP_START       0x1000          /* 4 KB each side: the core is 3.8 */
 #endif
 
-/* Where the app must stop. 0x1A00 leaves Micronucleus alone, which lets
-   the spike go onto a stock Digispark by Micronucleus and still be
-   rescued by it; a board with no bootloader could go to 0x2000. */
+/* Where the app must stop: the end of the chip, since a v2 board has no
+   bootloader. The spike's builds stop at 0x1A00 instead (`make spike`),
+   leaving Micronucleus alone, which lets them go onto a stock Digispark and
+   be rescued by it. DigiMacro itself does not fit below 0x1A00. */
 #ifndef APP_END
-#define APP_END         0x1A00
+#define APP_END         0x2000
 #endif
 
 /* ---- the app's header, at APP_START ---------------------------------

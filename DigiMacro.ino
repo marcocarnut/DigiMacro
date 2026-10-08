@@ -255,9 +255,10 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  * It does not gate *playing* a macro. A device that wants a password before
  * it will type is a device nobody would carry, and the answer to a stolen
  * board typing for strangers is the lockout, not this.
+ *
+ * In v2 the core checks it and the app library sets it (hidusb.c); what is
+ * left here is what it means for the lockout, below.
  */
-#define PASS_ADDR       ((uint8_t *)DM_PASS_ADDR)
-#define PASS_NONE       0xFF
 
 /* ==================================================================== */
 /* Flags                                                                */
@@ -304,12 +305,10 @@ void blink(uint8_t n, uint16_t ms)
     }
 }
 
-static uint8_t unlocked;        /* this session only; RAM, so a replug locks */
-
-uint8_t hidPassSet(void)
-{
-    return eeprom_read_byte(PASS_ADDR) != PASS_NONE;
-}
+/* Whether there is a password, and whether it has been given this session,
+   are the core's to know: it checks the password, because the password
+   guards updates even when there is no app (core.h). hidPassSet() and
+   hidUnlocked() are its. */
 
 /* ---- the lockout ------------------------------------------------------
  *
@@ -436,65 +435,31 @@ static void lock_poll(void)
     }
 }
 
-uint8_t hidUnlocked(void)
+#define PASS_PAUSE_MS   1000    /* a wrong host key costs a second */
+
+/* What a password means for the lockout. Checking it -- comparing in full,
+   pausing a second after a wrong one -- is the core's; these are what the
+   app library calls with its verdict (hidusb.h).
+
+   A wrong password counts as a wrong code. */
+void hidPassWrong(void)
 {
-    return !hidPassSet() || unlocked;
+    lock_miss();
 }
 
-#define PASS_PAUSE_MS   1000
-
-static uint16_t pass_failed;    /* when the last wrong answer came... */
-static uint8_t  pass_pausing;   /* ...and whether that still holds */
-
-/* Compared in full whatever happens, so that how long it takes says nothing
-   about how much of it was right. */
-uint8_t hidUnlock(const uint8_t *p, uint8_t n)
+/* The right one clears the lockout, and a hard lock it clears is counted, for
+   the app to show. With no password there is nothing to clear. */
+void hidPassRight(void)
 {
-    uint8_t diff = 0;
-
-    if (!hidPassSet()) return 1;
-
-    /* A wrong answer costs a second: for that long, another is turned away
-       without being looked at or counted. A rate limit, not a lockout -- it
-       holds up nobody but whoever is asking -- and over a channel that could
-       otherwise be asked thousands of times a second it is worth having.
-
-       It used to be a wait_poll() right here, and that was a crash. This runs
-       inside usbFunctionWrite(), and V-USB marks the packet consumed only
-       after that returns -- so polling USB from in here processed the same
-       packet again, which checked the same wrong password, which waited
-       again, until the stack ran out. Never poll USB from a USB callback. */
-    if (pass_pausing && (uint16_t)(ticks() - pass_failed) < PASS_PAUSE_MS)
-        return 0;
-    pass_pausing = 0;
-
-    if (n > DM_PASS_LEN) return 0;
-
-    for (uint8_t i = 0; i < DM_PASS_LEN; i++)
-        diff |= eeprom_read_byte(PASS_ADDR + i) ^ (i < n ? p[i] : 0);
-
-    if (diff) {
-        lock_miss();            /* and it counts as a wrong code */
-        pass_failed = ticks();
-        pass_pausing = 1;
-        return 0;
-    }
     if (hidLockState() == DM_ST_HARDLOCK) count_up(LOCK_CLEARED);
     lock_clear();
-    unlocked = 1;
-    return 1;
 }
 
-void hidSetPass(const uint8_t *p, uint8_t n)
+/* A new password starts with a clean slate, rather than with counts left over
+   from whenever the lockout last ran. */
+void hidPassChanged(void)
 {
-    if (n > DM_PASS_LEN) return;
-    for (uint8_t i = 0; i < DM_PASS_LEN; i++)
-        eeprom_update_byte(PASS_ADDR + i,
-                           n == 0 ? PASS_NONE : (i < n ? p[i] : 0));
-    lock_clear();               /* a new password starts with a clean slate,
-                                   rather than with counts left over from
-                                   whenever the lockout last ran */
-    unlocked = 1;
+    lock_clear();
 }
 
 /* ---- the host ---------------------------------------------------------
@@ -597,9 +562,8 @@ uint8_t hidHostAuth(const uint8_t *p, uint8_t n)
 static void clocks_poll(void)
 {
     lock_poll();
-    if (!hidAllowed()) unlocked = 0;    /* the session ends with the window */
-    if (pass_pausing && (uint16_t)(ticks() - pass_failed) >= PASS_PAUSE_MS)
-        pass_pausing = 0;
+    hidAllowed();               /* the session ends with the window: asking
+                                   is what closes it (hidusb.c) */
 #if HAVE_HOST
     host_poll();
     if (host_pausing && (uint16_t)(ticks() - host_failed) >= PASS_PAUSE_MS)
@@ -1165,7 +1129,8 @@ void update_led(void)
 #endif
 }
 
-void setup(void)
+/* Called by the core once, before it connects to USB (core.h). */
+void app_setup(void)
 {
     FLAGS = 0;                  /* take nothing on trust: the bootloader
                                    leaves things in these registers */
@@ -1183,7 +1148,8 @@ void setup(void)
     hidBegin();
 }
 
-void loop(void)
+/* ...and this, over and over. */
+void app_loop(void)
 {
     hidPoll();
 #if HAVE_TOUCH
@@ -1195,8 +1161,6 @@ void loop(void)
     handle_input();
     clocks_poll();
     update_led();
-
-    if (!hidAllowed()) unlocked = 0;    /* the session ends with the window */
 
 #if HAVE_AUTOEXEC
     /* The startup macro waits here rather than holding up setup(), and waits

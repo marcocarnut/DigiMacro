@@ -38,6 +38,10 @@ void hidBegin(void){} void hidPoll(void){}
 uint8_t hidReady(void){ return 1; } uint8_t hidAwake(void){ return 1; }
 void hidAllow(uint16_t){} uint8_t hidAllowed(void){ return 0; }
 void hidKey(uint8_t,uint8_t){} void hidTypeChar(char,uint8_t){}
+/* The core's password: none, here */
+uint8_t hidPassSet(void){ return 0; } uint8_t hidUnlocked(void){ return 1; }
+uint8_t hidUnlock(const uint8_t *, uint8_t){ return DM_PASS_RIGHT; }
+void hidLock(void){}
 
 #include "DigiMacro.ino"
 
@@ -120,9 +124,9 @@ int main(void)
     CHECK(r == TOUCH_SAT, "wanted TOUCH_SAT %d, got %d", TOUCH_SAT, r);
 
     printf("4. the average settles on an untouched pad\n");
-    /* Seeded the way setup() does. Without that seed every reading looks
+    /* Seeded the way app_setup() does. Without that seed every reading looks
        like a touch against a base of zero, the average freezes, and only
-       the stuck-touch timeout gets it out -- which is why setup() takes a
+       the stuck-touch timeout gets it out -- which is why app_setup() takes a
        reading before the loop starts. */
     cycles(2);
     touch_base = (uint16_t)touch_read() << 4;

@@ -12,7 +12,6 @@
 #include <avr/pgmspace.h>
 #include "core.h"
 #include "hidusb.h"
-#include "../DigiHidUSB/src/keymap_us.h"
 
 #ifndef APP_LINE
 #define APP_LINE    "DigiMacro v2 spike, app A"
@@ -32,14 +31,6 @@
 static const char line[] = APP_LINE "\n";
 static uint8_t  typed;                  /* .bss: zero, if start-up cleared it */
 static uint32_t since, blinked;
-
-static void typeChar(char c)
-{
-    if (c == '\n') { hidKey(0, 0x28); return; }
-    if (c < KEYMAP_FIRST || c > KEYMAP_LAST) return;
-    uint8_t e = pgm_read_byte(&keymapUS[(uint8_t)c - KEYMAP_FIRST]);
-    hidKey(e & KEYMAP_SHIFT ? 0x02 : 0, e & 0x7F);
-}
 
 void app_setup(void)
 {
@@ -72,7 +63,7 @@ void app_loop(void)
        whatever window had the focus: off unless built with APP_TYPE=1. */
     if (APP_TYPE && !typed && hidReady()
         && now - since > (hidAwake() ? 1000 : 3000)) {
-        for (const char *p = line; *p; p++) typeChar(*p);
+        for (const char *p = line; *p; p++) hidTypeChar(*p, 0);
         typed = 1;
     }
 }

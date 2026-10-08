@@ -10,6 +10,7 @@
 
 #include "core.h"
 #include "hidusb.h"
+#include "keymap_us.h"
 
 /* ===================================================================== */
 /* Time                                                                  */
@@ -165,6 +166,26 @@ void hidKey(uint8_t modifier, uint8_t key)
 {
     sendReport(modifier, key);
     sendReport(0, 0);
+}
+
+/* A character as a US keyboard types it; nothing for one it has no key for.
+   The layout is the app's to choose, which is why it is up here and not in
+   the core, which could never change it. */
+void hidTypeChar(char c, uint8_t mod)
+{
+    uint8_t entry;
+
+    switch (c) {
+    case '\r':
+    case '\n': hidKey(mod, 0x28); return;
+    case '\t': hidKey(mod, 0x2B); return;
+    case '\b': hidKey(mod, 0x2A); return;
+    }
+    if (c < KEYMAP_FIRST || c > KEYMAP_LAST) return;
+    entry = pgm_read_byte(&keymapUS[(uint8_t)c - KEYMAP_FIRST]);
+    if (entry == 0) return;
+    if (entry & KEYMAP_SHIFT) mod |= 0x02;
+    hidKey(mod, entry & 0x7F);
 }
 
 /* ===================================================================== */

@@ -1,5 +1,5 @@
 /* Generated: US layout ASCII 0x20..0x7E -> HID usage id, bit7 = needs Shift. */
-/* Non-printable handled separately in hidusb.cpp (\n \t \b).              */
+/* Non-printable handled separately in hidusb.c (\n \t \b).                */
 #ifndef KEYMAP_US_H
 #define KEYMAP_US_H
 #define KEYMAP_SHIFT 0x80

@@ -10,7 +10,13 @@
 #define PROTO_H
 
 #include <stdint.h>
+#include <avr/io.h>
+#include <avr/pgmspace.h>
 #include "core.h"
+
+/* DigiMacro's own version, in INFO's [13] as the app's. v1 counted to 9
+   in [4]; v2 goes on from there, and [4] is the core's now. */
+#define DM_FW_VERSION       10
 
 #define DM_FUNC_RESTART     0x42    /* off the bus and back, as if replugged */
 #define DM_FUNC_READ        0x60    /* address, count -> EEPROM */
@@ -46,6 +52,7 @@ uint32_t millis(void);
 void     hidAllow(uint16_t ms); /* somebody is at the board, briefly */
 uint8_t  hidAllowed(void);      /* ask at least every 32 s: see hidusb.c */
 void     hidKey(uint8_t modifier, uint8_t key);
+void     hidTypeChar(char c, uint8_t mod);  /* US layout; mod adds to it */
 
 /* The firmware's: the lockout and the host key, as in v1. Checking the
    password is the core's (core.h); what a right or wrong one means for the

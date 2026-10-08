@@ -19,3 +19,18 @@ uint8_t hidAllowed(void);
 #define DM_HOST_LEN    8
 void    hidKey(uint8_t modifier, uint8_t key);
 void    hidTypeChar(char c, uint8_t mod);
+
+/* The core's password (core/core.h), which the sketch asks but no longer
+   keeps. Each test that compiles the sketch provides them. */
+#define DM_PASS_WRONG     0
+#define DM_PASS_RIGHT     1
+#define DM_PASS_UNCHECKED 2
+uint8_t hidPassSet(void);
+uint8_t hidUnlocked(void);
+uint8_t hidUnlock(const uint8_t *p, uint8_t n);
+void    hidLock(void);
+
+/* ...and what the sketch provides the app library in their place. */
+void    hidPassWrong(void);
+void    hidPassRight(void);
+void    hidPassChanged(void);

@@ -46,8 +46,12 @@ uint8_t hidAwake(void){ return host_awake; }
 /* The configuration window the four-second hold opens. */
 static uint16_t allow_until; static uint8_t allow_open;
 void hidAllow(uint16_t ms){ allow_until = (uint16_t)fake_ms + ms; allow_open = 1; }
+void hidLock(void);
 uint8_t hidAllowed(void){
-    if (allow_open && (int16_t)((uint16_t)fake_ms - allow_until) >= 0) allow_open = 0;
+    if (allow_open && (int16_t)((uint16_t)fake_ms - allow_until) >= 0) {
+        allow_open = 0;
+        hidLock();              /* as app/hidusb.c does: the session ends */
+    }
     return allow_open;
 }
 void hidTypeChar(char, uint8_t){}
@@ -66,6 +70,53 @@ void hidKey(uint8_t mod, uint8_t key)
 }
 
 #include "DigiMacro.ino"
+
+/* ---- the core's password, and the app library's verbs --------------
+
+   Stand-ins with the same behaviour as core/core.c and app/hidusb.c, which
+   core/test runs for real: compared in full, a wrong one turning the next
+   away unread for a second, the session ended by the window. The core
+   counts its second in turns of its loop; here it is the clock. */
+static uint8_t unlocked;
+static uint8_t pass_waiting;
+static unsigned long pass_wrong_at;
+#define PASS_PAUSE_MS 1000
+
+uint8_t hidPassSet(void) { return EE[DM_PASS_ADDR] != 0xFF; }
+uint8_t hidUnlocked(void) { return !hidPassSet() || unlocked; }
+void    hidLock(void) { unlocked = 0; }
+uint8_t hidUnlock(const uint8_t *p, uint8_t n)
+{
+    uint8_t diff = 0;
+    if (!hidPassSet()) return DM_PASS_RIGHT;
+    if (pass_waiting && fake_ms - pass_wrong_at < PASS_PAUSE_MS)
+        return DM_PASS_UNCHECKED;
+    pass_waiting = 0;
+    if (n > DM_PASS_LEN) return DM_PASS_UNCHECKED;
+    for (uint8_t i = 0; i < DM_PASS_LEN; i++)
+        diff |= EE[DM_PASS_ADDR + i] ^ (i < n ? p[i] : 0);
+    if (diff) { pass_waiting = 1; pass_wrong_at = fake_ms; return DM_PASS_WRONG; }
+    unlocked = 1;
+    return DM_PASS_RIGHT;
+}
+
+/* UNLOCK and SETPASS as app/hidusb.c answers them, gates aside: what the
+   sketch hears of a password is through these. */
+static uint8_t unlock(const uint8_t *p, uint8_t n)
+{
+    uint8_t r = hidUnlock(p, n);
+    if (r == DM_PASS_RIGHT) { if (hidPassSet()) hidPassRight(); return 1; }
+    if (r == DM_PASS_WRONG) hidPassWrong();
+    return 0;
+}
+
+static void setpass(const uint8_t *p, uint8_t n)
+{
+    for (uint8_t i = 0; i < DM_PASS_LEN; i++)
+        EE[DM_PASS_ADDR + i] = n == 0 ? 0xFF : (i < n ? p[i] : 0);
+    hidPassChanged();
+    hidUnlock(p, n);
+}
 
 /* ---- harness ------------------------------------------------------- */
 
@@ -117,17 +168,17 @@ static const char *play(const char *code)
     return typed;
 }
 
-/* ---- tapping, through the pin and loop() ---- */
+/* ---- tapping, through the pin and app_loop() ---- */
 
 /* A level is believed only once it has held for DEBOUNCE_MS, so each edge
    takes two passes: one that sees it and one, later, that accepts it. */
 static void tap(int ms)
 {
-    btn_held = 1; loop();
-    fake_ms += DEBOUNCE_MS + 1; loop();                 /* press accepted  */
+    btn_held = 1; app_loop();
+    fake_ms += DEBOUNCE_MS + 1; app_loop();                 /* press accepted  */
     fake_ms += ms;
-    btn_held = 0; loop();
-    fake_ms += DEBOUNCE_MS + 1; loop();                 /* release accepted */
+    btn_held = 0; app_loop();
+    fake_ms += DEBOUNCE_MS + 1; app_loop();                 /* release accepted */
 }
 #define DOT()   tap(DOT_MAX_MS - 100)
 #define DASH()  tap(DOT_MAX_MS + 100)
@@ -136,7 +187,7 @@ static const char *silence(void)
 {
     typedn = 0; typed[0] = 0;
     fake_ms += END_OF_CODE_MS + 10;
-    loop();
+    app_loop();
     return typed;
 }
 
@@ -304,18 +355,18 @@ int main(void)
        single tap arrives as "..", which types the wrong macro rather than
        none, and would cost a four-second hold everything. */
     code_reset();
-    btn_held = 1; loop();
-    fake_ms += DEBOUNCE_MS + 1; loop();         /* the press is accepted */
+    btn_held = 1; app_loop();
+    fake_ms += DEBOUNCE_MS + 1; app_loop();         /* the press is accepted */
     fake_ms += 60;
-    btn_held = 0; loop();                       /* one poll of nothing... */
+    btn_held = 0; app_loop();                       /* one poll of nothing... */
     CHECK(in_down, "a single dropped sample must not end a press -- under the "
                    "old rule it ended it at once, and the press that followed "
                    "became a second symbol");
     fake_ms += 1;
-    btn_held = 1; loop();                       /* ...and it is back */
+    btn_held = 1; app_loop();                       /* ...and it is back */
     fake_ms += 60;
-    btn_held = 0; loop();
-    fake_ms += DEBOUNCE_MS + 1; loop();
+    btn_held = 0; app_loop();
+    fake_ms += DEBOUNCE_MS + 1; app_loop();
     CHECK(code_len == 1, "one tap with a dropout is one symbol, got %d",
           code_len);
     CHECK(!(FLAGS & FLAG_CODE_OVER), "and nothing may be marked overlong");
@@ -327,12 +378,12 @@ int main(void)
        somebody is standing here. */
     code_reset();
     CHECK(!hidAllowed(), "nothing is open to begin with");
-    btn_held = 1; loop();
-    fake_ms += DEBOUNCE_MS + 1; loop();
-    fake_ms += HOLD_MS + 10; loop();
+    btn_held = 1; app_loop();
+    fake_ms += DEBOUNCE_MS + 1; app_loop();
+    fake_ms += HOLD_MS + 10; app_loop();
     CHECK(hidAllowed(), "the hold should have opened the window");
-    btn_held = 0; loop();
-    fake_ms += DEBOUNCE_MS + 1; loop();
+    btn_held = 0; app_loop();
+    fake_ms += DEBOUNCE_MS + 1; app_loop();
     CHECK(code_len == 0, "the hold must not leave a dash behind");
 
     printf("14b. ...and the keyboard goes on working while it is open\n");
@@ -382,9 +433,9 @@ int main(void)
     auto play_at_power_on = [&]() {
         typedn = 0; typed[0] = 0;
         FLAGS &= ~(FLAG_AUTODONE | FLAG_AUTOWAIT);
-        loop();                             /* notices the host is there */
+        app_loop();                             /* notices the host is there */
         fake_ms += AUTO_SETTLE_MS + 10;
-        loop();                             /* and now it may type */
+        app_loop();                             /* and now it may type */
         return (const char *)typed;
     };
 
@@ -403,27 +454,27 @@ int main(void)
        keyboard, so "wheee!{pause 1}waaah!" arrived as "waaah!". */
     typedn = 0; typed[0] = 0;
     FLAGS &= ~(FLAG_AUTODONE | FLAG_AUTOWAIT);
-    loop();
+    app_loop();
     CHECK(typedn == 0, "nothing may be typed the instant it is enumerated");
-    fake_ms += AUTO_SETTLE_MS - 20; loop();
+    fake_ms += AUTO_SETTLE_MS - 20; app_loop();
     CHECK(typedn == 0, "nor before the settling time is up");
-    fake_ms += 40; loop();
+    fake_ms += 40; app_loop();
     CHECK(typedn > 0, "and then it should type");
 
     printf("17b2. a host that never says hello is waited for, and given up on\n");
     host_awake = 0;
     typedn = 0; typed[0] = 0;
     FLAGS &= ~(FLAG_AUTODONE | FLAG_AUTOWAIT);
-    loop();
-    fake_ms += AUTO_SETTLE_MS + 10; loop();
+    app_loop();
+    fake_ms += AUTO_SETTLE_MS + 10; app_loop();
     CHECK(typedn == 0, "the short wait is for a host that answered");
-    fake_ms += AUTO_WAIT_MS; loop();
+    fake_ms += AUTO_WAIT_MS; app_loop();
     CHECK(typedn > 0, "but it must not wait for ever: \"%s\"", typed);
     host_awake = 1;
 
     printf("17b. ...once, and only once\n");
     typedn = 0; typed[0] = 0;
-    for (int i = 0; i < 5; i++) loop();
+    for (int i = 0; i < 5; i++) app_loop();
     CHECK(typedn == 0, "it must not keep going: \"%s\"", typed);
 
     printf("17c. nothing set means nothing typed\n");
@@ -472,8 +523,8 @@ int main(void)
     printf("18d. ...and that press is not also a symbol\n");
     /* Otherwise stopping a macro would tap a dot, and the dot would fire
        whatever macro has that code. */
-    btn_held = 0; loop();
-    fake_ms += DEBOUNCE_MS + 1; loop();
+    btn_held = 0; app_loop();
+    fake_ms += DEBOUNCE_MS + 1; app_loop();
     CHECK(code_len == 0, "the press that stopped it must not become a symbol, "
           "got %d", code_len);
 
@@ -486,10 +537,10 @@ int main(void)
     code_bits = 0; code_len = 1;
     btn_held = 1;
     code_finish();                      /* stopped by the touch again */
-    for (int i = 0; i < 3; i++) { fake_ms += HOLD_MS / 2; loop(); }
+    for (int i = 0; i < 3; i++) { fake_ms += HOLD_MS / 2; app_loop(); }
     CHECK(hidAllowed(), "holding on after the stop must open the window");
-    btn_held = 0; loop();
-    fake_ms += 40000; loop();           /* let it lapse */
+    btn_held = 0; app_loop();
+    fake_ms += 40000; app_loop();           /* let it lapse */
 
     printf("18f. a loop that does nothing at all is still bounded\n");
     /* Macros that only jump to each other never reach a keystroke, so the pad
@@ -534,8 +585,8 @@ int main(void)
     stop_after = -1;
     CHECK(typedn / 7 < 40, "it must stop near where the touch came, typed %d",
           typedn / 7);
-    btn_held = 0; loop();
-    fake_ms += DEBOUNCE_MS + 1; loop();
+    btn_held = 0; app_loop();
+    fake_ms += DEBOUNCE_MS + 1; app_loop();
 
     printf("19. the password, which is optional and absent by default\n");
     /* An erased chip has none, and a board that types eleven right-arrows at
@@ -546,19 +597,19 @@ int main(void)
     CHECK(hidUnlocked(), "and is therefore open");
 
     printf("19b. setting one, and what it then takes to get in\n");
-    hidSetPass((const uint8_t *)"abc", 3);
+    setpass((const uint8_t *)"abc", 3);
     CHECK(hidPassSet(), "there should be one now");
     CHECK(EE[DM_PASS_ADDR + 3] == 0, "and it should be zero-padded");
     unlocked = 0;
     CHECK(!hidUnlocked(), "which locks it");
-    CHECK(!hidUnlock((const uint8_t *)"abd", 3), "a wrong one is refused");
+    CHECK(!unlock((const uint8_t *)"abd", 3), "a wrong one is refused");
     fake_ms += PASS_PAUSE_MS;
     CHECK(!hidUnlocked(), "and leaves it locked");
-    CHECK(!hidUnlock((const uint8_t *)"ab", 2), "a prefix is not enough");
+    CHECK(!unlock((const uint8_t *)"ab", 2), "a prefix is not enough");
     fake_ms += PASS_PAUSE_MS;
-    CHECK(!hidUnlock((const uint8_t *)"abcd", 4), "nor is something longer");
+    CHECK(!unlock((const uint8_t *)"abcd", 4), "nor is something longer");
     fake_ms += PASS_PAUSE_MS;
-    CHECK(hidUnlock((const uint8_t *)"abc", 3), "the right one gets in");
+    CHECK(unlock((const uint8_t *)"abc", 3), "the right one gets in");
     CHECK(hidUnlocked(), "and stays in, for the session");
 
     printf("19b2. a wrong answer costs a second, without stopping the board\n");
@@ -566,17 +617,17 @@ int main(void)
        from inside USB and crashed the board. Now the next answer is turned
        away unseen until the second is up. */
     unlocked = 0;
-    CHECK(!hidUnlock((const uint8_t *)"abd", 3), "a wrong one");
-    CHECK(!hidUnlock((const uint8_t *)"abc", 3),
+    CHECK(!unlock((const uint8_t *)"abd", 3), "a wrong one");
+    CHECK(!unlock((const uint8_t *)"abc", 3),
           "then even the right one is turned away for a second");
     CHECK(!hidUnlocked(), "and lets nobody in");
     fake_ms += PASS_PAUSE_MS / 2;
-    CHECK(!hidUnlock((const uint8_t *)"abc", 3), "half a second is not enough");
+    CHECK(!unlock((const uint8_t *)"abc", 3), "half a second is not enough");
     fake_ms += PASS_PAUSE_MS;
-    CHECK(hidUnlock((const uint8_t *)"abc", 3), "after a second it is heard");
+    CHECK(unlock((const uint8_t *)"abc", 3), "after a second it is heard");
 
     printf("19c. ...and how it goes away again\n");
-    hidSetPass(0, 0);
+    setpass(0, 0);
     CHECK(!hidPassSet(), "no bytes means no password");
     CHECK(EE[DM_PASS_ADDR] == 0xFF, "and the stored one is really gone");
     unlocked = 0;
@@ -585,13 +636,13 @@ int main(void)
     printf("19d. a password does not stop the board being a keyboard\n");
     /* A device that wants a password before it will type is a device nobody
        would carry. The answer to a stolen board is the lockout, not this. */
-    hidSetPass((const uint8_t *)"secret", 6);
+    setpass((const uint8_t *)"secret", 6);
     unlocked = 0;
     table_reset();
     add(".", { K('a') });
     CHECK(!strcmp(play("."), "<00/04>"),
           "a locked board must still play its macros: \"%s\"", typed);
-    hidSetPass(0, 0);
+    setpass(0, 0);
     unlocked = 0;
 
     /* ---- the lockout ---- */
@@ -599,7 +650,7 @@ int main(void)
     /* A wrong code, a right one, and the soft lock's clock run through. */
     auto miss  = [&]() { return play("-----"); };   /* never in these tables */
     auto serve = [&]() {
-        for (int i = 0; i < 300; i++) { fake_ms += 1000; loop(); }
+        for (int i = 0; i < 300; i++) { fake_ms += 1000; app_loop(); }
     };
     auto lockout = [&](uint8_t soft, uint8_t hard, uint8_t wait) {
         EE[(size_t)LOCK_SOFT] = soft;
@@ -621,7 +672,7 @@ int main(void)
     CHECK(!hidLockState(), "no password, no lockout, whatever the settings say");
 
     printf("21b. too many wrong codes and every tap is ignored, right or wrong\n");
-    hidSetPass((const uint8_t *)"secret", 6);
+    setpass((const uint8_t *)"secret", 6);
     unlocked = 0;
     lockout(2, 3, 1);                           /* ten seconds */
     miss();
@@ -633,10 +684,10 @@ int main(void)
     CHECK(play(".")[0] == 0, "a right code must type nothing now: \"%s\"", typed);
 
     printf("21c. ...until the wait is served\n");
-    loop();                                     /* the clock starts */
-    fake_ms += 9000; loop();
+    app_loop();                                     /* the clock starts */
+    fake_ms += 9000; app_loop();
     CHECK(hidLockState() == DM_ST_SOFTLOCK, "not before ten seconds");
-    fake_ms += 1100; loop();
+    fake_ms += 1100; app_loop();
     CHECK(!hidLockState(), "and over after them");
     CHECK(!strcmp(play("."), "<00/04>"), "taps work again: \"%s\"", typed);
     CHECK(count_of(LOCK_SOFTS) == 0, "and a right code clears the run of locks");
@@ -645,13 +696,13 @@ int main(void)
     /* No clock runs while it is unplugged, so a soft lock found at power-up
        has to start its whole wait again. */
     miss(); miss();
-    loop();
-    fake_ms += 8000; loop();
+    app_loop();
+    fake_ms += 8000; app_loop();
     lock_left = 0;                              /* RAM gone: a replug */
-    loop();
-    fake_ms += 8000; loop();
+    app_loop();
+    fake_ms += 8000; app_loop();
     CHECK(hidLockState() == DM_ST_SOFTLOCK, "the wait must start again");
-    fake_ms += 2100; loop();
+    fake_ms += 2100; app_loop();
     CHECK(!hidLockState(), "and end ten seconds after the replug");
 
     printf("21e. soft locks in a row become a hard one\n");
@@ -670,10 +721,10 @@ int main(void)
     CHECK(play_at_power_on()[0] == 0, "nothing may type itself: \"%s\"", typed);
 
     printf("21g. the password lifts it, and is never refused for the lock\n");
-    CHECK(!hidUnlock((const uint8_t *)"wrong", 5), "a wrong one is still wrong");
+    CHECK(!unlock((const uint8_t *)"wrong", 5), "a wrong one is still wrong");
     fake_ms += PASS_PAUSE_MS;
     CHECK(hidLockState() == DM_ST_HARDLOCK, "and lifts nothing");
-    CHECK(hidUnlock((const uint8_t *)"secret", 6), "the right one gets in");
+    CHECK(unlock((const uint8_t *)"secret", 6), "the right one gets in");
     CHECK(!hidLockState(), "and lifts the lock");
     CHECK(count_of(LOCK_CLEARED) == 1, "which is counted, %d",
           count_of(LOCK_CLEARED));
@@ -683,16 +734,16 @@ int main(void)
     printf("21h. a wrong password counts as a wrong code\n");
     unlocked = 0;
     lock_clear();
-    hidUnlock((const uint8_t *)"guess", 5);
+    unlock((const uint8_t *)"guess", 5);
     CHECK(count_of(LOCK_MISSES) == 1, "one wrong answer, one miss");
-    hidUnlock((const uint8_t *)"guess", 5);
+    unlock((const uint8_t *)"guess", 5);
     CHECK(count_of(LOCK_MISSES) == 1,
           "one turned away within the second is not even counted");
     fake_ms += PASS_PAUSE_MS;
-    hidUnlock((const uint8_t *)"guess", 5);
+    unlock((const uint8_t *)"guess", 5);
     CHECK(hidLockState() == DM_ST_SOFTLOCK, "and two of them lock the taps");
     fake_ms += PASS_PAUSE_MS;
-    CHECK(hidUnlock((const uint8_t *)"secret", 6),
+    CHECK(unlock((const uint8_t *)"secret", 6),
           "but the password itself is never shut out");
     CHECK(!hidLockState(), "and giving it ends the soft lock");
     CHECK(count_of(LOCK_CLEARED) == 1,
@@ -702,22 +753,22 @@ int main(void)
     for (uint8_t w : { (uint8_t)0, (uint8_t)241, (uint8_t)0xFF }) {
         lock_clear();
         lockout(1, 0xFF, w);
-        miss(); loop();
-        fake_ms += 59000; loop();
+        miss(); app_loop();
+        fake_ms += 59000; app_loop();
         CHECK(hidLockState() == DM_ST_SOFTLOCK, "%d: still waiting at 59 s", w);
-        fake_ms += 1100; loop();
+        fake_ms += 1100; app_loop();
         CHECK(!hidLockState(), "%d: done after a minute", w);
     }
     lock_clear();
     lockout(1, 0xFF, 240);
-    miss(); loop();
+    miss(); app_loop();
     /* Stepped a second at a time, as the board would see it: its clock is
        sixteen bits of milliseconds, so one forty-minute jump would wrap.
        The stub's millis() also ticks on every call, which over this many
        passes adds a few seconds -- hence the margin either side. */
-    for (int i = 0; i < 2370; i++) { fake_ms += 1000; loop(); }
+    for (int i = 0; i < 2370; i++) { fake_ms += 1000; app_loop(); }
     CHECK(hidLockState() == DM_ST_SOFTLOCK, "240 is forty minutes");
-    for (int i = 0; i < 30; i++) { fake_ms += 1000; loop(); }
+    for (int i = 0; i < 30; i++) { fake_ms += 1000; app_loop(); }
     CHECK(!hidLockState(), "and not much more");
 
     printf("21j. with no hard threshold, soft locks never become hard\n");
@@ -729,11 +780,11 @@ int main(void)
 
     printf("21k. a new password starts the counts again\n");
     miss();
-    hidSetPass((const uint8_t *)"other", 5);
+    setpass((const uint8_t *)"other", 5);
     CHECK(count_of(LOCK_MISSES) == 0 && count_of(LOCK_SOFTS) == 0,
           "nothing left over from before");
     CHECK(count_of(LOCK_CLEARED) == 1, "except the record of hard locks lifted");
-    hidSetPass(0, 0);
+    setpass(0, 0);
     lockout(0xFF, 0xFF, 0xFF);
     memset(EE + (size_t)LOCK_MISSES, 0xFF, 3);
     unlocked = 0;
@@ -763,21 +814,21 @@ int main(void)
     CHECK(!strcmp(play("-"), "<00/1B>"), "and so does {host!}: \"%s\"", typed);
 
     printf("22c. ...for a minute, by default\n");
-    for (int i = 0; i < 55; i++) { fake_ms += 1000; loop(); }
+    for (int i = 0; i < 55; i++) { fake_ms += 1000; app_loop(); }
     CHECK(hidHostState() & DM_ST_HOST, "still trusted at 55 s");
-    for (int i = 0; i < 10; i++) { fake_ms += 1000; loop(); }
+    for (int i = 0; i < 10; i++) { fake_ms += 1000; app_loop(); }
     CHECK(!(hidHostState() & DM_ST_HOST), "not after a minute");
     CHECK(!strcmp(play("."), "<00/04>"), "and the guard holds again: \"%s\"", typed);
     EE[0x1F2] = 1;                              /* ten seconds */
     CHECK(hidHostAuth(KEY, 8), "proved again");
-    for (int i = 0; i < 11; i++) { fake_ms += 1000; loop(); }
+    for (int i = 0; i < 11; i++) { fake_ms += 1000; app_loop(); }
     CHECK(!(hidHostState() & DM_ST_HOST), "the wait is the configured one");
     EE[0x1F2] = 0xFF;
 
     printf("22d. a wrong key costs a second, and nothing else\n");
     /* Nothing else meaning the lockout: anything on any computer may send a
        key, and if wrong ones counted it could lock the board out remotely. */
-    hidSetPass((const uint8_t *)"secret", 6);
+    setpass((const uint8_t *)"secret", 6);
     lockout(2, 3, 1);
     lock_clear();
     CHECK(!hidHostAuth(BAD, 8), "a wrong key is refused");
@@ -840,7 +891,7 @@ int main(void)
     host_forget();
     CHECK(!strcmp(play("."), "<00/04>"), "the guard holds after a jump: \"%s\"", typed);
 
-    hidSetPass(0, 0);
+    setpass(0, 0);
     lockout(0xFF, 0xFF, 0xFF);
     memset(EE + (size_t)LOCK_MISSES, 0xFF, 3);
     memset(EE + DM_HOST_ADDR, 0xFF, 8);

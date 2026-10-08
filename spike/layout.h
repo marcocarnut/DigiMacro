@@ -25,7 +25,7 @@
 /* The boundary. The core lives below it and can never be written from
    USB; the app lives above it and can be replaced whole. */
 #ifndef APP_START
-#define APP_START       0x1240
+#define APP_START       0x1000          /* 4 KB each side: the core is 3.8 */
 #endif
 
 /* Where the app must stop. 0x1A00 leaves Micronucleus alone, which lets
@@ -51,8 +51,7 @@
 #define APP_LOOP        1               /* over and over */
 #define APP_REQUEST     2               /* a request the core does not
                                            answer alone: see core.h */
-#define APP_MAYUPDATE   3               /* may the core take pages? */
-#define APP_VECTORS     4               /* the chip's interrupts 1..14,
+#define APP_VECTORS     3               /* the chip's interrupts 1..14,
                                            in order; PCINT0's is V-USB's
                                            and its slot is never used */
 #define APP_NVECTORS    14
@@ -97,6 +96,19 @@
  * that it ends below this. */
 #define APP_RAM         0x0150
 
+/* ---- the update window ----------------------------------------------
+ *
+ * Micronucleus takes an update only in the seconds after a board is
+ * plugged in; this keeps that. GPIOR2 counts tenths of a second, stopping
+ * at 255: the core zeroes it at boot, the app's clock counts it, and the
+ * app zeroes it again to open the window when its owner asks to update.
+ * While an app runs, the first page is taken only within the window -- and
+ * only with the password, if one is set. An app that never counts leaves
+ * the window open: it fails open, never shut. With no app there is no
+ * window, only the password. */
+#define DM_WINDOW       GPIOR2
+#define DM_WINDOW_TENTHS 60             /* six seconds */
+
 /* ---- the verbs the core answers ------------------------------------- */
 
 #define DM_FUNC_INFO    0x40    /* who this is; the app adds its part */
@@ -121,5 +133,9 @@
 
 #define DM_CORE_APP     0x01    /* a valid app is running */
 #define DM_CORE_UPDATE  0x02    /* taking pages: the app is gone */
+#define DM_CORE_HALTED  0x04    /* an app is there, but the watchdog reset
+                                   the board while it ran, so it was not
+                                   started again: core only, until a replug
+                                   or an update */
 
 #endif /* LAYOUT_H */

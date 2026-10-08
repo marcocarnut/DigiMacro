@@ -50,13 +50,14 @@ static void softReset(void) { softResets++; }
 
 /* ---- the stubs' state ---- */
 uint8_t SREG, OCR1C, OCR1A, TCCR1, TIMSK, OSCCAL, TCCR0B, TCNT0, WDTCR, MCUSR,
-        GIMSK, GIFR, PCMSK, EECR, ACSR, ADCSRA, USICR,
+        GIMSK, GIFR, PCMSK, EECR, ACSR, ADCSRA, USICR, GPIOR0, GPIOR1, GPIOR2,
         USB_INTR_ENABLE, USB_INTR_PENDING;
 uint8_t EE[512], FUSES[4] = { 0xF1, 0xFF, 0xFE, 0xDF };
 usbMsgPtr_t usbMsgPtr;
 uchar usbConfiguration;
 volatile uchar usbTxLen = 0x5a;         /* USBPID_NAK: idle */
 static int reports;
+int wdtResets, wdtEnabled;
 void usbPoll(void) { ms++; }            /* time passes as the core waits */
 void usbInit(void) { }
 void usbSetInterrupt(uchar *d, uchar n) { (void)d; (void)n; reports++; }
@@ -146,10 +147,13 @@ static void install(void)               /* as a programmer would */
 static void boot(void)                  /* main(), without the loop */
 {
     memset(vnd, 0, sizeof vnd);
-    mode = 0; pageWanted = pageHalf = commitWanted = 0;
+    GPIOR0 = 0;                         /* every flag, as main() does */
+    DM_WINDOW = 0;
+    pageWanted = 0;
     commitWait = 0; allowOpen = 0; restartWanted = 0;
     readFuses();
-    if (appValid()) mode = DM_CORE_APP;
+    halted = 0; wdtEnabled = 0;
+    appStart(0);
     hidRestart();
 }
 
@@ -190,7 +194,6 @@ static void setup(void)
 {
     appSlots[APP_SETUP] = (void *)tVoid;       appSlots[APP_LOOP] = (void *)tVoid;
     appSlots[APP_REQUEST] = (void *)app_request;
-    appSlots[APP_MAYUPDATE] = (void *)app_may_update;
     memset(FLASH, 0xFF, sizeof FLASH);
     memset(FLASH, 0x5A, APP_START);     /* the core, which must never change */
     memset(EE, 0xFF, sizeof EE);
@@ -198,7 +201,7 @@ static void setup(void)
     EE[DM_SERIAL_ADDR + 2] = 0x34; EE[DM_SERIAL_ADDR + 3] = 0x12;
     lockState = hostState = hostAuthOk = 0;
     passWrongs = passRights = passChanges = 0;
-    unlocked = passWait = 0;
+    GPIOR0 = 0;
     erases = writes = softResets = belowBoundary = 0;
     headerErasedFirst = -1;
     makeImage(300, 1, 0x11);
@@ -270,7 +273,10 @@ int main(void)
     printf("the gates, with an app\n");
     setup();
     CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_REFUSED);     /* no window */
-    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_REFUSED);
+    /* pages need no window: with no password, nothing at all, as with
+       Micronucleus -- the app has no say */
+    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_FUNC_PAGE);
+    pageHalf = 0;
     CHECK(ask(DM_FUNC_FREAD, 0, 4, NULL)[0] == DM_FUNC_FREAD);  /* public */
     CHECK(ask(DM_FUNC_RESTART, 0, 0, NULL)[0] == DM_REFUSED);
     CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_REFUSED);  /* no window */
@@ -288,9 +294,8 @@ int main(void)
     CHECK((r[7] & (DM_ST_PASSWORD | DM_ST_UNLOCKED)) == DM_ST_PASSWORD);
     CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_REFUSED);
     CHECK(askPass(DM_FUNC_SETPASS, "x")[0] == DM_REFUSED && passChanges == 0);
-    /* the app says yes to an update -- the window is open -- and the core
-       still says no: the password is not the app's to waive */
-    CHECK(app_may_update());
+    /* the window is open, and still no pages: the password decides */
+    CHECK(hidAllowed());
     CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_REFUSED);
     r = askPass(DM_FUNC_UNLOCK, "tesT");
     CHECK(r[0] == DM_REFUSED && passWrongs == 1 && r[4] == 0);  /* wiped */
@@ -357,6 +362,57 @@ int main(void)
     setup(); memset(FLASH + APP_START, 0xFF, PAGE); boot();
     makeImage(900, 8, 0x88);
     CHECK(sendImage(1, -1) > 0);
+
+    printf("the update window, while an app runs\n");
+    setup();
+    DM_WINDOW = DM_WINDOW_TENTHS - 1;
+    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_FUNC_PAGE);
+    pageHalf = 0;
+    DM_WINDOW = DM_WINDOW_TENTHS;                       /* six seconds on */
+    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_REFUSED);
+    /* the app's clock counts it, in tenths, and stops at 255 */
+    DM_WINDOW = 0;
+    for (int i = 0; i < 1000; i++) TIMER1_COMPA_vect();
+    CHECK(DM_WINDOW == 10);
+    DM_WINDOW = 250;
+    for (int i = 0; i < 2000; i++) TIMER1_COMPA_vect();
+    CHECK(DM_WINDOW == 255);
+    /* the app opens it again: behind both of its gates */
+    CHECK(ask(DM_FUNC_UPDATE, 0, 0, NULL)[0] == DM_REFUSED);  /* no window */
+    CHECK(DM_WINDOW == 255);
+    hidAllow(30000); storePass("test");
+    CHECK(ask(DM_FUNC_UPDATE, 0, 0, NULL)[0] == DM_REFUSED);  /* locked */
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_FUNC_UNLOCK);
+    CHECK(ask(DM_FUNC_UPDATE, 0, 0, NULL)[0] == DM_FUNC_UPDATE);
+    CHECK(DM_WINDOW == 0);
+    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_FUNC_PAGE);
+    pageHalf = 0;
+    /* with no app, no window: only the password */
+    setup(); memset(FLASH + APP_START, 0xFF, PAGE); boot();
+    DM_WINDOW = 255;
+    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_FUNC_PAGE);
+
+    printf("an app the watchdog had to reset is not started again\n");
+    setup();
+    CHECK(F.app && wdtEnabled);                 /* armed once it is set up */
+    wdtResets = 0; hidPoll();
+    CHECK(wdtResets > 0);                       /* and fed by hidPoll() */
+    GPIOR0 = 0; halted = 0; wdtEnabled = 0;
+    appStart(1 << WDRF);                        /* from MCUSR, or GPIOR0 */
+    CHECK(!F.app && halted == DM_CORE_HALTED && !wdtEnabled);
+    r = ask(DM_FUNC_INFO, 0, 0, NULL);
+    CHECK(r[DM_INFO_CORE] == DM_CORE_HALTED && r[DM_INFO_APPVER] == 0);
+    CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_REFUSED);  /* app's verbs */
+    storePass("test");
+    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_REFUSED);
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_FUNC_UNLOCK);
+    DM_WINDOW = 255;                            /* no window: no app */
+    CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_FUNC_PAGE);
+    pageHalf = 0;
+    /* a reset for any other reason runs it */
+    GPIOR0 = 0; halted = 0;
+    appStart(1 << 1);                           /* EXTRF */
+    CHECK(F.app && !halted);
 
     printf("the host check needs no gate, and does nothing else\n");
     setup();

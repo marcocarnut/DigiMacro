@@ -7,6 +7,11 @@
                                 send N pages and stop, as a pulled cable would
   spikectl.py flash app.hex --slow S
                                 wait S seconds between pages: time to pull it
+  spikectl.py flash app.hex --no-arm
+                                without asking the app to open the update
+                                window first: works only in the six seconds
+                                after a replug, or with no app
+  spikectl.py ... --wait        first wait for the board to be replugged
   spikectl.py read ADDR COUNT   flash, as the core reads it
   spikectl.py unlock PASS       give the password (then flash in the same run
                                 with: flash app.hex --pass PASS)
@@ -18,7 +23,7 @@ import fcntl, glob, os, struct, sys, time
 
 VND_ID, VND_LEN, CHUNK = 2, 36, 32
 INFO, PAGE, FREAD, COMMIT, REFUSED = 0x40, 0x65, 0x66, 0x67, 0xEE
-UNLOCK, SETPASS = 0x62, 0x63
+UNLOCK, SETPASS, UPDATE = 0x62, 0x63, 0x68
 
 
 def _ioc(dir_, nr, size):
@@ -27,6 +32,28 @@ def _ioc(dir_, nr, size):
 
 def HIDIOCSFEATURE(n): return _ioc(3, 0x06, n)
 def HIDIOCGFEATURE(n): return _ioc(3, 0x07, n)
+
+
+def present():
+    for d in glob.glob('/sys/class/hidraw/hidraw*'):
+        try:
+            if 'HID_UNIQ=postcogito.org:' in open(d + '/device/uevent').read():
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def wait_replug():
+    """Until the board has gone and come back: for testing what it does in
+    the first seconds after a replug."""
+    print('unplug the board, and plug it back in...', flush=True)
+    while present():
+        time.sleep(0.05)
+    while not present():
+        time.sleep(0.05)
+    time.sleep(0.3)                     # udev, permissions
+    print('back', flush=True)
 
 
 def find():
@@ -129,10 +156,13 @@ def wait_page(b, addr, page):
     sys.exit('page 0x%04X: the flash does not hold it' % addr)
 
 
-def flash(b, path, stop_after=None, slow=0):
+def flash(b, path, stop_after=None, slow=0, arm=True):
     r, _ = info(b)
     if r[3] < 3:
         sys.exit('this board has no core to take pages (protocol %d)' % r[3])
+    if arm and r[12] & 1:               # an app is running: ask it to open
+        rr = b.ask_own(UPDATE)          # the window (layout.h)
+        print('update window:', 'opened' if rr[0] == UPDATE else 'REFUSED')
     start, end, size = r[15] | r[16] << 8, r[17] | r[18] << 8, r[19]
     mem = read_hex(path)
     lo, hi = min(mem), max(mem) + 1
@@ -175,6 +205,12 @@ def unlock(b, pw):
 def main(a):
     if not a:
         sys.exit(__doc__)
+    if '--wait' in a:
+        a.remove('--wait')
+        wait_replug()
+    arm = '--no-arm' not in a
+    if not arm:
+        a.remove('--no-arm')
     b = Board()
     if '--pass' in a:
         i = a.index('--pass')
@@ -186,9 +222,9 @@ def main(a):
         for k, v in out.items():
             print('%-14s %s' % (k, v))
     elif a[0] == 'flash' and len(a) == 4 and a[2] == '--slow':
-        flash(b, a[1], slow=float(a[3]))
+        flash(b, a[1], slow=float(a[3]), arm=arm)
     elif a[0] == 'flash' and len(a) in (2, 4):
-        flash(b, a[1], int(a[3]) if len(a) == 4 else None)
+        flash(b, a[1], int(a[3]) if len(a) == 4 else None, arm=arm)
     elif a[0] == 'read' and len(a) == 3:
         addr, n = int(a[1], 0), int(a[2], 0)
         out = b''

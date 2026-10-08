@@ -17,6 +17,9 @@
 #ifndef APP_LINE
 #define APP_LINE    "DigiMacro v2 spike, app A"
 #endif
+#ifndef APP_HANG
+#define APP_HANG    0                   /* ms before hanging on purpose */
+#endif
 #ifndef APP_TYPE
 #define APP_TYPE    0
 #endif
@@ -50,7 +53,14 @@ void app_loop(void)
     uint32_t now = millis();
 
     protoPoll();
-    hidAllow(10000);                    /* SPIKE: no pad, so always open */
+    hidAllow(10000);
+
+    /* App C: a bad app, for the watchdog to catch. The LED stays lit. */
+    if (APP_HANG && now - since > APP_HANG) {
+        PORTB |= 1 << LED;
+        for (;;)
+            ;
+    }                    /* SPIKE: no pad, so always open */
 
     if (now - blinked >= APP_BLINK) {
         blinked = now;

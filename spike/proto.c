@@ -22,10 +22,16 @@
    Not blocking: V-USB's interrupt has to start within a few cycles of the
    bus moving, so this one lets it in at once. */
 static volatile uint32_t ms;
+static uint8_t tenth;
 
+/* It also counts the core's update window, in tenths (layout.h). */
 ISR(TIMER1_COMPA_vect, ISR_NOBLOCK)
 {
     ms++;
+    if (++tenth == 100) {
+        tenth = 0;
+        if (DM_WINDOW != 0xFF) DM_WINDOW++;
+    }
 }
 
 uint32_t millis(void)
@@ -165,13 +171,6 @@ void hidKey(uint8_t modifier, uint8_t key)
 /* Requests                                                              */
 /* ===================================================================== */
 
-/* The core asks this before it takes the first page of an update, having
-   checked the password itself: is somebody at the board? */
-uint8_t app_may_update(void)
-{
-    return hidAllowed();
-}
-
 /* From inside the USB driver: answer at once, and leave anything slow for
    protoPoll(). */
 uint8_t app_request(uint8_t *v)
@@ -200,6 +199,7 @@ uint8_t app_request(uint8_t *v)
         wipe();                 /* the key, whether it was right or not */
         return 1;
 
+    case DM_FUNC_UPDATE:
     case DM_FUNC_RESTART:
     case DM_FUNC_READ:
     case DM_FUNC_WRITE:
@@ -220,6 +220,12 @@ uint8_t app_request(uint8_t *v)
     }
 
     switch (v[0]) {
+    case DM_FUNC_UPDATE:
+        /* Somebody at the board, with the password: the core may take
+           pages for the next six seconds. */
+        DM_WINDOW = 0;
+        break;
+
     case DM_FUNC_RESTART:
         restartWanted = 1;
         restartAsked = ticks();

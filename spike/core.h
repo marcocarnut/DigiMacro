@@ -82,8 +82,14 @@ void     hidLock(void);         /* the session is over: the window closed */
  * app's to answer, gates and all, returning 1 -- or 0 for a command it
  * does not know, which the core then refuses. Never poll USB from here.
  *
- * app_may_update() is asked before the core takes the first page, on top
- * of the password, which the core checks itself: the window is the app's.
+ * The app has no say in updates beyond opening the window (layout.h).
+ *
+ * The watchdog runs while the app does, about two seconds, and the core's
+ * hidPoll() resets it: an app must call hidPoll() at least every second or
+ * so, and must leave the watchdog alone after app_setup(). An app that
+ * hangs is reset by it, and the core then does not start it again -- the
+ * board comes up core only, taking an update behind the password. A replug
+ * runs it again.
  *
  * The app's interrupts go through its header (layout.h); before taking
  * any page the core switches off every interrupt source an app may have
@@ -92,7 +98,6 @@ void     hidLock(void);         /* the session is over: the window closed */
 void     app_setup(void);
 void     app_loop(void);
 uint8_t  app_request(uint8_t *v);
-uint8_t  app_may_update(void);
 
 #ifdef __cplusplus
 }

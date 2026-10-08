@@ -16,7 +16,6 @@ __vectors:
     rjmp    __app_init          /* APP_SETUP */
     rjmp    app_loop            /* APP_LOOP */
     rjmp    app_request         /* APP_REQUEST */
-    rjmp    app_may_update      /* APP_MAYUPDATE */
     /* APP_VECTORS: the chip's interrupts 1..14, as the core passes them on.
        An app's ISR() overrides the weak default, which only returns. */
 #define VEC(n) .weak __vector_##n $ .set __vector_##n, __app_reti $ rjmp __vector_##n $

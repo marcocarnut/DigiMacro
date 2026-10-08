@@ -109,8 +109,8 @@ In rough order of difficulty.
 | the app | today's firmware less its USB half, plus the jump tables |
 | gain | Micronucleus's 1.5 KB, less jump tables, padding to a page boundary and lost link-time optimisation: perhaps **1–1.3 KB net** |
 
-Measure, don't trust this table: the spike will say. *It did: a 3862-byte
-core, a boundary near `0xF80`, and about 1.2–1.5 KB free — see* The spike, as
+Measure, don't trust this table: the spike will say. *It did: a 3812-byte
+core, the boundary at `0x1000`, and about 1–1.3 KB free — see* The spike, as
 built.
 
 ## Security
@@ -290,14 +290,41 @@ Linux PC, October 2026. Every item on the list above held on the board.
   - A wrong guess costs a second, taken in the loop and never in a callback;
     guesses in that second are turned away unread.
   - The core keeps "unlocked" for the session.
-  - PAGE needs it whenever a password is set, app or no app. With an app,
-    the app's window is needed too.
+  - PAGE needs it whenever a password is set, app or no app.
   - With no app the core answers UNLOCK itself; there is no hold, since
     touch is the app's. A board with no password is as open as v1 was to
     Micronucleus.
   - The lockout stays the app's: a wrong password is a wrong code, and the
     right one clears it.
-
+- **The app has no say in updates.** At first the core asked the app,
+  through `app_may_update()`, whether somebody was at the board. Marco
+  dropped it: an app that can refuse an update can keep itself on the board
+  for good, buggy or not, and the password already guards a board that
+  wants guarding.
+- **An update window, as Micronucleus has.** Marco's idea:
+  - GPIOR2 counts tenths of a second. The core zeroes it at boot, and the
+    app's clock counts it, stopping at 255.
+  - While an app runs, the first page is taken only within six seconds:
+    after a replug, or after the app opens the window again with verb `0x68`,
+    which is behind the hold and the password.
+  - With no app there is no window, only the password.
+  - An app that never counts leaves the window open: it fails open, never
+    shut. The core's whole cost is one compare against a register.
+- **The watchdog catches an app that stops polling.**
+  - The core arms it, two seconds, after the app's setup, and `hidPoll()`
+    feeds it.
+  - An app that hangs is reset by it, and the core then does not start it
+    again. It comes up core only, `DM_CORE_HALTED` in INFO, and takes an
+    update behind the password.
+  - A replug is a power-on, and runs the app again.
+  - The reset reason is read from MCUSR, or from GPIOR0, where a
+    Micronucleus built with `SAVE_MCUSR` leaves it. The spike's boards have
+    such a build.
+  - This was the one gap no gate could close: an app that never polls USB
+    hears nothing, password or not.
+- **The core's flags are bits of GPIOR0,** reached with SBI, CBI and SBIC
+  instead of LDS and STS, which saved 62 bytes. GPIOR1 stays the app's: v1
+  keeps its flags there. GPIOR2 is the update window.
   This costs about 300 bytes.
 - **FREAD is ungated.** Flash is published firmware; the secrets are in
   EEPROM.
@@ -314,15 +341,24 @@ Linux PC, October 2026. Every item on the list above held on the board.
 
 | | |
 |---|---|
-| the core | **3862 bytes**: V-USB about 1.7 KB of it (C 930, assembler about 790), the descriptors, the request plumbing, the page writer, the app check, the password |
-| boundary | **about `0xF80`**, to be fixed once the core is trimmed: it can never move afterwards |
-| for the app | 4224 bytes below `0x2000` |
-| v1's app half plus `proto.c` | roughly 2.7–3 KB, so **about 1.2–1.5 KB free**, against v1's 684 |
+| the core | **3812 bytes**: V-USB about 1.7 KB of it (C 930, assembler about 790), the descriptors, the request plumbing, the page writer, the app check, the password, the window and the watchdog |
+| boundary | **`0x1000`**, Marco's call: 4 KB each side, with the core's table at `0xFE0` and 252 bytes to spare under it for fixes the port may need. It is final once a board ships with this core |
+| for the app | 4096 bytes below `0x2000` |
+| v1's app half plus `proto.c` | roughly 2.7–3 KB, so **about 1–1.3 KB free**, against v1's 684 |
 | an update | 18–22 pages in under a second |
 
 The first estimate, 2.5–3 KB, was before the core had a password, a page
 writer and an app check. The plain port of v1's library measured 4552
 bytes. Moving the protocol into the app is what made v2 worth its space.
+
+For the same features, v2's code will be larger than v1's, not smaller.
+v1 was 5966 bytes; v2 will be roughly 6.5–6.8 KB. The extra pays for the
+page writer, the app check, the password in the core, the two tables and the
+vector forwarding, `proto.c`'s own clock, two start-up codes, and the
+inlining lost at the boundary. What v2 wins is room: the whole chip rather
+than what is left under Micronucleus. Trimming further was tried and gave
+almost nothing (options 4 bytes; the rest unrolled back); the core is
+mostly V-USB.
 
 ### What it taught
 
@@ -346,7 +382,7 @@ bytes. Moving the protocol into the app is what made v2 worth its space.
 ## Open questions
 
 Answered by the spike:
-- **The boundary:** about `0xF80`, measured, and fixed after trimming.
+- **The boundary:** `0x1000`.
 - **The recovery-mode gate:** the password alone, checked by the core. A
   board with no password takes an update from anyone, as with Micronucleus.
 - **Touch in the core:** no. The core is minimal; recovery needs no hold.
@@ -359,8 +395,6 @@ Answered by the spike:
 
 Still open:
 
-- **Trimming, then the boundary.** A few dozen bytes may yet come out of the
-  core. After that the boundary is fixed for good.
 - **Windows.** Its HID stack may treat the 4.5 ms halts differently from
   Linux's. A spike page in Chrome, tried on Windows 10, will say.
 - **The wipe-before-update option** for hardened boards: default off?

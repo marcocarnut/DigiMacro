@@ -18,6 +18,8 @@
 /* UNLOCK 0x62 is in layout.h: with no app, the core answers it */
 #define DM_FUNC_SETPASS     0x63    /* count, password; count 0 clears it */
 #define DM_FUNC_HOSTAUTH    0x64    /* count, host key; needs no gate */
+#define DM_FUNC_UPDATE      0x68    /* open the update window: six seconds
+                                       for the first page (layout.h) */
 
 #define DM_INFO_EESIZE      5       /* [5..6] EEPROM size */
 #define DM_INFO_STATE       7       /* [7] the state byte */

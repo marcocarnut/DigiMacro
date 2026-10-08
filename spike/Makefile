@@ -1,7 +1,8 @@
 # The spike: a core below the boundary, two trivial apps above it.
 #
-#   make            core.hex, appA.hex, appB.hex, and spikeA.hex (core + app A,
-#                   the image that goes onto a board)
+#   make            core.hex, appA.hex, appB.hex, appC.hex (which hangs after
+#                   ten seconds, for the watchdog), and spikeA.hex (core +
+#                   app A, the image that goes onto a board)
 #   make test       the core's request handling, built for the host
 #   make size       what each part takes
 #   make upload     spikeA.hex onto a Digispark, through Micronucleus
@@ -37,7 +38,7 @@ APP_HDR    := $(call val,APP_MAGIC - APP_START)
 
 CORE_OBJ = core.o coretab.o usbdrv.o usbdrvasm.o osccal.o
 
-all: core.hex appA.hex appB.hex spikeA.hex
+all: core.hex appA.hex appB.hex appC.hex spikeA.hex
 
 core.o: core.c core.h layout.h
 coretab.o: coretab.S layout.h
@@ -75,8 +76,10 @@ coreapi.o: coreapi.S layout.h
 
 APPVER_A  = 1
 APPVER_B  = 2
+APPVER_C  = 3
 APPDEFS_A = '-DAPP_LINE="DigiMacro v2 spike, app A"' -DAPP_BLINK=500
 APPDEFS_B = '-DAPP_LINE="DigiMacro v2 spike, app B: replaced over WebHID"' -DAPP_BLINK=125
+APPDEFS_C = -DAPP_BLINK=60 -DAPP_HANG=10000
 
 app%.elf: apphdr%.o app%.o proto.o coreapi.o
 	$(CC) $(CFLAGS) -nostartfiles -Wl,--gc-sections \

@@ -116,33 +116,52 @@ static void initSerial(void)
 
 static uint8_t kbdIdle[HID_KBD_LEN] = { HID_REPORT_KBD };  /* no keys */
 static uint8_t hidIdleRate;
-static uint8_t awake;
 
 static uint8_t vnd[DM_VND_LEN];
 static uint8_t vndLeft;
 static uint8_t vndAt;
-static uint8_t writingVnd;
 
 static uint8_t  fuses[4];       /* low, high, extended, lock, read at boot */
-static uint8_t  mode;           /* DM_CORE_APP, DM_CORE_UPDATE */
-static uint8_t  unlocked;       /* this session; RAM, so a replug locks */
-static uint8_t  passWait;       /* a wrong password: see passPause() */
+
+/* The core's flags, as bits of GPIOR0: the compiler reaches a register in
+   the low I/O space with SBI, CBI and SBIC, two bytes each, where a byte in
+   RAM takes a four-byte LDS or STS and more. GPIOR0 is the core's, and main()
+   clears it -- Micronucleus leaves the reset reason in it. GPIOR1 is the
+   app's; GPIOR2 is the update window (layout.h). */
+typedef struct {
+    uint8_t app          : 1;   /* DM_CORE_APP: a valid app is running */
+    uint8_t update       : 1;   /* DM_CORE_UPDATE: taking pages */
+    uint8_t awake        : 1;   /* the host has written the lock lights */
+    uint8_t unlocked     : 1;   /* this session; a replug locks */
+    uint8_t passWait     : 1;   /* a wrong password: see passPause() */
+    uint8_t pageHalf     : 1;   /* the first half of a page is in */
+    uint8_t writingVnd   : 1;   /* the SET_REPORT in progress is ours */
+    uint8_t commitWanted : 1;
+} coreFlags;
+#define F               (*(volatile coreFlags *)&GPIOR0)
+#define mode            (GPIOR0 & (DM_CORE_APP | DM_CORE_UPDATE))
+#define awake           F.awake
+#define unlocked        F.unlocked
+#define passWait        F.passWait
+#define pageHalf        F.pageHalf
+#define writingVnd      F.writingVnd
+#define commitWanted    F.commitWanted
 
 /* The page being received. Half a page per report, so the first half
    waits here for the second; the second asks for the write, which happens
    in the update's loop -- see updateStep(). */
 static uint8_t  pageBuf[PAGE];
 static uint16_t pageAt;
-static uint8_t  pageHalf;       /* the first half is in */
 static uint8_t  pageWanted;     /* 1 asked; 2 the answer is on its way */
 static uint8_t  pageWait;
-static uint8_t  commitWanted;
+static uint8_t  halted;         /* DM_CORE_HALTED: see main() */
 static uint16_t commitWait;
 
 /* The core keeps no clock -- time is the app's -- so its few waits are
    counted in turns of this: a poll and a tenth of a millisecond. */
 static void turn(void)
 {
+    wdt_reset();
     usbPoll();
     _delay_us(100);
 }
@@ -284,7 +303,7 @@ static void vndAnswer(void)
 {
     uint16_t addr = vnd[1] | ((uint16_t)vnd[2] << 8);
     uint8_t  n    = vnd[3];
-    uint8_t  app  = mode & DM_CORE_APP;
+    uint8_t  app  = F.app;
 
     if (n > DM_VND_CHUNK) n = DM_VND_CHUNK;
 
@@ -295,7 +314,7 @@ static void vndAnswer(void)
         memcpy(vnd + DM_INFO_FUSES, fuses, 4);
         vnd[7] = (hidPassSet()  ? DM_ST_PASSWORD : 0)
                | (hidUnlocked() ? DM_ST_UNLOCKED : 0);
-        vnd[DM_INFO_CORE] = mode;
+        vnd[DM_INFO_CORE] = mode | halted;
         if (app) {
             vnd[DM_INFO_APPVER] = flashByte(APP_VERSION);
             APP(APP_REQUEST, appReq)(vnd);
@@ -311,11 +330,12 @@ static void vndAnswer(void)
         break;
 
     case DM_FUNC_PAGE:
-        /* The password always, checked here, app or no app; and with an
-           app, its say as well -- the window, somebody at the board. With
-           no app there is no window to ask about: the password alone, and
-           a board with none is as open as v1's was to Micronucleus. */
-        if (!hidUnlocked() || (app && !APP(APP_MAYUPDATE, appByte)()))
+        /* The password, app or no app; and while an app runs, the update
+           window too (layout.h): the seconds after a replug, or after the
+           app has opened it again. Beyond opening the window, the app has
+           no say: an app that could refuse an update could keep itself on
+           the board for good. */
+        if (!hidUnlocked() || (app && DM_WINDOW >= DM_WINDOW_TENTHS))
             refuse();
         else
             takePage(addr, n);
@@ -332,7 +352,7 @@ static void vndAnswer(void)
     case DM_FUNC_COMMIT:
         /* Only after pages, and only for an app that checks out. A refusal
            leaves the board taking pages, to try again. */
-        if (!(mode & DM_CORE_UPDATE) || pageWanted || !appValid())
+        if (!F.update || pageWanted || !appValid())
             refuse();
         else
             commitWanted = 1;
@@ -487,6 +507,7 @@ static void NORETURN softReset(void)
     cli();
     quiet();
     usbDeviceDisconnect();
+    GPIOR0 = 0;                 /* or main() reads the flags as a reset reason */
     asm volatile ("rjmp __init");
     __builtin_unreachable();
 }
@@ -542,7 +563,8 @@ static void updateStep(void)
 static void NORETURN update(void)
 {
     quiet();
-    mode = DM_CORE_UPDATE;
+    F.app = 0;
+    F.update = 1;
     FOREVER updateStep();
 }
 
@@ -563,30 +585,50 @@ static void readFuses(void)
    code is about to be rewritten under it. */
 void hidPoll(void)
 {
+    wdt_reset();                /* the app is alive: see main() */
     usbPoll();
     passPause();
     if (pageWanted) update();
 }
 
+/* The watchdog, if it reset the board, did it because the app stopped
+   calling hidPoll(): then the app is not started again, and the core alone
+   answers -- it can be replaced, behind the password. A replug is a
+   power-on, and runs it again.
+
+   The app is set up before USB: that is what gives it its variables, so
+   nothing may call into it before -- INFO included -- and it may want a
+   second with interrupts off for a serial. */
+static void appStart(uint8_t why)
+{
+    if (!appValid()) return;
+    if (why & (1 << WDRF)) {
+        halted = DM_CORE_HALTED;
+        return;
+    }
+    F.app = 1;
+    APP(APP_SETUP, appVoid)();
+    wdt_enable(WDTO_2S);
+}
+
 #ifndef CORE_HOST_TEST
 int main(void)
 {
+    /* Why we are here: in MCUSR, or in GPIOR0 where a Micronucleus built
+       with SAVE_MCUSR leaves it, having passed through it on the way. */
+    uint8_t why = MCUSR | GPIOR0;
     MCUSR = 0;
+    GPIOR0 = 0;
+    DM_WINDOW = 0;              /* the seconds after a replug: layout.h */
     wdt_disable();
     readFuses();
     sei();
 
-    /* The app before USB: setting it up is what gives it its variables, so
-       nothing may call into it before -- INFO included -- and it may want
-       a second with interrupts off for a serial. */
-    if (appValid()) {
-        mode = DM_CORE_APP;
-        APP(APP_SETUP, appVoid)();
-    }
+    appStart(why);
     hidRestart();
     for (;;) {
         hidPoll();
-        if (mode & DM_CORE_APP) APP(APP_LOOP, appVoid)();
+        if (F.app) APP(APP_LOOP, appVoid)();
     }
 }
 #endif

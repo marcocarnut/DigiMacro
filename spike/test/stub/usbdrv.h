@@ -30,6 +30,7 @@ extern uchar usbConfiguration;
 #define USB_STRING_DESCRIPTOR_HEADER(n) (((2 * (n) + 2) & 0xff) | (3 << 8))
 extern uint8_t USB_INTR_ENABLE, USB_INTR_PENDING;
 #define USB_INTR_ENABLE_BIT 5
+#define USB_INTR_CFG_SET (1 << 4)
 #define USB_INTR_PENDING_BIT 5
 void usbPoll(void);
 void usbInit(void);

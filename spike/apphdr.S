@@ -15,20 +15,22 @@
 __vectors:
     rjmp    __app_init          /* APP_SETUP */
     rjmp    app_loop            /* APP_LOOP */
-    rjmp    hidPassSet
-    rjmp    hidUnlocked
-    rjmp    hidUnlock
-    rjmp    hidSetPass
-    rjmp    hidLockState
-    rjmp    hidHostState
-    rjmp    hidHostForget
-    rjmp    hidHostAuth
+    rjmp    app_request         /* APP_REQUEST */
+    rjmp    app_may_update      /* APP_MAYUPDATE */
+    /* APP_VECTORS: the chip's interrupts 1..14, as the core passes them on.
+       An app's ISR() overrides the weak default, which only returns. */
+#define VEC(n) .weak __vector_##n $ .set __vector_##n, __app_reti $ rjmp __vector_##n $
+    VEC(1)  VEC(2)  VEC(3)  VEC(4)  VEC(5)  VEC(6)  VEC(7)
+    VEC(8)  VEC(9)  VEC(10) VEC(11) VEC(12) VEC(13) VEC(14)
     .if (. - __vectors) != 2 * APP_SLOTS
     .error "the header's table does not match APP_SLOTS"
     .endif
     .byte   APP_MAGIC0, APP_MAGIC1
     .word   __data_load_end - APP_START /* the CRC goes here, after the build */
     .byte   APP_VER, CORE_API
+
+__app_reti:
+    reti
 
     .section .init0,"ax",@progbits
 __app_init:

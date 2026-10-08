@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Finish an app image, or join hex files into one.
 
-  apphex.py app  ADDR in.bin out.hex   stamp the app's CRC and write its hex
+  apphex.py app  ADDR HDR in.bin out.hex
+                                       stamp the app's CRC and write its hex;
+                                       HDR is where the magic is (layout.h)
   apphex.py join out.hex in.hex...     several hex files as one
 
 The app's header says how long the image is (layout.h); the CRC-16 of those
@@ -9,9 +11,6 @@ bytes goes right after them, which is what the core checks before it will run
 the app. The linker cannot compute a CRC, hence this.
 """
 import sys
-
-APP_SLOTS = 10      # layout.h: the header's table comes before the magic
-
 
 def crc16(data):
     """avr-libc's _crc16_update, from 0xFFFF: poly 0xA001, reflected."""
@@ -59,10 +58,9 @@ def write_hex(path, mem):
     open(path, 'w').write('\n'.join(out) + '\n')
 
 
-def app(addr, binpath, hexpath):
-    addr = int(addr, 0)
+def app(addr, at, binpath, hexpath):
+    addr, at = int(addr, 0), int(at, 0)
     data = bytearray(open(binpath, 'rb').read())
-    at = 2 * APP_SLOTS
     if data[at:at + 2] != b'DM':
         sys.exit('apphex: no app header at the start of ' + binpath)
     length = data[at + 2] | data[at + 3] << 8
@@ -85,7 +83,7 @@ def join(out, *ins):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) == 5 and sys.argv[1] == 'app':
+    if len(sys.argv) == 6 and sys.argv[1] == 'app':
         app(*sys.argv[2:])
     elif len(sys.argv) >= 4 and sys.argv[1] == 'join':
         join(*sys.argv[2:])

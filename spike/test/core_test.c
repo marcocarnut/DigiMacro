@@ -1,9 +1,10 @@
 /*
- * The core's request handling, on the host.
+ * The core's request handling, and the app's protocol over it, on the host.
  *
- * Compiles ../core.c itself -- not a copy -- against stubs for the chip and
- * for V-USB, with an array for the flash and C functions for the app's
- * slots. The core is the part that can never be fixed in the field, so
+ * Compiles ../core.c and ../proto.c themselves -- not copies -- against
+ * stubs for the chip and for V-USB, with an array for the flash, and
+ * proto.c's functions in the app's slots as an app's header would put
+ * them. The core is the part that can never be fixed in the field, so
  * everything a host can ask of it is asked here: the gates, the clamps, the
  * page writer's refusals, a whole update, and updates that go wrong.
  */
@@ -45,10 +46,12 @@ static void spmWrite(uint16_t a, const uint8_t *p)
 static void softReset(void) { softResets++; }
 
 #include "../core.c"
+#include "../proto.c"
 
 /* ---- the stubs' state ---- */
 uint8_t SREG, OCR1C, OCR1A, TCCR1, TIMSK, OSCCAL, TCCR0B, TCNT0, WDTCR, MCUSR,
-        GIMSK, GIFR, USB_INTR_ENABLE, USB_INTR_PENDING;
+        GIMSK, GIFR, PCMSK, EECR, ACSR, ADCSRA, USICR,
+        USB_INTR_ENABLE, USB_INTR_PENDING;
 uint8_t EE[512], FUSES[4] = { 0xF1, 0xFF, 0xFE, 0xDF };
 usbMsgPtr_t usbMsgPtr;
 uchar usbConfiguration;
@@ -61,18 +64,18 @@ uchar usbInterruptIsReady(void) { return 1; }
 void usbDeviceConnect(void) { }
 void usbDeviceDisconnect(void) { }
 
-/* ---- the app's side ---- */
+/* ---- the firmware's hooks, as proto.c calls them ---- */
 static uint8_t passSet, unlocked = 1, lockState, hostState, hostAuthOk;
 static int hostForgot, unlockCalls, setPassCalls;
 static void    tVoid(void) { }
-static uint8_t tPassSet(void) { return passSet; }
-static uint8_t tUnlocked(void) { return unlocked; }
-static uint8_t tUnlock(const uint8_t *p, uint8_t n) { (void)p; unlockCalls++; return n == 4; }
-static void    tSetPass(const uint8_t *p, uint8_t n) { (void)p; (void)n; setPassCalls++; }
-static uint8_t tLockState(void) { return lockState; }
-static uint8_t tHostState(void) { return hostState; }
-static void    tHostForget(void) { hostForgot++; }
-static uint8_t tHostAuth(const uint8_t *p, uint8_t n) { (void)p; (void)n; return hostAuthOk; }
+uint8_t hidPassSet(void) { return passSet; }
+uint8_t hidUnlocked(void) { return unlocked; }
+uint8_t hidUnlock(const uint8_t *p, uint8_t n) { (void)p; unlockCalls++; return n == 4; }
+void    hidSetPass(const uint8_t *p, uint8_t n) { (void)p; (void)n; setPassCalls++; }
+uint8_t hidLockState(void) { return lockState; }
+uint8_t hidHostState(void) { return hostState; }
+void    hidHostForget(void) { hostForgot++; }
+uint8_t hidHostAuth(const uint8_t *p, uint8_t n) { (void)p; (void)n; return hostAuthOk; }
 
 /* ---- harness ---- */
 static int fails, checks;
@@ -145,10 +148,10 @@ static void boot(void)                  /* main(), without the loop */
 {
     memset(vnd, 0, sizeof vnd);
     mode = 0; pageWanted = pageHalf = commitWanted = 0;
-    allowOpen = 0;
-    uint8_t ok = appValid();
-    hidBegin();
-    if (ok) mode = DM_CORE_APP;
+    commitWait = 0; allowOpen = 0; restartWanted = 0;
+    readFuses();
+    if (appValid()) mode = DM_CORE_APP;
+    hidRestart();
 }
 
 /* Run the loop, as the app's hidPoll() would and then the update's own,
@@ -156,7 +159,7 @@ static void boot(void)                  /* main(), without the loop */
 static void spin(void)
 {
     hidPoll();
-    for (int i = 0; i < 300 && (pageWanted || commitWanted); i++) {
+    for (int i = 0; i < 2000 && (pageWanted || commitWanted); i++) {
         if (pageWanted == 2) usbTxLen = 0x5a;  /* the host took the status */
         updateStep();
     }
@@ -187,12 +190,8 @@ static int sendImage(int headerLast, int stopAfter)
 static void setup(void)
 {
     appSlots[APP_SETUP] = (void *)tVoid;       appSlots[APP_LOOP] = (void *)tVoid;
-    appSlots[APP_PASSSET] = (void *)tPassSet;  appSlots[APP_UNLOCKED] = (void *)tUnlocked;
-    appSlots[APP_UNLOCK] = (void *)tUnlock;    appSlots[APP_SETPASS] = (void *)tSetPass;
-    appSlots[APP_LOCKSTATE] = (void *)tLockState;
-    appSlots[APP_HOSTSTATE] = (void *)tHostState;
-    appSlots[APP_HOSTFORGET] = (void *)tHostForget;
-    appSlots[APP_HOSTAUTH] = (void *)tHostAuth;
+    appSlots[APP_REQUEST] = (void *)app_request;
+    appSlots[APP_MAYUPDATE] = (void *)app_may_update;
     memset(FLASH, 0xFF, sizeof FLASH);
     memset(FLASH, 0x5A, APP_START);     /* the core, which must never change */
     memset(EE, 0xFF, sizeof EE);
@@ -259,7 +258,7 @@ int main(void)
     setup();
     CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_REFUSED);     /* no window */
     CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_REFUSED);
-    CHECK(ask(DM_FUNC_FREAD, 0, 4, NULL)[0] == DM_REFUSED);
+    CHECK(ask(DM_FUNC_FREAD, 0, 4, NULL)[0] == DM_FUNC_FREAD);  /* public */
     CHECK(ask(DM_FUNC_RESTART, 0, 0, NULL)[0] == DM_REFUSED);
     hidAllow(1000);
     CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_FUNC_READ);
@@ -309,8 +308,8 @@ int main(void)
     { uint8_t q[DM_VND_LEN] = { DM_FUNC_INFO }; setReport(q, 0); }
     CHECK(getReport()[1] == 'D');
 
-    printf("FREAD reads any flash, the core included\n");
-    setup(); hidAllow(1000);
+    printf("FREAD reads any flash, the core included, with no gate\n");
+    setup();
     r = ask(DM_FUNC_FREAD, 0, 4, NULL);
     CHECK(r[0] == DM_FUNC_FREAD && r[4] == 0x5A);
     r = ask(DM_FUNC_FREAD, APP_MAGIC, 2, NULL);
@@ -334,9 +333,12 @@ int main(void)
 
     printf("a whole update\n");
     setup(); hidAllow(1000);
+    TIMSK = 0x40; GIMSK = 0x60; PCMSK = 0x3F; EECR = 0x08;  /* the app's */
     makeImage(900, 2, 0x22);
     CHECK(sendImage(1, -1) > 0);
     CHECK(mode == DM_CORE_UPDATE);
+    CHECK(TIMSK == 0 && GIMSK == 1 << USB_INTR_ENABLE_BIT
+          && PCMSK == USB_INTR_CFG_SET && EECR == 0);    /* quiet() */
     CHECK(headerErasedFirst == 1);
     CHECK(memcmp(FLASH + APP_START, image, imageLen) == 0);
     CHECK(belowBoundary == 0 && coreIntact());
@@ -374,7 +376,7 @@ int main(void)
         usbTxLen = 4;
         ask(DM_FUNC_PAGE, APP_START + PAGE + 32, 32, data);
         int before = writes;
-        for (int i = 0; i < 30; i++) updateStep();
+        for (int i = 0; i < 250; i++) updateStep();
         CHECK(writes == before + 1);
     }
 
@@ -422,7 +424,7 @@ int main(void)
     setup(); hidAllow(1000);
     hostForgot = 0;
     CHECK(ask(DM_FUNC_RESTART, 0, 0, NULL)[0] == DM_FUNC_RESTART);
-    for (int i = 0; i < 60; i++) hidPoll();
+    for (int i = 0; i < 60; i++) protoPoll();
     CHECK(!restartWanted && !allowOpen && hostForgot == 1);
     CHECK(getReport()[0] == DM_FUNC_INFO);
 

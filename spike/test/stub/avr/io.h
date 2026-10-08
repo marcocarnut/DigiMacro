@@ -2,7 +2,11 @@
 #pragma once
 #include <stdint.h>
 extern uint8_t SREG, OCR1C, OCR1A, TCCR1, TIMSK, OSCCAL, TCCR0B, TCNT0,
-               WDTCR, MCUSR, GIMSK, GIFR;
+               WDTCR, MCUSR, GIMSK, GIFR, PCMSK, EECR, ACSR, ADCSRA, USICR;
+#define ACIE 3
+#define ADIE 3
+#define USISIE 7
+#define USIOIE 6
 #define CTC1 7
 #define CS13 3
 #define OCIE1A 6

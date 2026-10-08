@@ -19,3 +19,16 @@ coretab:
     .rept CORE_SLOTS - CORE_USED        /* not yet: return at once */
     ret
     .endr
+
+/*
+ * Every interrupt but V-USB's, passed on to the app's header: the app's
+ * timer is the app's, and so is anything else it wants. Two rjmps more
+ * than a direct vector, which costs a few cycles; the core never turns any
+ * of these on itself, and turns them all off before an update (quiet()).
+ */
+    .section .text.vectors,"ax",@progbits
+/* __app_vectors is the linker's (the Makefile's --defsym): an rjmp to a
+   plain number would be taken as an offset, not an address. */
+#define FWD(n) .global __vector_##n $ __vector_##n: rjmp __app_vectors + 2 * ((n) - 1) $
+    FWD(1)          FWD(3)  FWD(4)  FWD(5)  FWD(6)  FWD(7)
+    FWD(8)  FWD(9)  FWD(10) FWD(11) FWD(12) FWD(13) FWD(14)

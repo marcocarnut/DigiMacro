@@ -6,6 +6,11 @@
  * Once a core is on a board it can never change, so everything here is
  * forever for that board: add at the end, never move or renumber.
  *
+ * The core is kept to what nothing else can do: be a USB device that
+ * enumerates and says who it is, read flash and fuses, and write the app's
+ * pages. Everything else -- time, the window, the password, typing, the
+ * protocol -- is the app's, where it can be fixed by an update.
+ *
  * Included from C and from assembler, hence only #defines.
  */
 #ifndef LAYOUT_H
@@ -16,8 +21,7 @@
 #define PAGE            64              /* SPM_PAGESIZE on the ATtiny85 */
 
 /* The boundary. The core lives below it and can never be written from
-   USB; the app lives above it and can be replaced whole. The spike
-   measures the core to say where this belongs. */
+   USB; the app lives above it and can be replaced whole. */
 #ifndef APP_START
 #define APP_START       0x1240
 #endif
@@ -41,17 +45,16 @@
  *   api       CORE_API as the app was built: a core runs no app built
  *             for another
  */
-#define APP_SETUP       0               /* once, at boot */
+#define APP_SETUP       0               /* once, at boot, before USB */
 #define APP_LOOP        1               /* over and over */
-#define APP_PASSSET     2               /* the gates, as in v1's hooks */
-#define APP_UNLOCKED    3
-#define APP_UNLOCK      4
-#define APP_SETPASS     5
-#define APP_LOCKSTATE   6
-#define APP_HOSTSTATE   7
-#define APP_HOSTFORGET  8
-#define APP_HOSTAUTH    9
-#define APP_SLOTS       10
+#define APP_REQUEST     2               /* a request the core does not
+                                           answer alone: see core.h */
+#define APP_MAYUPDATE   3               /* may the core take pages? */
+#define APP_VECTORS     4               /* the chip's interrupts 1..14,
+                                           in order; PCINT0's is V-USB's
+                                           and its slot is never used */
+#define APP_NVECTORS    14
+#define APP_SLOTS       (APP_VECTORS + APP_NVECTORS)
 
 #define APP_MAGIC       (APP_START + 2 * APP_SLOTS)
 #define APP_LENGTH      (APP_MAGIC + 2)
@@ -76,27 +79,31 @@
     X(0, hidPoll)                       \
     X(1, hidReady)                      \
     X(2, hidAwake)                      \
-    X(3, hidAllow)                      \
-    X(4, hidAllowed)                    \
-    X(5, hidKey)                        \
-    X(6, millis)
-#define CORE_USED       7
+    X(3, hidSend)                       \
+    X(4, hidRestart)                    \
+    X(5, hidReport)
+#define CORE_USED       6
 
 /* ---- RAM ------------------------------------------------------------
  *
  * The core's variables go from the bottom of RAM; the app's start here;
  * the stack, shared, comes down from the top. The core's build checks
  * that it ends below this. */
-#define APP_RAM         0x0180
+#define APP_RAM         0x0150
 
-/* ---- the verbs the core adds for updates ---------------------------- */
+/* ---- the verbs the core answers ------------------------------------- */
 
+#define DM_FUNC_INFO    0x40    /* who this is; the app adds its part */
 #define DM_FUNC_PAGE    0x65    /* address, 32 bytes: half a page. The
                                    second half writes it. */
 #define DM_FUNC_FREAD   0x66    /* address, count -> flash */
 #define DM_FUNC_COMMIT  0x67    /* check the new app, and start it */
 
-/* INFO, after v1's twelve bytes */
+/* INFO, as the core fills it. [5..7] are the app's: EEPROM size and v1's
+   state byte, both about the app's business. */
+#define DM_INFO_PROTO   3       /* [3] DM_PROTOCOL_VERSION */
+#define DM_INFO_COREVER 4       /* [4] DM_CORE_VERSION */
+#define DM_INFO_FUSES   8       /* [8..11] low, high, extended, lock */
 #define DM_INFO_CORE    12      /* [12] core state, below */
 #define DM_INFO_APPVER  13      /* [13] the app's version, 0 if none */
 #define DM_INFO_API     14      /* [14] CORE_API */

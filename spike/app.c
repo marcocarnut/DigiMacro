@@ -11,10 +11,14 @@
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 #include "core.h"
+#include "proto.h"
 #include "../DigiHidUSB/src/keymap_us.h"
 
 #ifndef APP_LINE
 #define APP_LINE    "DigiMacro v2 spike, app A"
+#endif
+#ifndef APP_TYPE
+#define APP_TYPE    0
 #endif
 #ifndef APP_BLINK
 #define APP_BLINK   500                 /* ms per half period */
@@ -36,6 +40,7 @@ static void typeChar(char c)
 
 void app_setup(void)
 {
+    protoBegin();
     DDRB |= 1 << LED;
     since = blinked = millis();
 }
@@ -44,6 +49,7 @@ void app_loop(void)
 {
     uint32_t now = millis();
 
+    protoPoll();
     hidAllow(10000);                    /* SPIKE: no pad, so always open */
 
     if (now - blinked >= APP_BLINK) {
@@ -52,7 +58,10 @@ void app_loop(void)
     }
     /* As v1's start-up macro: a second after the host writes the lock
        lights, or three without -- a host with every light off never does. */
-    if (!typed && hidReady() && now - since > (hidAwake() ? 1000 : 3000)) {
+    /* Typing proved the app's start-up on the board, and then typed into
+       whatever window had the focus: off unless built with APP_TYPE=1. */
+    if (APP_TYPE && !typed && hidReady()
+        && now - since > (hidAwake() ? 1000 : 3000)) {
         for (const char *p = line; *p; p++) typeChar(*p);
         typed = 1;
     }

@@ -27,11 +27,13 @@ CFLAGS  = -mmcu=$(MCU) -DF_CPU=16500000L $(OPT) -Wall -std=gnu11 \
 ASFLAGS = -mmcu=$(MCU) -DF_CPU=16500000L -I. -I$(VUSB) -x assembler-with-cpp $(LAYOUT)
 
 # Numbers from layout.h, for the linker
-val = $(shell printf '%d' $$(( $$(echo $(1) | $(CC) -E -P $(LAYOUT) -include layout.h - | tail -1) )))
+val = $(shell printf '%d' $$(( $$(echo '$(1)' | $(CC) -E -P $(LAYOUT) -include layout.h - | tail -1) )))
 APP_START  := $(call val,APP_START)
 APP_END    := $(call val,APP_END)
 CORE_TABLE := $(call val,CORE_TABLE)
 APP_RAM    := $(call val,APP_RAM)
+APP_VECS   := $(call val,APP_START + 2 * APP_VECTORS)
+APP_HDR    := $(call val,APP_MAGIC - APP_START)
 
 CORE_OBJ = core.o coretab.o usbdrv.o usbdrvasm.o osccal.o
 
@@ -50,7 +52,8 @@ osccal.o: $(VUSB)/osccal.c
 # The core must end below its table, and its variables below the app's.
 core.elf: $(CORE_OBJ)
 	$(CC) $(CFLAGS) -Wl,--gc-sections -Wl,-u,coretab \
-	    -Wl,--section-start=.coretab=$$(printf 0x%x $(CORE_TABLE)) -o $@ $^
+	    -Wl,--section-start=.coretab=$$(printf 0x%x $(CORE_TABLE)) \
+	    -Wl,--defsym=__app_vectors=$(APP_VECS) -o $@ $^
 	@end=$$(( 0x$$($(NM) $@ | awk '$$3=="__data_load_end"{print $$1}') )); \
 	 ram=$$(( 0x$$($(NM) $@ | awk '$$3=="__bss_end"{print $$1}') - 0x800000 )); \
 	 printf 'core: %d bytes of flash (table at %d), RAM to 0x%03X (app from 0x%03X)\n' \
@@ -61,8 +64,10 @@ core.elf: $(CORE_OBJ)
 core.hex: core.elf
 	$(OBJCOPY) -O ihex -R .eeprom $< $@
 
-app%.o: app.c core.h layout.h
+app%.o: app.c core.h proto.h layout.h
 	$(CC) $(CFLAGS) $(APPDEFS_$*) -c -o $@ $<
+proto.o: proto.c proto.h core.h layout.h
+	$(CC) $(CFLAGS) -c -o $@ $<
 apphdr%.o: apphdr.S layout.h
 	$(CC) $(ASFLAGS) -DAPP_VER=$(APPVER_$*) -c -o $@ $<
 coreapi.o: coreapi.S layout.h
@@ -73,14 +78,14 @@ APPVER_B  = 2
 APPDEFS_A = '-DAPP_LINE="DigiMacro v2 spike, app A"' -DAPP_BLINK=500
 APPDEFS_B = '-DAPP_LINE="DigiMacro v2 spike, app B: replaced over WebHID"' -DAPP_BLINK=125
 
-app%.elf: apphdr%.o app%.o coreapi.o
+app%.elf: apphdr%.o app%.o proto.o coreapi.o
 	$(CC) $(CFLAGS) -nostartfiles -Wl,--gc-sections \
 	    -Wl,--section-start=.text=$$(printf 0x%x $(APP_START)) \
 	    -Wl,--section-start=.data=$$(printf 0x%x $$(( 0x800000 + $(APP_RAM) ))) -o $@ $^
 
 app%.hex: app%.elf apphex.py
 	$(OBJCOPY) -O binary -R .eeprom $< app$*.bin
-	python3 apphex.py app $(APP_START) app$*.bin $@
+	python3 apphex.py app $(APP_START) $(APP_HDR) app$*.bin $@
 	@[ $$(( $(APP_START) + $$(stat -c %s app$*.bin) + 2 )) -le $(APP_END) ] \
 	    || { echo "app$* runs past APP_END"; exit 1; }
 
@@ -91,8 +96,8 @@ apphex.py: ;
 spike%.hex: core.hex app%.hex
 	python3 apphex.py join $@ $^
 
-size: core.elf appA.elf
-	$(SIZE) core.elf appA.elf
+size: core.elf appA.elf proto.o
+	$(SIZE) core.elf appA.elf proto.o
 
 upload: spikeA.hex
 	micronucleus --run $<

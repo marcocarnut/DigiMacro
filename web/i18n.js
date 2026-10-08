@@ -355,7 +355,8 @@ en: {
   'rec-pass':       'The board has a password: give it, to install.',
   'rec-install':    'Install DigiMacro {fw}',
   'rec-no-fw':      'This page has no DigiMacro for this board\'s core.',
-  'hd-none':        '(not hardened…)',
+  'hd-pass':        'a password set: without one, anyone can put firmware on '
+                  + 'the board that reads it out',
   'hd-why-v2':      'A board keeps its secrets only as well as it is hardened: '
                   + 'the password guards the table from the page, and the lock '
                   + 'bits and fuses below guard it from a programmer. '
@@ -795,7 +796,8 @@ pt: {
   'rec-pass':       'A placa tem senha: informe-a, para instalar.',
   'rec-install':    'Instalar o DigiMacro {fw}',
   'rec-no-fw':      'Esta página não tem DigiMacro para o núcleo desta placa.',
-  'hd-none':        '(não protegida…)',
+  'hd-pass':        'uma senha definida: sem ela, qualquer um pode gravar na '
+                  + 'placa um firmware que a lê inteira',
   'hd-why-v2':      'Uma placa guarda seus segredos só na medida em que está '
                   + 'protegida: a senha protege a tabela da página, e os bits de '
                   + 'trava e os fuses abaixo a protegem de um gravador. O '

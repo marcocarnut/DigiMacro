@@ -563,7 +563,8 @@ int main(void)
     CHECK(imageLen == APP_END - APP_START);
     CHECK(sendImage(1, -1) > 0);
     CHECK(ask(DM_FUNC_COMMIT, 0, 0, NULL)[0] == DM_FUNC_COMMIT);
-    CHECK(belowBoundary == 0 && coreIntact() && FLASH[APP_END] == 0xFF);
+    CHECK(belowBoundary == 0 && coreIntact());
+    CHECK(APP_END == sizeof FLASH || FLASH[APP_END] == 0xFF);  /* nothing past */
 
     printf("RESTART\n");
     setup(); hidAllow(1000);

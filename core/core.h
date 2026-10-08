@@ -2,7 +2,7 @@
  * The core's API, as an app sees it, and what both halves must agree on
  * about the USB device: report IDs, the vendor report's shape, the serial.
  * The protocol above that -- READ, WRITE, the password -- is the app's
- * (proto.h).
+ * (app/hidusb.h).
  */
 #ifndef CORE_H
 #define CORE_H
@@ -52,7 +52,7 @@ extern "C" {
 #endif
 
 /* The core's side: what an app may call, through the table. */
-void     hidPoll(void);         /* often: at least every 45 ms or so */
+void     corePoll(void);        /* often: at least every 45 ms or so */
 uint8_t  hidReady(void);        /* enumerated */
 uint8_t  hidAwake(void);        /* ...and the host has written the lock
                                    lights: it has a keyboard now */
@@ -85,7 +85,7 @@ void     hidLock(void);         /* the session is over: the window closed */
  * The app has no say in updates beyond opening the window (layout.h).
  *
  * The watchdog runs while the app does, about two seconds, and the core's
- * hidPoll() resets it: an app must call hidPoll() at least every second or
+ * corePoll() resets it: an app must call corePoll() at least every second or
  * so, and must leave the watchdog alone after app_setup(). An app that
  * hangs is reset by it, and the core then does not start it again -- the
  * board comes up core only, taking an update behind the password. A replug

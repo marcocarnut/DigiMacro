@@ -77,7 +77,7 @@
 
 /* slot, name -- add at the end, never renumber */
 #define CORE_CALLS(X)                   \
-    X(0, hidPoll)                       \
+    X(0, corePoll)                      \
     X(1, hidReady)                      \
     X(2, hidAwake)                      \
     X(3, hidSend)                       \

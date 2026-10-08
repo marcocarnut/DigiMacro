@@ -1,5 +1,5 @@
 /*
- * The app's half of what v1's DigiHidUSB did: see proto.h.
+ * The app's half of what v1's DigiHidUSB did: see hidusb.h.
  */
 #include <stdint.h>
 #include <string.h>
@@ -9,7 +9,7 @@
 #include <avr/wdt.h>
 
 #include "core.h"
-#include "proto.h"
+#include "hidusb.h"
 
 /* ===================================================================== */
 /* Time                                                                  */
@@ -87,7 +87,7 @@ uint8_t hidAllowed(void)
 /* ===================================================================== */
 
 /* Random bits from the watchdog oscillator's jitter against the CPU clock,
-   with interrupts off throughout: see v1. Runs from protoBegin(), before
+   with interrupts off throughout: see v1. Runs from hidBegin(), before
    the core has connected to USB, so a second of it costs nothing. */
 static uint32_t entropy(void)
 {
@@ -110,7 +110,7 @@ static uint32_t entropy(void)
     return s;
 }
 
-void protoBegin(void)
+void hidBegin(void)
 {
     OCR1C = 128;
     OCR1A = 128;
@@ -134,9 +134,9 @@ void protoBegin(void)
 /* RESTART is noted when it arrives and done here, a moment later: it
    arrives inside the USB driver, and the host has not yet seen the
    request complete. */
-void protoPoll(void)
+void hidPoll(void)
 {
-    hidPoll();
+    corePoll();
     if (restartWanted && (uint16_t)(ticks() - restartAsked) > 50) {
         restartWanted = 0;
         allowOpen = 0;
@@ -156,7 +156,7 @@ static void sendReport(uint8_t modifier, uint8_t key)
     uint16_t t = ticks();
 
     while (!hidSend(r, sizeof r)) {
-        hidPoll();
+        corePoll();
         if ((uint16_t)(ticks() - t) > 50) return;   /* the host is not asking */
     }
 }
@@ -172,7 +172,7 @@ void hidKey(uint8_t modifier, uint8_t key)
 /* ===================================================================== */
 
 /* From inside the USB driver: answer at once, and leave anything slow for
-   protoPoll(). */
+   hidPoll(). */
 uint8_t app_request(uint8_t *v)
 {
     uint16_t addr = v[1] | ((uint16_t)v[2] << 8);

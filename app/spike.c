@@ -11,7 +11,7 @@
 #include <avr/io.h>
 #include <avr/pgmspace.h>
 #include "core.h"
-#include "proto.h"
+#include "hidusb.h"
 #include "../DigiHidUSB/src/keymap_us.h"
 
 #ifndef APP_LINE
@@ -43,7 +43,7 @@ static void typeChar(char c)
 
 void app_setup(void)
 {
-    protoBegin();
+    hidBegin();
     DDRB |= 1 << LED;
     since = blinked = millis();
 }
@@ -52,7 +52,7 @@ void app_loop(void)
 {
     uint32_t now = millis();
 
-    protoPoll();
+    hidPoll();
     hidAllow(10000);
 
     /* App C: a bad app, for the watchdog to catch. The LED stays lit. */

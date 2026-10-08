@@ -1,9 +1,9 @@
 /*
  * The core's request handling, and the app's protocol over it, on the host.
  *
- * Compiles ../core.c and ../proto.c themselves -- not copies -- against
+ * Compiles ../core.c and ../../app/hidusb.c themselves -- not copies -- against
  * stubs for the chip and for V-USB, with an array for the flash, and
- * proto.c's functions in the app's slots as an app's header would put
+ * hidusb.c's functions in the app's slots as an app's header would put
  * them. The core is the part that can never be fixed in the field, so
  * everything a host can ask of it is asked here: the gates, the clamps, the
  * page writer's refusals, a whole update, and updates that go wrong.
@@ -46,7 +46,7 @@ static void spmWrite(uint16_t a, const uint8_t *p)
 static void softReset(void) { softResets++; }
 
 #include "../core.c"
-#include "../proto.c"
+#include "../../app/hidusb.c"
 
 /* ---- the stubs' state ---- */
 uint8_t SREG, OCR1C, OCR1A, TCCR1, TIMSK, OSCCAL, TCCR0B, TCNT0, WDTCR, MCUSR,
@@ -65,7 +65,7 @@ uchar usbInterruptIsReady(void) { return 1; }
 void usbDeviceConnect(void) { }
 void usbDeviceDisconnect(void) { }
 
-/* ---- the firmware's hooks, as proto.c calls them ---- */
+/* ---- the firmware's hooks, as hidusb.c calls them ---- */
 static uint8_t lockState, hostState, hostAuthOk;
 static int hostForgot, passWrongs, passRights, passChanges;
 static void    tVoid(void) { }
@@ -161,7 +161,7 @@ static void boot(void)                  /* main(), without the loop */
    until nothing is pending. */
 static void spin(void)
 {
-    hidPoll();
+    corePoll();
     for (int i = 0; i < 2000 && (pageWanted || commitWanted); i++) {
         if (pageWanted == 2) usbTxLen = 0x5a;  /* the host took the status */
         updateStep();
@@ -302,7 +302,7 @@ int main(void)
     /* within the second, even the right one is turned away, uncounted */
     CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_REFUSED && passWrongs == 1);
     CHECK(!hidUnlocked());
-    hidPoll();                                  /* the second passes */
+    corePoll();                                  /* the second passes */
     CHECK(askPass(DM_FUNC_UNLOCK, "tes")[0] == DM_REFUSED && passWrongs == 2);
     hidPoll();
     CHECK(askPass(DM_FUNC_UNLOCK, "test\0")[0] == DM_FUNC_UNLOCK);  /* padded */
@@ -395,8 +395,8 @@ int main(void)
     printf("an app the watchdog had to reset is not started again\n");
     setup();
     CHECK(F.app && wdtEnabled);                 /* armed once it is set up */
-    wdtResets = 0; hidPoll();
-    CHECK(wdtResets > 0);                       /* and fed by hidPoll() */
+    wdtResets = 0; corePoll();
+    CHECK(wdtResets > 0);                       /* and fed by corePoll() */
     GPIOR0 = 0; halted = 0; wdtEnabled = 0;
     appStart(1 << WDRF);                        /* from MCUSR, or GPIOR0 */
     CHECK(!F.app && halted == DM_CORE_HALTED && !wdtEnabled);
@@ -569,7 +569,7 @@ int main(void)
     setup(); hidAllow(1000);
     hostForgot = 0;
     CHECK(ask(DM_FUNC_RESTART, 0, 0, NULL)[0] == DM_FUNC_RESTART);
-    for (int i = 0; i < 60; i++) protoPoll();
+    for (int i = 0; i < 60; i++) hidPoll();
     CHECK(!restartWanted && !allowOpen && hostForgot == 1);
     CHECK(getReport()[0] == DM_FUNC_INFO);
 

@@ -583,7 +583,7 @@ static void readFuses(void)
 /* Called often, by the app or by the loop below. A page that has arrived
    means an update has begun, and an update never returns to the app: its
    code is about to be rewritten under it. */
-void hidPoll(void)
+void corePoll(void)
 {
     wdt_reset();                /* the app is alive: see main() */
     usbPoll();
@@ -592,7 +592,7 @@ void hidPoll(void)
 }
 
 /* The watchdog, if it reset the board, did it because the app stopped
-   calling hidPoll(): then the app is not started again, and the core alone
+   calling corePoll(): then the app is not started again, and the core alone
    answers -- it can be replaced, behind the password. A replug is a
    power-on, and runs it again.
 
@@ -627,7 +627,7 @@ int main(void)
     appStart(why);
     hidRestart();
     for (;;) {
-        hidPoll();
+        corePoll();
         if (F.app) APP(APP_LOOP, appVoid)();
     }
 }

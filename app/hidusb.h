@@ -38,12 +38,13 @@
 extern "C" {
 #endif
 
-void     protoBegin(void);      /* from app_setup(): the clock, the serial */
-void     protoPoll(void);       /* from app_loop(), and often: hidPoll()
-                                   and what has to wait for the loop */
+void     hidBegin(void);        /* from app_setup(): the clock, the serial */
+void     hidPoll(void);         /* from app_loop(), and often: the core's
+                                   corePoll() and what has to wait for the
+                                   loop. The watchdog wants it every second */
 uint32_t millis(void);
 void     hidAllow(uint16_t ms); /* somebody is at the board, briefly */
-uint8_t  hidAllowed(void);      /* ask at least every 32 s: see proto.c */
+uint8_t  hidAllowed(void);      /* ask at least every 32 s: see hidusb.c */
 void     hidKey(uint8_t modifier, uint8_t key);
 
 /* The firmware's: the lockout and the host key, as in v1. Checking the

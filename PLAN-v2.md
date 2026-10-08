@@ -215,7 +215,10 @@ boards without a programmer comes last.
 
 ## The spike, as built
 
-Built on branch `v2`, in `spike/`, and tried on a stock Digispark beside a
+Built on branch `v2`, in `spike/` -- since split into `core/` (the core,
+its V-USB, its host test) and `app/` (what every app links, the spike's
+apps, `spikectl.py` and the spike page), built by the top-level `Makefile`
+into `build/v2/` -- and tried on a stock Digispark beside a
 Linux PC, October 2026. Every item on the list above held on the board.
 
 ### What it is
@@ -333,7 +336,7 @@ Linux PC, October 2026. Every item on the list above held on the board.
     state, the app's version, the API, the app region and the page size.
   - The core fills its own bytes, plus the password and unlocked bits.
   - The app fills the EEPROM size and the rest of the state byte.
-- **The core carries its own copy of V-USB** (`spike/vusb`). It is pinned
+- **The core carries its own copy of V-USB** (`core/vusb`). It is pinned
   forever anyway, and its `usbconfig.h` lets V-USB build the device and
   configuration descriptors itself.
 
@@ -397,7 +400,7 @@ Answered by the spike:
   anything else is written, and a CRC-16 over the image checked at boot and
   at commit.
 - **Protocol 2 or 3:** 3.
-- **Windows:** the spike page (`spike/page.html`, `make page`), in Chrome on
+- **Windows:** the spike page (`app/spike.html`, `make page`), in Chrome on
   Windows 10 under VMware, put on apps A, B and C, and survived a cable
   pulled in the middle of a slow update. It reconnected by itself and showed
   "no app". VMware complained for a while each time the board reappeared --

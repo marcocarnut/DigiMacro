@@ -6,10 +6,11 @@
  * and the firmware's decoder are checked against each other rather than each
  * being trusted on its own.
  *
- * Keep the escape values in step with DigiMacro.ino. Note that 0x04 is NOT
- * free here: it is the usage for "a". What is free is 0x01 to 0x03, which are
- * states a keyboard reports rather than keys anyone presses, and the same
- * three with bit 7 set.
+ * Keep the escape values in step with DigiMacro.ino; test/webtable.js reads
+ * them out of it and checks. Note that 0x04 is NOT free: it is the usage for
+ * "a". The escapes live in 0x01 to 0x03, which are states a keyboard reports
+ * rather than keys anyone presses, and the same three with bit 7 set -- and
+ * all six are now taken.
  */
 
 const ESC_PAUSE  = 0x01;    /* nn tenths of a second */
@@ -29,8 +30,9 @@ const AUTO_ADDR  = 0x1F3;   /* the macro to type when the board is plugged
                                one means nothing is set */
 const AUTO_NONE  = 0xFF;
 const TABLE_TOP  = 0x1E0;   /* the firmware stops walking here: 480,
-                               leaving 32 for the password and what
-                               has not been thought of yet */
+                               leaving 32 for the serial number, the host
+                               key, the lockout, the power-on macro and the
+                               password */
 const MAX_SYM    = 5;
 
 /* ==================================================================== */
@@ -106,8 +108,8 @@ const MSG = {
   'not-a-modifier':  p => `"${p.what}" is not a modifier`,
   'not-a-key':       p => `"${p.what}" is not a key`,
   'no-key-for':      p => `no key for "${p.what}"`,
-  'needs-dead-keys': p => `"${p.what}" needs a layout with dead keys -- see ` +
-                          `the keyboard setting, or type it as ' and the letter`,
+  'needs-dead-keys': p => `"${p.what}" needs a keyboard with dead keys -- see ` +
+                          `the keyboard setting beside Macros`,
   'not-a-code':      p => `not a code: "${p.what}"`,
   'code-twice':      p => `"${p.what}" is used twice`,
   'not-a-byte':      p => `"${p.what}" has a byte that is not a byte`,
@@ -482,7 +484,8 @@ function decodeMacro(bytes) {
         continue;
       }
       if (b === ESC_MOD)    { mod = arg; continue; }
-      out += `{?${b.toString(16)}}`;            /* a jump, once there are any */
+      out += `{?${b.toString(16)}}`;            /* an escape this editor does
+                                                   not know */
       continue;
     }
 
@@ -674,7 +677,7 @@ function sampleRows() {
 
 if (typeof module !== 'undefined') module.exports = {
   ESC_PAUSE, ESC_MOD, ESC_REPEAT, ESC_JUMP, SHIFT, TABLE_TOP, MAX_SYM,
-  ESC_MARK, ESC_JUMP, ESC_HOST, HOST_SILENT, HOST_LOUD, macroWarnings, hasHostCheck,
+  ESC_MARK, ESC_HOST, HOST_SILENT, HOST_LOUD, macroWarnings, hasHostCheck,
   AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
   usages, header, codeOf, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows };

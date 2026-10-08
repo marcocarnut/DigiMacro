@@ -18,7 +18,7 @@ extern "C" {
 
 static const uint8_t PROGMEM devDesc[18] = {
     18, USBDESCR_DEVICE,
-    0x10, 0x01,             /* bcdUSB 1.1: no BOS wanted here */
+    0x10, 0x01,             /* bcdUSB 1.1 */
     0x00, 0x00, 0x00,       /* class deferred to the interface */
     8,
     0xc0, 0x16,             /* 16c0 */
@@ -159,7 +159,6 @@ static void initSerial(void)
 
 static uint8_t kbdReport[KBD_REPORT_LEN] = { HID_REPORT_KBD };
 static uint8_t hidIdleRate;
-static uint8_t leds;            /* what the host last said its lights are */
 static uint8_t awake;           /* ...and that it said anything at all */
 
 static uint8_t vnd[DM_VND_LEN]; /* the feature report, both ways */
@@ -170,8 +169,10 @@ static uint8_t writingVnd;      /* tells usbFunctionWrite which it is serving */
 static uint16_t allowUntil;     /* the configuration window */
 static uint8_t  allowOpen;
 
+#if !DM_NO_BOOTLOADER
 static uint8_t  rebootWanted;   /* asked for, and when: see hidPoll() */
 static uint16_t rebootAsked;
+#endif
 
 static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 
@@ -290,6 +291,12 @@ static void vndAnswer(void)
             eeprom_update_byte((uint8_t *)(addr + i), vnd[DM_VND_DATA + i]);
         }
         break;
+
+    default:
+        /* Something this build does not do -- REBOOT without a bootloader,
+           say. Echoing it back would read as success. */
+        vnd[0] = DM_REFUSED;
+        break;
     }
 }
 
@@ -334,8 +341,7 @@ extern "C" usbMsgLen_t usbFunctionSetup(uchar data[8])
 extern "C" uchar usbFunctionWrite(uchar *data, uchar len)
 {
     if (!writingVnd) {
-        if (len) leds = data[len - 1];  /* the lock lights, ID or no ID */
-        awake = 1;                      /* and the host has a keyboard now */
+        awake = 1;                      /* the host has a keyboard now */
         return 1;
     }
 
@@ -424,6 +430,7 @@ void hidBegin(void)
     usbInit();
 }
 
+#if !DM_NO_BOOTLOADER
 /* Off the bus, and let the watchdog reset us into Micronucleus, which
    starts on every reset and turns the watchdog off again. */
 static void reboot(void)
@@ -434,15 +441,18 @@ static void reboot(void)
     for (;;)
         ;
 }
+#endif
 
 void hidPoll(void)
 {
     usbPoll();
+#if !DM_NO_BOOTLOADER
     /* Keep answering for a moment after the reboot was asked for, so the
        host sees the request complete before we drop off the bus. */
     if (rebootWanted && (uint16_t)(ticks() - rebootAsked) > 50) reboot();
+#endif
 }
 
 uint8_t hidReady(void) { return usbConfiguration != 0; }
 uint8_t hidAwake(void) { return awake; }
-uint8_t hidLeds(void)  { return leds; }
+

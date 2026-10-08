@@ -8,13 +8,11 @@
  * among them -- but not vendor ones, which is how QMK's Vial configures a
  * keyboard that stays a keyboard the whole time.
  *
- * What it gives up against DigiModeUSB: no second personality, so no BOS, no
- * MS OS 2.0 set, no re-enumeration, and no landing page. What it gives up
- * against the keyboard we have now: boot protocol. Two collections on one
- * interface are told apart by report IDs, a report ID is a byte in front of
- * every report, and a boot keyboard's report must have none -- so this one
- * carries three key slots rather than six, which keeps it inside the eight
- * bytes usbSetInterrupt() will send.
+ * What it gives up is boot protocol. Two collections on one interface are
+ * told apart by report IDs, a report ID is a byte in front of every report,
+ * and a boot keyboard's report must have none -- so this one carries three key
+ * slots rather than six, which keeps it inside the eight bytes
+ * usbSetInterrupt() will send.
  */
 #ifndef HIDUSB_H
 #define HIDUSB_H
@@ -35,7 +33,8 @@
 #define DM_VND_CHUNK        (DM_VND_LEN - DM_VND_DATA)
 
 #define DM_FUNC_INFO        0x40    /* magic, versions, EEPROM size, state */
-#define DM_FUNC_REBOOT      0x41    /* into the bootloader, for an upgrade */
+#define DM_FUNC_REBOOT      0x41    /* into the bootloader, for an upgrade;
+                                       absent with DM_NO_BOOTLOADER */
 #define DM_FUNC_READ        0x60    /* address, count -> data */
 #define DM_FUNC_WRITE       0x61    /* address, count, data */
 #define DM_FUNC_UNLOCK      0x62    /* count, password -> accepted or not */
@@ -90,7 +89,7 @@
 #define DM_MAGIC0           'D'
 #define DM_MAGIC1           'M'
 #define DM_PROTOCOL_VERSION 2       /* 1 was the WebUSB vendor-class one */
-#define DM_FW_VERSION       4
+#define DM_FW_VERSION       5
 
 #ifdef __cplusplus
 extern "C" {
@@ -100,7 +99,6 @@ void    hidBegin(void);
 void    hidPoll(void);
 uint8_t hidReady(void);         /* enumerated: the host knows what this is */
 uint8_t hidAwake(void);         /* ...and has spoken to the keyboard half */
-uint8_t hidLeds(void);          /* the host's lock lights, as it last said */
 
 /* The difference between those two matters, and costs a macro its first
    characters when it is missed. Enumeration is the host reading descriptors;

@@ -2,7 +2,7 @@
  * firmware, before it is written to a board.
  *
  * The table is the interface between the firmware and whatever writes it --
- * the loader now, the app later -- and it is written out by hand in hex. This
+ * the loader or the app -- and it is written out by hand in hex. This
  * is where a wrong byte gets caught: the same header the loader flashes is
  * read here by the same walk the board runs.
  */
@@ -28,7 +28,6 @@ void hidPoll(void){}
 uint8_t hidReady(void){ return 1; }
 static uint8_t host_awake = 1;  /* the host has said hello, unless a test says not */
 uint8_t hidAwake(void){ return host_awake; }
-uint8_t hidLeds(void){ return 0; }
 /* The configuration window the four-second hold opens. */
 static uint16_t allow_until; static uint8_t allow_open;
 void hidAllow(uint16_t ms){ allow_until = (uint16_t)fake_ms + ms; allow_open = 1; }
@@ -42,9 +41,10 @@ void hidKey(uint8_t mod, uint8_t key)
         typedn += sprintf(typed + typedn, "<%02X/%02X>", mod, key);
 }
 void hidTypeChar(char, uint8_t){}
-void hidType(const char*){} void hidType_P(const char*){}
+void hidType_P(const char*){}
 
 #include "DigiMacro.ino"
+#include <avr/pgmspace.h>          /* PROGMEM, which the table uses */
 #include "../tools/loadtable/sample_table.h"
 
 static int fails;

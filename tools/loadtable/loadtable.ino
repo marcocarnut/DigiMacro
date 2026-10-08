@@ -1,9 +1,10 @@
 /*
  * loadtable -- write a sample macro table into EEPROM.
  *
- * The app is what will normally do this, over USB. Until it exists, playback
- * still has to be testable on hardware, and micronucleus cannot write EEPROM
- * -- it only ever touches program memory. So this sketch does it:
+ * The app normally does this, over USB. This sketch writes a known table
+ * without it -- the same one test/table_test.cpp plays -- for trying the
+ * firmware on a board with no browser to hand. Micronucleus cannot write
+ * EEPROM, since it only ever touches program memory, so a sketch does it:
  *
  *     ./build.sh loadtable upload     <- this; the LED goes solid when done
  *     ./build.sh upload               <- the firmware

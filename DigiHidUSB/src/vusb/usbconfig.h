@@ -45,31 +45,12 @@ section at the end of this file).
  * USB_CFG_CLOCK_KHZ = 18000 if you enable this option.
  */
 
-#ifndef USB_CFG_VENDOR_HOOK
-#define USB_CFG_VENDOR_HOOK             0
-#endif
-/* DigiCDCFast addition. 1: vendor requests (the type field of bmRequestType
- * set to vendor) are passed to digiCdcVendorSetup(), which the sketch
- * defines, and the serial port goes on working beside them. They ride
- * endpoint 0, so they cost no endpoint -- which matters on a chip whose
- * driver has only three. It is the cheap way to give one device a second,
- * unrelated function: a serial port to one program, and something else
- * entirely to another, read with libusb. Nothing is compiled in when 0.
- */
-
 #ifndef USB_CFG_TRANSACTION_END_HOOK
 #define USB_CFG_TRANSACTION_END_HOOK    0
 #endif
-/* DigiCDCFast addition. Whether the driver calls usbTransactionEnd() at the
- * end of every transaction, so that a sketch can do something the interrupt
- * would otherwise keep it from doing for up to 200 us (see the README). A
- * sketch that defines no hook of its own still pays for the call: four bytes
- * of flash and seven cycles per transaction, which delay the driver's return
- * by 0.42 us at 16.5 MHz. That is nothing to most sketches, and measurably
- * nothing to the two bridges written against this library, but a sketch whose
- * own timing is built around when the driver lets go may prefer to set this
- * to 0 here. It cannot be set from the sketch: the Arduino IDE compiles a
- * library once, without the sketch's definitions.
+/* Inherited from DigiCDCFast, read by asmcommon.inc: 1 makes the driver call
+ * usbTransactionEnd() at the end of every transaction. DigiMacro needs no
+ * such hook, so it stays 0 and costs nothing.
  */
 
 /* --------------------------- Functional Range ---------------------------- */
@@ -230,7 +211,14 @@ section at the end of this file).
 
 /* -------------------------- Device Description --------------------------- */
 
-#define  USB_CFG_VENDOR_ID       0xd0, 0x16 /* = 0x16c0 = 5824 = voti.nl */
+/* DigiMacro serves every descriptor itself (USB_CFG_DESCR_PROPS_DEVICE and
+ * _CONFIGURATION are dynamic: see hidusb.cpp), so the IDs and classes below
+ * describe the device only for anything that still reads them. They are set
+ * to what hidusb.cpp sends: 16c0:27db, obdev's shared keyboard ID, and a HID
+ * interface with the class deferred to it.
+ */
+
+#define  USB_CFG_VENDOR_ID       0xc0, 0x16 /* = 0x16c0 = 5824 = voti.nl */
 /* USB vendor ID for the device, low byte first. If you have registered your
  * own Vendor ID, define it here. Otherwise you may use one of obdev's free
  * shared VID/PID pairs. Be sure to read USB-IDs-for-free.txt for rules!
@@ -239,7 +227,7 @@ section at the end of this file).
  * with libusb: 0x16c0/0x5dc.  Use this VID/PID pair ONLY if you understand
  * the implications!
  */
-#define  USB_CFG_DEVICE_ID       0x7e, 0x08 /* = 0x05e1 = 1505 */
+#define  USB_CFG_DEVICE_ID       0xdb, 0x27 /* = 0x27db, shared keyboards */
 /* This is the ID of the product, low byte first. It is interpreted in the
  * scope of the vendor ID. If you have registered your own VID with usb.org
  * or if you have licensed a PID from somebody else, define it here. Otherwise
@@ -282,14 +270,14 @@ section at the end of this file).
  * to fine tune control over USB descriptors such as the string descriptor
  * for the serial number.
  */
-#define USB_CFG_DEVICE_CLASS        2    /* set to 0 if deferred to interface */
+#define USB_CFG_DEVICE_CLASS        0    /* set to 0 if deferred to interface */
 #define USB_CFG_DEVICE_SUBCLASS     0
 /* See USB specification if you want to conform to an existing device class.
  * Class 0xff is "vendor specific".
  */
-#define USB_CFG_INTERFACE_CLASS     2       /* CDC class */
-#define USB_CFG_INTERFACE_SUBCLASS  2       /* Abstract (Modem) */
-#define USB_CFG_INTERFACE_PROTOCOL  1       /* AT-Commands */
+#define USB_CFG_INTERFACE_CLASS     3       /* HID */
+#define USB_CFG_INTERFACE_SUBCLASS  0       /* not a boot keyboard: see hidusb.h */
+#define USB_CFG_INTERFACE_PROTOCOL  0
 /* See USB specification if you want to conform to an existing device class or
  * protocol. The following classes must be set at interface level:
  * HID class is 3, no subclass and protocol required (but may be useful!)

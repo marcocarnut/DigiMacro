@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>DigiMacro HID spike</title>
+<title>DigiMacro raw protocol</title>
 <style>
   body { font: 15px/1.55 system-ui, sans-serif; max-width: 52rem; margin: 3rem auto;
          padding: 0 1rem; color: #16161a; background: #fbfbfd; }
@@ -18,21 +18,23 @@
   h2 { font-size: 1rem; margin-top: 2rem; }
 </style>
 
-<h1>DigiMacro HID spike</h1>
-<p>Asks whether the mode switch is needed at all: a second top-level collection
-on a vendor usage page, which WebHID will hand over while the device carries on
-being a keyboard. <strong>No holding the pad</strong> — if this page can read
-the EEPROM of a board that is typing, the whole second personality can go.</p>
+<h1>DigiMacro raw protocol</h1>
+<p>A developer's page: the vendor report as bytes, with none of the app's help.
+It began as the page for the spike that showed a keyboard can carry a vendor
+collection WebHID will hand over. Against the firmware as it ships, INFO always
+answers, and READ and WRITE only while the window is open: <strong>hold the pad
+for four seconds first</strong>. A board with a password wants it given too,
+which this page cannot do — unlock it in the app, and the unlock lasts until the
+window closes.</p>
 
 <p class="row">
   <button id="connect">Connect</button>
   <button id="info" disabled>INFO</button>
   <button id="dump" disabled>Dump EEPROM</button>
-  <button id="write" disabled>Write and read back</button>
+  <button id="write" disabled>Write the same back</button>
 </p>
 
-<pre id="log">Touch the pad first and check it types a line — that proves the keyboard
-still works now that its reports carry a report ID.</pre>
+<pre id="log">Connect, then INFO. For a dump, hold the pad first.</pre>
 
 <h2>What came back</h2>
 <pre id="hex" class="dim">nothing yet</pre>
@@ -42,8 +44,9 @@ const VND_ID    = 2;
 const VND_LEN   = 36;
 const DATA_AT   = 4;
 const CHUNK     = VND_LEN - DATA_AT;
-const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61;
-const SCRATCH = 0x1E0;      /* the reserved area, so no macro is harmed */
+const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61, F_REFUSED = 0xEE;
+const ST_NAMES = ['window open', 'password set', 'unlocked', 'soft lock',
+                  'hard lock', 'host trusted', 'host key set', 'no bootloader'];
 
 let dev = null, idInPayload = null;
 
@@ -55,12 +58,12 @@ const fresh = () => { lines = []; $('log').innerHTML = ''; };
 const hex = b => [...b].map(v => v.toString(16).padStart(2, '0')).join(' ');
 
 /* The one thing the specification leaves to taste is whether the report ID
-   travels in the payload as well as in wValue. Rather than argue, ask: send
-   INFO, and see where the "DM" lands. */
+   travels in the payload as well as in wValue. No command is 2, so a leading
+   2 can only be the ID. */
 function payload(view) {
   const b = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
   if (idInPayload === null) {
-    idInPayload = b[0] === VND_ID && b[1] === F_INFO;
+    idInPayload = b[0] === VND_ID;
     say(`the report ID ${idInPayload ? 'IS' : 'is NOT'} in what comes back`,
         'dim');
   }
@@ -72,7 +75,11 @@ async function ask(cmd, addr = 0, count = 0, data = null) {
   out[0] = cmd; out[1] = addr & 0xFF; out[2] = addr >> 8; out[3] = count;
   if (data) out.set(data, DATA_AT);
   await dev.sendFeatureReport(VND_ID, out);
-  return payload(await dev.receiveFeatureReport(VND_ID));
+  const b = payload(await dev.receiveFeatureReport(VND_ID));
+  if (b[0] === F_REFUSED)
+    throw new Error('refused: hold the pad for four seconds, and unlock in the '
+                  + 'app if the board has a password');
+  return b;
 }
 
 $('connect').onclick = async () => {
@@ -128,9 +135,8 @@ $('info').onclick = async () => {
     const magic = String.fromCharCode(r[1], r[2]);
     say(`INFO -> magic "${magic}", protocol ${r[3]}, firmware ${r[4]}, `
       + `${r[5] | (r[6] << 8)} bytes of EEPROM`, magic === 'DM' ? 'ok' : 'bad');
-    if (magic === 'DM')
-      say('a feature report reached the firmware and came back, with the '
-        + 'device still a keyboard the whole time.', 'ok');
+    const st = ST_NAMES.filter((n, i) => r[7] & (1 << i));
+    say(`state 0x${r[7].toString(16).padStart(2, '0')}: ${st.join(', ') || 'nothing set'}`);
   } catch (e) { say('INFO failed: ' + e.message, 'bad'); }
 };
 
@@ -148,26 +154,27 @@ $('dump').onclick = async () => {
       rows.push(a.toString(16).padStart(3, '0') + '  ' + hex(ee.slice(a, a + 16)));
     $('hex').textContent = rows.join('\n');
     $('hex').className = '';
-    const end = ee.indexOf(0xFF);
-    say(`read 512 bytes in ${Math.ceil(512 / CHUNK)} exchanges; the table ends `
-      + `at 0x${end.toString(16)}`, 'ok');
+    say(`read 512 bytes in ${Math.ceil(512 / CHUNK)} exchanges`, 'ok');
   } catch (e) { say('dump failed: ' + e.message, 'bad'); }
 };
 
+/* Every byte of the EEPROM belongs to something now, so there is nowhere
+   safe to scribble. This writes back exactly what it read: the WRITE path is
+   exercised end to end, and nothing can change, even if the board is pulled
+   out half way. The firmware skips bytes that are already right, so it costs
+   no wear either. */
 $('write').onclick = async () => {
   fresh();
   try {
-    const before = (await ask(F_READ, SCRATCH, 8)).slice(DATA_AT, DATA_AT + 8);
-    const probe = Uint8Array.from([0xDE, 0xAD, 0xBE, 0xEF, 1, 2, 3, 4]);
-    await ask(F_WRITE, SCRATCH, 8, probe);
-    const back = (await ask(F_READ, SCRATCH, 8)).slice(DATA_AT, DATA_AT + 8);
-    const same = [...probe].every((v, i) => v === back[i]);
-    say(`wrote ${hex(probe)}`);
-    say(`read  ${hex(back)}`, same ? 'ok' : 'bad');
-    say(same ? 'written and read back, in the reserved area so no macro moved.'
+    const at = 0x000;
+    const before = (await ask(F_READ, at, 8)).slice(DATA_AT, DATA_AT + 8);
+    await ask(F_WRITE, at, 8, before);
+    const back = (await ask(F_READ, at, 8)).slice(DATA_AT, DATA_AT + 8);
+    const same = [...before].every((v, i) => v === back[i]);
+    say(`read  ${hex(before)}`);
+    say(`wrote the same, and read ${hex(back)}`, same ? 'ok' : 'bad');
+    say(same ? 'a write went through and came back unchanged.'
              : 'what came back is not what went in', same ? 'ok' : 'bad');
-    await ask(F_WRITE, SCRATCH, 8, before);     /* put it back */
-    say('and the scratch bytes have been restored.', 'dim');
   } catch (e) { say('write failed: ' + e.message, 'bad'); }
 };
 </script>

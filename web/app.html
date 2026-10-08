@@ -300,7 +300,7 @@ const F_UNLOCK = 0x62, F_SETPASS = 0x63, F_REFUSED = 0xEE;
 const F_REBOOT = 0x41;
 const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
 const ST_SOFTLOCK = 0x08, ST_HARDLOCK = 0x10;
-const ST_HOST = 0x20, ST_HOSTKEY = 0x40, ST_NOBOOT = 0x80;
+const ST_HOST = 0x20, ST_NOBOOT = 0x80;
 
 /* The host key and how long it is trusted for, and the board's serial number,
    which names the key file so a client can tell boards apart. */
@@ -313,7 +313,7 @@ const LOCK_ADDR = 0x1EC;
 const LOCK_LEN  = 6;
 const LOCK_OFF  = 0xFF;         /* a threshold of 0 or 0xFF is no threshold */
 
-let dev = null, eeSize = 512;
+let dev = null;
 let macros = [{ code: '.', text: '' }];
 let auto = AUTO_NONE;           /* the header byte of the power-on macro */
 let state_byte = 0;             /* what INFO last said about the gates */
@@ -420,7 +420,7 @@ function state() {
     } catch (e) { each[i].error = each[i].error || e.message; }
     if (each[i].bytes) total += each[i].bytes.length + 2;
   });
-  if (total > TABLE_TOP) error = `${total} bytes of table, and only ${TABLE_TOP} fit`;
+  if (total > TABLE_TOP) error = t('too-big', { n: total, fits: TABLE_TOP });
   const ok = !error && each.every(e => !e.error);
   return { each, total, error, ok };
 }
@@ -455,13 +455,13 @@ function draw() {
   macros.forEach((r, i) => {
     const tr = document.createElement('tr');
     tr.innerHTML =
-      `<td><input class="code${st.each[i].error ? '' : ''}" value="${r.code.replace(/"/g,'')}"
+      `<td><input class="code" value="${r.code.replace(/"/g,'')}"
            spellcheck="false" data-i="${i}" data-f="code"></td>` +
       `<td><input class="text${st.each[i].error ? ' bad' : ''}" value="${r.text.replace(/"/g,'&quot;')}"
            spellcheck="false" data-i="${i}" data-f="text"
            placeholder="${t('ph-types')}"></td>` +
       `<td class="n">${st.each[i].bytes ? st.each[i].bytes.length + 2 : '—'} B</td>` +
-      `<td><button data-del="${i}" title="remove">✕</button></td>`;
+      `<td><button data-del="${i}" title="${t('remove')}">✕</button></td>`;
     tbody.appendChild(tr);
     if (st.each[i].error) {
       const e = document.createElement('tr');
@@ -596,7 +596,7 @@ function show(s) {
   renderWho();
 }
 
-/* `ask` is whether we may put the picker up, which needs a real click behind
+/* `mayAsk` is whether we may put the picker up, which needs a real click behind
    it. The device coming back on its own has no click, so it takes what the
    origin was already given and stops there rather than failing noisily. */
 let connecting = false;          /* the connect event and a retry can race */
@@ -622,7 +622,6 @@ async function connect(mayAsk) {
     if (String.fromCharCode(b[1], b[2]) !== 'DM') {
       note('connect-note', t('wrong-magic'), 'bad'); dev = null; return;
     }
-    eeSize = b[5] | (b[6] << 8);
     fwOnBoard = b[4];
     state_byte = b[7];
     who('connected', { fw: b[4], proto: b[3] }, 'ok');
@@ -758,7 +757,8 @@ async function readTable() {
   return got.length;
 }
 
-/* Everything at once: the table, the power-on macro and the lockout. */
+/* Everything at once: the table, the power-on macro, the lockout and the
+   host key. */
 async function enterBoard() {
   note('gate-note', t('gate-reading'), 'dim');
   for (const id of ['table-note', 'auto-note', 'write-note', 'pass-note',
@@ -818,8 +818,8 @@ async function run(noteId, fn) {
     $('fwclose').disabled = false;
     $('hostnew').disabled = false;
     $('hostdel').disabled = false;
-    draw();                     /* Write, and Save twice: each enables itself
-                                   only when it has something to save */
+    draw();                     /* Write and the Save buttons: each enables
+                                   itself only when it has something to save */
     drawSecurity();
   }
 }
@@ -1357,14 +1357,14 @@ $('pad').addEventListener('click', e => {
     return;
   }
 
-  /* A count counts the thing before it, and that thing is one keystroke
-     unless something says otherwise. Parentheses are how you say otherwise:
-     around a selection if there is one, ready to type into if there is not. */
   if (t.dataset.ins === 'goto') {
     if ($('gotoval').value) insert(`{goto ${$('gotoval').value}}`);
     return;
   }
 
+  /* A count counts the thing before it, and that thing is one keystroke
+     unless something says otherwise. Parentheses are how you say otherwise:
+     around a selection if there is one, ready to type into if there is not. */
   if (t.dataset.ins === 'group') {
     const el = lastField && lastField.isConnected
              ? lastField : document.querySelector('#list input.text');

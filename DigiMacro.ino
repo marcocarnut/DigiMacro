@@ -53,11 +53,8 @@
  * is what a marginal pad does to a long press long before it spoils a tap.
  */
 
-#define VERSION "0.1"
-
 #include <hidusb.h>
 #include <avr/eeprom.h>
-#include <avr/pgmspace.h>
 #include <util/delay.h>
 
 /* ---- options -------------------------------------------------------- */
@@ -140,7 +137,7 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  * the table and a virgin chip reads as an empty one, with nothing to
  * initialise. Two bytes of overhead per macro, and neither of DigiMacroCDC's
  * two limits -- ten macros, thirty keystrokes each -- survives: what is left
- * is 497 bytes of table to divide up however you like.
+ * is 480 bytes of table to divide up however you like.
  *
  * A keystroke is a HID usage rather than a character, because the app does
  * the layout mapping and a 95-byte ASCII table in flash was a poor way to
@@ -195,9 +192,8 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  * not emit one and the firmware stops if it finds one, which is what \p00
  * taught us the hard way.
  *
- * NOTE for the app: this is not quite what PLAN.md first sketched. Repeat was
- * to be 0x04, which collides with the usage for "a" -- the escape values had
- * to move once the table started holding usages instead of characters.
+ * 0x04 is not free, though it might look it: it is the usage for "a". The
+ * escapes have to live where no key does.
  */
 
 #define TABLE_BASE      ((uint8_t *)0x000)
@@ -228,9 +224,8 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define KEY_SHIFT       0x80        /* in a stored keystroke */
 #define MOD_SHIFT       0x02        /* in a HID report       */
 
-/* The last 32 bytes, reserved here so that a table can never grow into them.
- * All of it belongs to steps still to come, and the gap is deliberate: it is
- * cheaper to leave room now than to move a board's table later.
+/* The last 32 bytes, kept out of the table's reach. All of them are spoken
+ * for; anything more will have to come out of the table.
  *
  *   0x1E0   the board's serial number, four random bytes made once
  *           (DM_SERIAL_ADDR -- see DigiHidUSB, which needs it to exist
@@ -244,8 +239,6 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *   0x1F0   ...soft locks in a row so far       stored inverted, so that
  *   0x1F1   ...hard locks lifted, ever          an erased byte is a zero)
  *   0x1F2   how long the host stays trusted, in tens of seconds
- *
- * That is the last of it: anything more comes out of the table.
  *   0x1F3   the code to type at power-on, if any
  *   0x1F4   password, twelve bytes zero-padded (DM_PASS_ADDR)
  */
@@ -323,7 +316,7 @@ uint8_t hidPassSet(void)
  * Two stages, so that the owner can fumble a code without needing the app.
  * Too many wrong codes and the board ignores every tap, right or wrong, for a
  * while: a soft lock. Too many soft locks in a row and it ignores them until
- * the password is given: a hard lock. A code that matches clears both
+ * the password is given: a hard lock. A macro that plays clears both
  * counts, so somebody guessing gets at most (soft x hard) codes before the
  * board stops listening -- and three, at 1 and 3, is a good deal less than
  * the 62 there are.
@@ -606,8 +599,8 @@ static void clocks_poll(void)
  * wrong -- and the table can be rewritten without this having to follow it.
  *
  * Anything impossible as a header means nothing is set, so an erased byte
- * needs no initialising. It types once, when the host has finished
- * enumerating; keystrokes sent before that go nowhere. A macro that needs the
+ * needs no initialising. It types once, when the host has attached a
+ * keyboard to type into -- see AUTO_SETTLE_MS above. A macro that needs the
  * host settled further starts with its own pause.
  */
 #define AUTO_ADDR       ((uint8_t *)0x1F3)
@@ -785,7 +778,7 @@ void touch_poll(void)
 static void type_nib(uint8_t n)
 {
     n &= 0x0F;
-    dusbTypeChar(n < 10 ? '0' + n : 'A' + n - 10, 0);
+    hidTypeChar(n < 10 ? '0' + n : 'A' + n - 10, 0);
 }
 
 static void type_hex(uint8_t v)
@@ -801,18 +794,18 @@ static void type_reading(void)
     extern uint8_t in_down;
 
     type_hex(touch_raw);
-    dusbTypeChar(' ', 0);
+    hidTypeChar(' ', 0);
     type_hex((uint8_t)(touch_base >> 4));
-    dusbTypeChar(' ', 0);
-    dusbTypeChar(touch_state ? 'T' : '.', 0);
-    dusbTypeChar(' ', 0);
-    dusbTypeChar(in_down ? '#' : '-', 0);
-    dusbTypeChar(' ', 0);
+    hidTypeChar(' ', 0);
+    hidTypeChar(touch_state ? 'T' : '.', 0);
+    hidTypeChar(' ', 0);
+    hidTypeChar(in_down ? '#' : '-', 0);
+    hidTypeChar(' ', 0);
     type_hex(touch_polls >> 8);         /* how many times the pad was read */
     type_hex(touch_polls);              /* since the last line: the rate the
                                            average has to be slower than */
     touch_polls = 0;
-    dusbTypeChar('\n', 0);
+    hidTypeChar('\n', 0);
 }
 #endif
 
@@ -916,7 +909,7 @@ uint8_t *find_header(uint8_t want)
         if (h == want) return a;
         /* Step over the keystrokes and their terminator. Bounded by the
            table, so a table written with no terminator stops here rather
-           than walking on into the password. */
+           than walking on into the reserved bytes above it. */
         while (a < TABLE_TOP && eeprom_read_byte(a)) a++;
         a++;
     }
@@ -1006,9 +999,9 @@ uint8_t macro_play(uint8_t *a)
             }
             if (a >= TABLE_TOP) break;  /* an escape in the last table byte
                                            would take its argument from the
-                                           lockout state, and a repeat count
-                                           read from there would say what it
-                                           was */
+                                           serial number above it, and a
+                                           repeat count read from there
+                                           would say what it was */
             uint8_t arg = eeprom_read_byte(a++);
             if (!arg) break;            /* no argument may be zero; a table
                                            that says otherwise is corrupt */
@@ -1196,7 +1189,7 @@ void loop(void)
 #if TOUCH_DEBUG
     {
         static uint16_t last;
-        if (dusbReady() && (uint16_t)(ticks() - last) >= DEBUG_MS) {
+        if (hidAwake() && (uint16_t)(ticks() - last) >= DEBUG_MS) {
             last = ticks();
             type_reading();
         }

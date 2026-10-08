@@ -22,13 +22,16 @@
 #               Commit the result: the page carries it, so serving the page
 #               needs no AVR toolchain.
 #
-#   spikehid    build spikehid/ instead -- the second spike: a keyboard that
-#               stays a keyboard, with a vendor collection WebHID can reach
-#   loadtable   build tools/loadtable/ instead -- writes a sample table into
-#               EEPROM so playback can be tested before the app exists
+#   spikehid    build spikehid/ instead -- the spike that showed a keyboard
+#               can carry a vendor collection WebHID can reach. Kept as
+#               history: against today's library it answers INFO only,
+#               since nothing in it opens the window
+#   loadtable   build tools/loadtable/ instead -- writes a known sample table
+#               into EEPROM without the app, the same one test/table_test.cpp
+#               plays
 #
-# Needs arduino-cli and the Digistump AVR core; see DigiMacroCDC/build.sh for
-# the installation lines.
+# Needs arduino-cli and the Digistump AVR core; it says how to get them if
+# either is missing.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -64,8 +67,31 @@ if [ "$RC" = 1 ] && [ "$BUTTON" = 1 ]; then
     echo "rc is about the pad, so it does not go with button" >&2; exit 1
 fi
 
+if [ "$ISP" = 1 ] && [ "$DO_UPLOAD" = 1 ]; then
+    echo "isp is for a programmer, not for micronucleus: build it, then see" >&2
+    echo "HARDENED_MODE.md" >&2; exit 1
+fi
+
+DIGISTUMP_INDEX=https://raw.githubusercontent.com/ArminJo/DigistumpArduino/master/package_digistump_index.json
 CLI="$(command -v arduino-cli || echo "$HOME/.cache/digimacro/arduino-cli")"
-[ -x "$CLI" ] || { echo "arduino-cli not found" >&2; exit 1; }
+if [ ! -x "$CLI" ]; then
+    cat >&2 <<MSG
+arduino-cli was not found. Install it from
+
+    https://arduino.github.io/arduino-cli/latest/installation/
+
+then add the core this is built against. The index is ArminJo's fork, the
+original digistump.com one having been dead for years:
+
+    arduino-cli config add board_manager.additional_urls $DIGISTUMP_INDEX
+    arduino-cli core update-index
+    arduino-cli core install digistump:avr
+
+The Digistump core is deprecated upstream in favour of ATTinyCore. This
+project has not been moved to it or tested there.
+MSG
+    exit 1
+fi
 
 FLAGS=""
 [ "$BUTTON" = 1 ]  && FLAGS="$FLAGS -DHAVE_TOUCH=0"
@@ -89,10 +115,10 @@ BUILD="${SKETCH%/}/build"
 
 if [ "$ISP" = 1 ]; then
     echo
-    echo "Flash $BUILD/*.hex with your programmer."
-    echo "Keep the fuses as they are, and check EESAVE (high fuse bit 3): left"
-    echo "unprogrammed, as a Digispark ships, a chip erase takes the macro"
-    echo "table and the password with it on every reflash."
+    echo "Flash $BUILD/DigiMacro.ino.hex with a programmer, and set the fuses,"
+    echo "as HARDENED_MODE.md says: low 0xE1, high 0xDD, extended 0xFF. High"
+    echo "0xDD leaves EESAVE unprogrammed, so a chip erase takes the EEPROM with"
+    echo "it -- which is the point. Lock it with 0xFC only once it is set up."
 fi
 
 if [ "$RELEASE" = 1 ]; then

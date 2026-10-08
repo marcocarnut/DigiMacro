@@ -43,7 +43,6 @@ void hidPoll(void){}
 uint8_t hidReady(void){ return 1; }
 static uint8_t host_awake = 1;  /* the host has said hello, unless a test says not */
 uint8_t hidAwake(void){ return host_awake; }
-uint8_t hidLeds(void){ return 0; }
 /* The configuration window the four-second hold opens. */
 static uint16_t allow_until; static uint8_t allow_open;
 void hidAllow(uint16_t ms){ allow_until = (uint16_t)fake_ms + ms; allow_open = 1; }
@@ -52,7 +51,7 @@ uint8_t hidAllowed(void){
     return allow_open;
 }
 void hidTypeChar(char, uint8_t){}
-void hidType(const char*){} void hidType_P(const char*){}
+void hidType_P(const char*){}
 
 /* Every keystroke, modifiers and all, in the order they were sent. Hex
    rather than letters so that a modifier or an odd usage cannot hide. */
@@ -215,15 +214,18 @@ int main(void)
     CHECK(!strcmp(play("."), "<00/04>"),
           "must stop at the bad escape: \"%s\"", typed);
 
-    printf("9. a jump stops the macro in a build without jumps\n");
+    printf("9. an escape this build does not have stops the macro\n");
+    /* 0x80 is the one escape value nothing uses yet. A table that holds it
+       came from something newer, and guessing at it would be worse than
+       stopping. The argument is not zero, so this is not test 8 again. */
     table_reset();
-    add(".", { K('a'), ESC_JUMP, HDR_MAKE(1, 0), K('b') });
+    add(".", { K('a'), 0x80, 0x05, K('b') });
     CHECK(!strcmp(play("."), "<00/04>"),
-          "an unimplemented escape must stop, not loop: \"%s\"", typed);
+          "an unknown escape must stop, not guess: \"%s\"", typed);
 
     printf("10. the walk cannot leave the table\n");
     /* A table with no terminator would otherwise run straight into the
-       password. Every entry here is a "-", so nothing matches, and the walk
+       reserved bytes above it. Every entry here is a "-", so nothing matches, and the walk
        has to give up at the top of the table rather than read on. */
     memset(EE, 0xFF, sizeof EE);
     for (uint16_t a = 0; a < (uint16_t)(size_t)TABLE_TOP; a += 3) {
@@ -235,8 +237,9 @@ int main(void)
 
     printf("11. playback stops at the top of the table too\n");
     /* An entry whose keystrokes are not terminated either. What follows in
-       EEPROM is the lockout state and the password; typing those out would
-       be the worst bug this firmware could have. */
+       EEPROM is the serial number, the host key, the lockout and the
+       password; typing those out would be the worst bug this firmware could
+       have. */
     memset(EE, 0xFF, sizeof EE);
     EE[0] = HDR_MAKE(1, 0);
     for (uint16_t a = 1; a < (uint16_t)(size_t)TABLE_TOP; a++) EE[a] = K('z');
@@ -251,14 +254,14 @@ int main(void)
           "should have typed the whole table and stopped, %d bytes", typedn);
 
     printf("11b. an escape in the last table byte takes no argument from above\n");
-    /* Its argument would be the lockout state, and a repeat count read from
-       there would tell a bystander what that byte is. */
+    /* Its argument would be the serial number's first byte, and a repeat
+       count read from there would tell a bystander what that byte is. */
     memset(EE, 0xFF, sizeof EE);
     EE[0] = HDR_MAKE(1, 0);
     EE[1] = K('a');
     for (uint16_t a = 2; a < (uint16_t)(size_t)TABLE_TOP - 1; a++) EE[a] = K('a');
     EE[(size_t)TABLE_TOP - 1] = ESC_REPEAT;     /* the very last table byte */
-    EE[(size_t)TABLE_TOP] = 5;                  /* the lockout byte */
+    EE[(size_t)TABLE_TOP] = 5;                  /* the serial's first byte */
     play(".");
     CHECK(typedn == 7 * ((int)(size_t)TABLE_TOP - 2),
           "the escape must be dropped, not fed: %d of %d bytes",
@@ -807,7 +810,7 @@ int main(void)
     host_forget();
     unlocked = 0;
 
-    printf("20. the reserved bytes are where the map says\n");
+    printf("23. the reserved bytes are where the map says\n");
     /* The table stops 32 bytes below the end; the app is told the same
        number, so if this changes both must. */
     CHECK((size_t)TABLE_TOP == 0x1E0, "TABLE_TOP is %03X", (int)(size_t)TABLE_TOP);

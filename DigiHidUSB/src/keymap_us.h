@@ -1,19 +1,12 @@
 /* Generated: US layout ASCII 0x20..0x7E -> HID usage id, bit7 = needs Shift. */
-/* Non-printable handled separately in dualusb.cpp (\n \t \b).            */
+/* Non-printable handled separately in hidusb.cpp (\n \t \b).              */
 #ifndef KEYMAP_US_H
 #define KEYMAP_US_H
 #define KEYMAP_SHIFT 0x80
 #define KEYMAP_FIRST 0x20
 #define KEYMAP_LAST  0x7E
-/* Where the table lives when it lives in EEPROM. Defined either way, so that
-   tools/loadkeymap -- which needs the flash copy to read from -- writes to
-   the same place the firmware reads from. */
-#ifndef KEYMAP_EE_ADDR
-#define KEYMAP_EE_ADDR 0x180
-#endif
-
-/* With KEYMAP_IN_EEPROM the table is not compiled in at all. */
-#ifndef KEYMAP_IN_EEPROM
+/* Only hidTypeChar() reads it -- the TOUCH_DEBUG readings, and spikehid --
+   so the linker leaves it out of the firmware proper. */
 static const uint8_t PROGMEM keymapUS[KEYMAP_LAST - KEYMAP_FIRST + 1] = {
     0x2C, 0x9E, 0xB4, 0xA0, 0xA1, 0xA2, 0xA4, 0x34,
     0xA6, 0xA7, 0xA5, 0xAE, 0x36, 0x2D, 0x37, 0x38,
@@ -28,5 +21,4 @@ static const uint8_t PROGMEM keymapUS[KEYMAP_LAST - KEYMAP_FIRST + 1] = {
     0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A,
     0x1B, 0x1C, 0x1D, 0xAF, 0xB1, 0xB0, 0xB5,
 };
-#endif
 #endif

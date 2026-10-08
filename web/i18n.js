@@ -105,8 +105,8 @@ en: {
                   + 'ignores every tap until the pause is over, and unplugging '
                   + 'it starts the pause again.',
   'lock-state-hard': 'The board is locked hard and ignores every tap. Hold the '
-                  + 'pad for four seconds, type the password in the Password '
-                  + 'section and press Unlock.',
+                  + 'pad for four seconds, type the password and press '
+                  + 'Unlock.',
   'lock-odds':      p => `Someone guessing gets at most ${p.tries} `
                   + `${p.tries == 1 ? 'code' : 'codes'} before the board locks `
                   + `hard, with a ${p.wait} pause after `
@@ -234,7 +234,8 @@ en: {
                   + 'keystroke, two per pause or repeat.',
   'ref-layout':     'The board sends key presses, not letters, so what appears '
                   + 'is decided by the keyboard layout of the machine it is '
-                  + 'plugged into — which is what the setting at the top says. '
+                  + 'plugged into — which is what the keyboard setting beside '
+                  + 'Macros says. '
                   + 'On US International an accented character is two presses, '
                   + 'the accent and then the letter, and a bare accent mark is '
                   + 'that key followed by a space. On a plain US keyboard there is '
@@ -256,6 +257,7 @@ en: {
   'fw-link-latest': '(latest)',
   'fw-link-noboot': '(hardened: no bootloader)',
   close:            'Close',
+  remove:           'remove',
   'wrong-magic':    'that device did not answer "DM"',
   'write-ok':       'Wrote {n} bytes and read every one of them back.',
   'write-mismatch': 'mismatch at {at}: wrote {wrote}, read {read}',
@@ -280,7 +282,7 @@ en: {
   'not-a-key':      '"{what}" is not a key',
   'no-key-for':     'no key for "{what}"',
   'needs-dead-keys':'"{what}" needs a keyboard with dead keys — see the '
-                  + 'keyboard setting above',
+                  + 'keyboard setting beside Macros',
   'not-a-code':     'not a code: "{what}"',
   'code-twice':     '"{what}" is used twice',
   'not-a-byte':     '"{what}" has a byte that is not a byte',
@@ -382,8 +384,8 @@ pt: {
                   + 'Ela ignora todo toque até a pausa acabar, e desconectá-la '
                   + 'recomeça a pausa.',
   'lock-state-hard': 'A placa está em bloqueio forte e ignora todo toque. '
-                  + 'Segure o sensor por quatro segundos, digite a senha na '
-                  + 'seção Senha e clique em Destravar.',
+                  + 'Segure o sensor por quatro segundos, digite a senha e '
+                  + 'clique em Destravar.',
   'lock-odds':      p => `Quem tentar adivinhar tem no máximo ${p.tries} `
                   + `${p.tries == 1 ? 'código' : 'códigos'} antes do bloqueio `
                   + `forte, com uma pausa de ${p.wait} `
@@ -516,13 +518,14 @@ pt: {
                   + 'deles é mais fácil de adivinhar — que é para isso que '
                   + 'serve o bloqueio.',
   'ref-packed':     'As macros ficam empacotadas uma após a outra, então o '
-                  + 'único limite são 480 bytes no total: dois bytes de '
-                  + 'cabeçalho cada, um byte por tecla, dois por pausa ou '
+                  + 'único limite são 480 bytes no total: dois bytes extras '
+                  + 'cada, um byte por tecla, dois por pausa ou '
                   + 'repetição.',
   'ref-layout':     'A placa envia pressionamentos de tecla, não letras, então '
                   + 'o que aparece é decidido pelo layout de teclado da '
-                  + 'máquina em que ela está ligada — que é o que a opção lá '
-                  + 'em cima informa. No US International um caractere '
+                  + 'máquina em que ela está ligada — que é o que a opção de '
+                  + 'teclado ao lado de Macros informa. No US International um '
+                  + 'caractere '
                   + 'acentuado são dois pressionamentos, o acento e depois a '
                   + 'letra, e um acento sozinho é a tecla dele seguida de espaço. '
                   + 'Num teclado US puro não há como digitar um acento, então '
@@ -544,6 +547,7 @@ pt: {
   'fw-link-latest': '(o mais recente)',
   'fw-link-noboot': '(protegida: sem bootloader)',
   close:            'Fechar',
+  remove:           'remover',
   'wrong-magic':    'esse dispositivo não respondeu "DM"',
   'write-ok':       'Gravados {n} bytes, e todos lidos de volta.',
   'write-mismatch': 'divergência em {at}: gravado {wrote}, lido {read}',
@@ -568,7 +572,7 @@ pt: {
   'not-a-key':      '"{what}" não é uma tecla',
   'no-key-for':     'não há tecla para "{what}"',
   'needs-dead-keys':'"{what}" precisa de um teclado com acentos mortos — veja '
-                  + 'a opção de teclado acima',
+                  + 'a opção de teclado ao lado de Macros',
   'not-a-code':     'não é um código: "{what}"',
   'code-twice':     '"{what}" está sendo usado duas vezes',
   'not-a-byte':     '"{what}" tem um byte que não é um byte',

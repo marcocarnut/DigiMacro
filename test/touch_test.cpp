@@ -1,6 +1,6 @@
 /* Exercises the capacitive-touch detection logic of the HAVE_TOUCH build.
  *
- * The analog side -- whether a finger actually changes the discharge time on
+ * The analog side -- whether a finger actually changes the charge time on
  * your pad -- can only be answered on hardware. What can be answered here is
  * everything downstream of the count: that the sampler rejects interference
  * the right way round, that the running average follows drift but not a
@@ -35,10 +35,10 @@ void fake_charge(void){ pinb_count = q[qi++ % qn]; }
 
 
 void hidBegin(void){} void hidPoll(void){}
-uint8_t hidReady(void){ return 1; } uint8_t hidAwake(void){ return 1; } uint8_t hidLeds(void){ return 0; }
+uint8_t hidReady(void){ return 1; } uint8_t hidAwake(void){ return 1; }
 void hidAllow(uint16_t){} uint8_t hidAllowed(void){ return 0; }
 void hidKey(uint8_t,uint8_t){} void hidTypeChar(char,uint8_t){}
-void hidType(const char*){} void hidType_P(const char*){}
+void hidType_P(const char*){}
 
 #include "DigiMacro.ino"
 

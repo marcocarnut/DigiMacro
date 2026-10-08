@@ -2,13 +2,10 @@
    because the test compiles with -I. ahead of anything else. */
 #pragma once
 #include <stdint.h>
-#define HID_REPORT_KBD 1
-#define HID_REPORT_VND 2
 void    hidBegin(void);
 void    hidPoll(void);
 uint8_t hidReady(void);
 uint8_t hidAwake(void);
-uint8_t hidLeds(void);
 void    hidAllow(uint16_t ms);
 uint8_t hidAllowed(void);
 #define DM_PASS_ADDR   0x1F4

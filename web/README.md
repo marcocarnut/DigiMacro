@@ -1,4 +1,4 @@
-# Test pages
+# The web app
 
 WebHID needs a secure context, and `localhost` counts as one:
 
@@ -11,7 +11,7 @@ then, in Chrome or Edge:
 | | |
 |---|---|
 | <http://localhost:8000/app.html> | **the app**: edit the macros and write them |
-| <http://localhost:8000/hid.html> | the spike's own page: INFO, a dump, a write read back |
+| <http://localhost:8000/hid.html> | a raw protocol page for developers: INFO, a dump, a write of the same bytes back |
 
 `table.js` turns macro text into the bytes the firmware plays, and back again
 so a board's table can be edited rather than retyped. It is shared with
@@ -21,7 +21,7 @@ checked against each other rather than each being trusted alone.
 
 `i18n.js` holds every string the app says, in English and Brazilian
 Portuguese, and `test/i18n.js` checks that the two agree on which strings
-exist. The other two pages are developer tools and stay in English.
+exist. `hid.html` is a developer tool and stays in English.
 
 **`python3 -m http.server` sends no cache headers**, so Chrome applies its own
 heuristic freshness and will happily keep running an old `table.js` after you
@@ -39,7 +39,7 @@ like, and hold the pad for four seconds when the app asks, which opens the
 window during which the table may be read and written.
 
 On Linux the board needs a udev rule to be reachable without root. It is in
-`60-digimacro.rules`:
+`60-digimacro.rules`; from the repository root:
 
 ```
 sudo cp web/60-digimacro.rules /etc/udev/rules.d/
@@ -65,16 +65,16 @@ WebUSB. On Linux that needs the rule's last line; on Windows it needs a driver
 once, WinUSB installed with [Zadig](https://zadig.akeo.ie/) while the board is
 in its bootloader.
 
-## The spike
+## The raw protocol page
 
-`spikehid/` is what showed the mode switch was not needed. Flash it with
-`./build.sh spikehid upload` and open <http://localhost:8000/hid.html>.
+`hid.html` speaks the vendor report as bytes, with none of the app's help:
+INFO, decoded; a dump of all 512 bytes of EEPROM; and a write test that writes
+back exactly the bytes it just read, since every byte of the EEPROM belongs to
+something now and there is nowhere safe to scribble. INFO always answers. READ
+and WRITE need the pad held first, and on a board with a password, the
+password given in the app — the unlock lasts until the window closes.
 
-There is no pad to hold: the device stays a keyboard the whole time, and the
-page talks to a second top-level collection on vendor usage page `0xFF00`,
-which is what WebHID will hand over. Touch the pad first and check it types a
-line — that is the half of the question about report IDs. **3350 bytes**, less
-than the first spike, with the EEPROM protocol included.
-
-Its write test uses the reserved area at `0x1E0`, so a macro table on the board
-survives it.
+It began as the page for `spikehid/`, the spike that showed the board need not
+stop being a keyboard to be configured. That sketch is kept as history; built
+against today's library it answers INFO and nothing else, since nothing in it
+opens the window.

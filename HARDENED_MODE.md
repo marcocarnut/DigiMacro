@@ -122,7 +122,15 @@ three ways:
 ### 3. Erase, flash and set the fuses
 
 Wire the programmer to the DigiMacro board as the DigiISP page shows for a
-Digispark target. Then, in this order:
+Digispark target.
+
+**If the programmer cannot reach the chip at all,** check whether the board
+has its reset pin disabled: some boards ship with a high fuse of `0x5D`
+instead of `0xDD`, turning P5 into an ordinary pin. A programmer like this one
+cannot talk to such a chip, and it needs a high-voltage programmer to turn
+reset back on first. Most Digisparks keep reset enabled.
+
+Then, in this order:
 
 1. **Erase the chip.** This removes Micronucleus and, with EESAVE
    unprogrammed, the EEPROM.
@@ -131,7 +139,7 @@ Digispark target. Then, in this order:
 
 | fuse | value | why |
 |---|---|---|
-| low | `0xE1` | as a Digispark: the 16.5 MHz PLL clock USB needs |
+| low | `0xE1` | as a Digispark: the PLL clock, which is then tuned to the 16.5 MHz USB needs |
 | high | `0xDD` | as a Digispark. **EESAVE (bit 3) is 1, unprogrammed**, so a chip erase takes the EEPROM with it. Reset stays enabled, so a programmer can still erase the chip if you start over. Disabling reset would gain nothing, since high-voltage programming obeys the same lock bits and erase rules. debugWIRE stays off. |
 | extended | `0xFF` | **not** a Digispark's `0xFE`: SELFPRGEN unprogrammed, so nothing running on the chip can write its own flash at all. Micronucleus needed it; DigiMacro does not. |
 

@@ -2,7 +2,8 @@
 
 - `digimacro.hex` and `digimacro.json`: the released firmware and its version,
   written by `./build.sh release`. The app offers it to any board running an
-  older version.
+  older version -- except firmware older than 3, which cannot restart itself
+  into the bootloader, and a hardened board, which has none.
 - `micronucleus-2.6-t85_default-upgrade.hex`: the unmodified upstream
   Micronucleus upgrader (`firmware/upgrades/upgrade-t85_default.hex`,
   upstream tag v2.6, commit 6dca90b, 2021-11-04). It is an application that,

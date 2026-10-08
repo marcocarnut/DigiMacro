@@ -16,7 +16,7 @@ const MICRONUCLEUS_PID = 0x0753;
 const MN_INFO = 0, MN_TRANSFER_PAGE = 1, MN_ERASE = 2, MN_WRITE_DATA = 3,
       MN_RUN = 4;
 
-/* The ATtiny85 with Micronucleus 2.x: where the bootloader starts. */
+/* The ATtiny85's signature, as Micronucleus 2.x reports it. */
 const T85_SIGNATURE = [0x93, 0x0B];
 
 /* Messages go through the app's translator when there is one. */

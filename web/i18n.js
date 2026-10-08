@@ -129,9 +129,9 @@ en: {
   'bk-summary':     'Backup',
   'bk-why':         'Everything on the board — the macros, the startup macro, '
                   + 'the lockout, the host key, the password and the serial '
-                  + 'number — saved to a file, and put back. A hardened board '
-                  + 'loses all of it when it is erased to update its firmware; '
-                  + 'restored, it comes back as itself. With a password the file '
+                  + 'number — saved to a file, and put back. A board erased with '
+                  + 'a programmer — to harden it, or to start over — loses all '
+                  + 'of it; restored, it comes back as itself. With a password the file '
                   + 'is encrypted with it, so keep that password: without it the '
                   + 'file is no use to anyone, you included.',
   'bk-save':        'Save a backup',
@@ -560,8 +560,9 @@ pt: {
   'bk-why':         'Tudo o que está na placa — as macros, a macro de '
                   + 'inicialização, o bloqueio, a chave de computador, a senha e '
                   + 'o número de série — salvo num arquivo, e restaurado. Uma '
-                  + 'placa protegida perde tudo isso quando é apagada para '
-                  + 'atualizar o firmware; restaurada, ela volta a ser a mesma. '
+                  + 'placa apagada com um gravador — para protegê-la, ou para '
+                  + 'recomeçar — perde tudo isso; restaurada, ela volta a ser a '
+                  + 'mesma. '
                   + 'Com senha, o arquivo é cifrado com ela, então guarde essa '
                   + 'senha: sem ela o arquivo não serve para ninguém, nem para '
                   + 'você.',

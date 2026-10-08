@@ -84,12 +84,14 @@ void     hidLock(void);         /* the session is over: the window closed */
  *
  * The app has no say in updates beyond opening the window (layout.h).
  *
- * The watchdog runs while the app does, about two seconds, and the core's
- * corePoll() resets it: an app must call corePoll() at least every second or
- * so, and must leave the watchdog alone after app_setup(). An app that
- * hangs is reset by it, and the core then does not start it again -- the
- * board comes up core only, taking an update behind the password. A replug
- * runs it again.
+ * The watchdog watches the app from the start: eight seconds for
+ * app_setup(), which may borrow it (entropy) and leave it off, then about
+ * two, reset by the core's corePoll() -- so an app must call corePoll()
+ * (hidPoll() does) at least every second or so, and must leave the watchdog
+ * alone after app_setup(). An app that hangs is reset by it, and one that
+ * crashes into address 0 starts with no reset reason; either way the core
+ * does not start it again -- the board comes up core only, taking an update
+ * behind the password. A replug runs it again.
  *
  * The app's interrupts go through its header (layout.h); before taking
  * any page the core switches off every interrupt source an app may have

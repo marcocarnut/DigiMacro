@@ -3,10 +3,11 @@
 The firmware updates itself, and Micronucleus goes.
 
 Marco's idea, written down while v1 was being finished so that none of it
-was lost. The spike is built and proven on a board — see *The spike, as
-built*, which supersedes the guesses before it — and DigiMacro has not yet
-moved onto it. v1 — `PLAN.md`, tagged **v1.0** at firmware 9 — is the working
-version, and stays the shipping one until v2 has earned its place.
+was lost. It is built: the spike proved it (*The spike, as built*), and
+DigiMacro moved onto it and went past v1 (*v2, as built*), which supersede
+the guesses before them. v1 — `PLAN.md`, tagged **v1.0** at firmware 9 — is
+the version boards may still be running; the page updates them, and moves
+them to v2.
 
 ## The idea
 
@@ -257,7 +258,8 @@ Linux PC, October 2026. Every item on the list above held on the board.
   - `spikectl.py` drives the protocol over hidraw: info, flash, read,
     unlock, setpass, and slow or stopped updates for testing interruptions.
   - `test/` compiles the real `core.c` and `proto.c` for the host and asks
-    them everything: 1307 checks. Each deliberate breakage tried was caught.
+    them everything: 1307 checks then (`core/test` now, with `app/hidusb.c`).
+    Each deliberate breakage tried was caught.
 
 ### What was decided, and why
 
@@ -269,7 +271,8 @@ Linux PC, October 2026. Every item on the list above held on the board.
   - a minimal INFO;
   - check the password.
 
-  Everything else moved into the app, in `proto.c`, linked into every app:
+  Everything else moved into the app, in `proto.c` (now `app/hidusb.c`),
+  linked into every app:
   - the clock, the window, typing with its timeouts;
   - RESTART, READ, WRITE, SETPASS and HOSTAUTH;
   - INFO's other state bits;
@@ -342,6 +345,8 @@ Linux PC, October 2026. Every item on the list above held on the board.
 
 ### What it measured
 
+*The spike's numbers, at the time; v2's are under* v2, as built.
+
 | | |
 |---|---|
 | the core | **3812 bytes**: V-USB about 1.7 KB of it (C 930, assembler about 790), the descriptors, the request plumbing, the page writer, the app check, the password, the window and the watchdog |
@@ -387,6 +392,114 @@ mostly V-USB.
   from `app.c` at that, overwriting the script with an ELF. The Makefile
   says it is a source.
 
+## v2, as built
+
+After the spike, DigiMacro moved onto the core, three reviewers read all of
+it, Marco's two-stage install replaced the programmer, and a trimming pass
+measured where the bytes went. All of it tried on boards, Linux and Windows.
+
+### The port
+
+The sketch became the firmware above the core with little change, because
+v2 kept v1's names: `setup()` and `loop()` became `app_setup()` and
+`app_loop()`, and its password code became three hooks — a wrong password is
+a wrong code, the right one clears the lockout, a new one starts a clean
+slate — since checking it is the core's. The spike's `spike/` split into
+`core/` and `app/`, built by a top-level `Makefile` into `build/v2/`, and
+`proto.c` became `app/hidusb.c`: v1's DigiHidUSB, the app's half. v1's
+`build.sh` and DigiHidUSB left the branch. The page learnt protocol 3
+(`web/coreupdate.js`): updates in place, a recovery view for a board with
+only its core, and every request trusting only an answer to its own
+question. It keeps the Micronucleus path for v1 boards.
+
+Marco's calls along the way: hardening shows only on a board with a
+password, or locked — without one, anyone can put firmware on it that reads
+it out, so hardening is moot — and is red until done; the high fuse is
+`0xDD`, brown-out detection on, for a chip that writes its own flash; and
+RSTDISBL is not needed, since the lock bits stop ISP and high-voltage
+programming reading the chip — he tried.
+
+### The reviews
+
+Three reviewers, read-only, on the core, the page and the documentation.
+Each finding was checked against the code before it was fixed, and each fix
+has a test that fails without it:
+
+- **A setup that hangs bricked the board:** the watchdog was armed after it.
+  It now watches setup too, at 8 s, then 2 s.
+- **A crash to address 0 looked like the core's own restart,** and the core
+  started the app again for ever. A start with no reset reason is now a
+  crash, and the app is not started; a commit ends in a real watchdog reset,
+  marked in `.noinit` as the core's own, so the new app starts on clean
+  registers too.
+- **Reinstalling the same firmware could leave a board with none.** The core
+  answered FREAD from the old flash while a page waited to be written, and an
+  unchanged page passed for written. The core now refuses FREAD until the
+  write is done.
+- **No PAGE after COMMIT, and no SPM while an EEPROM write runs.**
+- **A refused UNLOCK, SETPASS or WRITE left its data in the report**, and a
+  window closing mid-INFO blanked the core's half of INFO.
+- On the page: UNLOCK is never re-sent (a v1 board counts each wrong one);
+  a lost COMMIT answer is not a failure; a failed update finds its way back
+  to the same board.
+
+### The install
+
+Marco's idea: load the core through Micronucleus, then the firmware through
+the core. **Set up a new board** writes v2's core through Micronucleus over
+WebUSB; a v1 board's firmware dialog offers **Move to v2**, which reboots it
+into Micronucleus to do the same. The board comes back with only its core,
+and the recovery view installs the firmware — over Micronucleus, which goes.
+
+Micronucleus had pointed the reset vector at itself, so before the first page
+the core takes it back: page 0 rewritten whole, with only that word its own
+again. It is the one page below the boundary the core ever writes.
+
+**The first version bricked a board.** It erased page 0 and then waited for
+the host's next poll, as it does for app pages, with interrupts on; page 0
+holds the vectors, and the next USB packet jumped through an erased one.
+Page 0 is now erased and written in one interrupts-off section, and the host
+test fails any `spm()` that leaves page 0 erased between calls — the bricking
+version does. The lesson: on a chip whose vectors live in the flash being
+written, an interrupt is a jump into that flash.
+
+That left the core 12 bytes over its table. **Marco's idea paid for it:** the
+USB strings are kept as ASCII and widened when the host asks, into one buffer
+whose high bytes are never written; the serial's prefix, `postcogito.org:`, is
+the tail of the maker's name, and its digits come from EEPROM as it is built.
+V-USB then numbered the maker and product strings 0, "none", which reading
+the real build's device descriptor caught; a compile-time check guards it.
+
+### The trimming
+
+Where v2's extra size went, against v1's 5966 bytes: about 900 is the
+updater, which v1 kept in Micronucleus outside its 6650; about 400 is the
+protocol split between the halves; about 160 is being two programs (tables,
+header, forwarded vectors, a second start-up, the app's own clock); USB came
+out even, and the sketch's own code is byte for byte the same. The core is
+final, so the trimming was the app's: a 16-bit clock, and the serial made
+with routines the app links anyway — 144 bytes.
+
+### What it measures
+
+| | |
+|---|---|
+| the core | **4010 bytes**, 54 under its table at `0xFE0`; RAM to `0x14A` |
+| the firmware | **3076 of 4096 bytes, 1020 free**, against v1's 684 — firmware 12 |
+| in all | 7086 bytes, against v1's 5966: v2 carries its own updater |
+
+### What it taught
+
+- **Read the real build, not only the tests.** The tests never saw V-USB's
+  device descriptor, or the code the compiler made for page 0; reading them
+  out of the ELF found one bug before a board did, and explained one after.
+- **A stub that is kinder than the board hides bugs.** The fake board in
+  `test/coreupdate.js` first halted at once and wrote every page differently,
+  which hid the unchanged-page race; it is now as strict as the core.
+- **Make the Makefile know every dependency:** a version that lived in a
+  header the app's header did not depend on shipped as the old one, and a
+  stale V-USB object outlived its `usbconfig.h`.
+
 ## Open questions
 
 Answered by the spike:
@@ -408,12 +521,17 @@ Answered by the spike:
   a replug -- until it had handed the new device to the guest; the page then
   worked. A board without Micronucleus appears once per replug.
 
+Answered since:
+- **The installer:** two stages from the page, through Micronucleus — see
+  *v2, as built*.
+- **The hardening check:** a password, lock bits, EESAVE, debugWIRE,
+  SELFPRGEN and brown-out detection, shown only on a board with a password
+  or locked.
+
 Still open:
 
-- **Windows on bare hardware.** Tried so far only in a VMware guest; see
-  below.
-- **The wipe-before-update option** for hardened boards: default off?
-- **The hardening check in v2.** Every board writes its own flash, so what
-  "(hardened)" means has to be rethought: SELFPRGEN programmed becomes
-  required, and the wipe option, if built, joins the list.
-- **The installer** for boards without a programmer, last, on a spare board.
+- **Windows on bare hardware.** Tried so far only in a VMware guest.
+- **Moving a v1 board on hardware,** and the core's new watchdog and crash
+  paths on a board: tested on the host only.
+- **The wipe-before-update option** for hardened boards: still unbuilt, and
+  perhaps unneeded — on v2, whoever can update can read the table anyway.

@@ -1,5 +1,9 @@
 # DigiMacro — plan
 
+> **v1's plan, as it was to tag `v1.0`** (firmware 9). The `build.sh`,
+> `DigiHidUSB/` and Arduino build it describes live at that tag; v2 — no
+> bootloader, a core that updates the firmware above it — is `PLAN-v2.md`.
+
 A morse-activated macro keyboard on an ATtiny85 Digispark, configured from a
 web app over WebHID rather than from an on-device command line.
 

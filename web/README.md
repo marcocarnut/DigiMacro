@@ -29,7 +29,7 @@ edit it. If a change seems to have no effect, hard-reload with
 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>. It cost me twenty minutes of
 looking for a bug that was not there.
 
-The board can type its pad readings twice a second (`./build.sh touchdebug`),
+The board can type its pad readings twice a second (`make TOUCHDEBUG=1`),
 so open a text editor first and check the numbers move when you touch it. `F8` that never changes means nothing is charging the pad;
 `00` means it charges faster than one loop pass. Only once the readings respond
 can a four-second hold mean anything.
@@ -59,16 +59,18 @@ grandparent, and a rule written with `ATTR` matches nothing and says nothing.
 Windows needs none of this: HID devices are openable as they are, which is the
 same reason WebHID wants no MS OS 2.0 descriptor.
 
-**Updating the firmware is the exception, on both.** The board restarts into
-Micronucleus, which is plain USB rather than HID, so the app reaches it over
-WebUSB. On Linux that needs the rule's last line; on Windows it needs a driver
-once, WinUSB installed with [Zadig](https://zadig.akeo.ie/) while the board is
-in its bootloader.
+**Micronucleus is the exception, on both** -- setting a board up, moving a
+v1 board to v2, and updating a v1 board. Micronucleus is plain USB rather
+than HID, so the app reaches it over WebUSB. On Linux that needs the rule's
+last line; on Windows it needs a driver once, WinUSB installed with
+[Zadig](https://zadig.akeo.ie/) while the board is in its bootloader. A v2
+board updates over WebHID, and needs neither.
 
 ## The raw protocol page
 
 `hid.html` speaks the vendor report as bytes, with none of the app's help:
-INFO, with its state byte decoded (the fuse bytes are left raw); a dump of all 512 bytes of EEPROM; and a write test that writes
+INFO, with its state byte decoded (the fuse bytes are left raw, and on a v2
+board so is the core's part); a dump of all 512 bytes of EEPROM; and a write test that writes
 back exactly the bytes it just read, since every byte of the EEPROM belongs to
 something now and there is nowhere safe to scribble. INFO always answers. READ
 and WRITE need the pad held first, and on a board with a password, the

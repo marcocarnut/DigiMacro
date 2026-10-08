@@ -6,6 +6,9 @@
 # can be tested here in a second, which beats reflashing a board to find out
 # that an escape argument was read one byte early.
 #
+# Then the web side's own suites, the page's v2 updates against a fake board,
+# and the v2 core itself, compiled for the host (core/test).
+#
 # The last suite crosses the language boundary: web/table.js encodes a table,
 # the firmware plays it, and the result is compared with webtable.expected. The
 # table is the interface between the two halves of the project, and a wrong
@@ -47,7 +50,7 @@ else
 fi
 
 echo
-echo "== the upgrade: the shipped firmware, laid out for the bootloader =="
+echo "== v1 boards: firmware 9, laid out for Micronucleus =="
 if command -v node >/dev/null 2>&1; then
     node micronucleus.js
 else

@@ -5,74 +5,86 @@ web page.
 
 Touch a pad in dots and dashes; if the code matches an entry in the board's
 table, the macro is typed as keystrokes. Hold the pad for four seconds and a
-page in Chrome or Edge may read and write the table over WebHID. There is no
-terminal, and the board never stops being an ordinary keyboard: Windows needs
-nothing installed, and Linux needs one udev rule.
+page in Chrome or Edge may read and write the table over WebHID — and update
+the board's firmware, over the same connection. There is no terminal, and the
+board never stops being an ordinary keyboard: Windows needs nothing installed,
+and Linux needs one udev rule.
 
 > ### ⚠️ Storing passwords or secrets? Read [HARDENED_MODE.md](HARDENED_MODE.md) first — all of it.
 >
-> **A board as it comes protects nothing from anyone who holds it.** Its
-> bootloader accepts a new sketch every time it is plugged in, and a sketch
-> that types out the EEPROM takes a minute to upload: every macro, the
-> password and the host key along with it. The password, the lockout and the
-> host check are all part of the firmware that sketch replaces, and nothing in
-> the app can change that.
+> **A board with no password protects nothing from anyone who holds it.** It
+> takes new firmware from anyone in the six seconds after it is plugged in,
+> and firmware that types out the EEPROM takes seconds to write: every macro
+> and the host key along with it. **Set a password**, and an update needs it
+> too, with or without firmware on the board.
 >
-> Hardened mode removes the bootloader, sets the chip's lock bits and leaves
-> EESAVE unprogrammed. It needs an ISP programmer — a second Digispark running
-> [DigiISP](https://digiisp.postcogito.org) will do — and it gives up
-> firmware updates from the page. Even then it stops a determined person, not
-> a laboratory, and it does nothing about the computer the board types into.
+> Even then, a programmer reads the chip out directly, password and all,
+> unless the board is hardened: lock bits set, EESAVE unprogrammed, brown-out
+> detection on. That needs an ISP programmer once — a second Digispark running
+> [DigiISP](https://digiisp.postcogito.org) will do — and a hardened board
+> still updates from the page. It stops a determined person, not a
+> laboratory, and it does nothing about the computer the board types into.
 > The document explains each of those trade-offs. Do not skip it.
 
-**DigiMacro v1.0 ships firmware 9**, in 5966 bytes of the 6650 the stock
-bootloader leaves, and 207 of RAM. The firmware counts its own versions —
-the app uses them to decide what a board can do — so v1.0 and firmware 9 are
-two names for the same thing.
+**DigiMacro v2 is firmware 12 on core 1.** The flash is split at `0x1000`:
+below it a core of 4010 bytes, which is the USB device, checks the password
+and writes the firmware above it; above it the firmware, 3076 of its 4096
+bytes. There is no bootloader: the core takes the firmware over the same
+connection the page uses for everything else. The firmware counts its own
+versions, and the page uses them to decide what a board can do.
+
+**v1 boards** — firmware 9 and earlier, with Micronucleus — keep working with
+the page, which still updates them and offers to move them to v2. v1 itself
+is at tag `v1.0`.
 
 ## What you need
 
-- **A Digispark** (ATtiny85, Micronucleus bootloader) or a clone. New ones
-  usually come with Micronucleus 1.x, which is fine; the app can upgrade it.
+- **A Digispark** (ATtiny85) or a clone, as it comes: the page puts v2 on it
+  through the Micronucleus bootloader it ships with, which v2 then replaces.
+  Or any ATtiny85 board and an ISP programmer.
 - **A touch pad on P0.** Any small piece of metal will do — a bare wire, a
   coin, a square of copper tape — and no other parts are needed. A pushbutton
-  from P0 to ground works too (`./build.sh button`), as does a pad read
-  through a bleed resistor of about 1 MΩ (`./build.sh rc`).
+  from P0 to ground works too (`make BUTTON=1`), as does a pad read
+  through a bleed resistor of about 1 MΩ (`make RC=1`).
 - **The board's LED on P1**, which is where the Digispark has it. A clone with
   its LED on P0 needs `PIN_LED` changed in `DigiMacro.ino`, since P0 is the
   pad.
-- **Chrome or Edge**, on a computer: WebHID, and WebUSB for firmware updates,
-  are not in Firefox or Safari. Tested on Linux and Windows 10; macOS should
-  work the same way, needing nothing installed, but nobody has tried it yet.
-- **To install it,** only the `micronucleus` command-line tool: the released
-  firmware is committed as `web/firmware/digimacro.hex`.
-- **To build it,** `arduino-cli` and the Digistump AVR core, on Linux.
-  `./build.sh` says how to install both if either is missing. The tests also
-  need `g++` and `node`.
+- **Chrome or Edge**, on a computer: WebHID — and WebUSB, to reach
+  Micronucleus when a board is set up — are not in Firefox or Safari. Tested
+  on Linux and Windows 10; macOS should work the same way, needing nothing
+  installed, but nobody has tried it yet.
+- **To install it,** nothing but the page: the released firmware is committed
+  in `web/firmware/`.
+- **To build it,** `make`, `python3` and avr-gcc, on Linux. The Makefile looks
+  for the avr-gcc the Arduino AVR core installs under `~/.arduino15`; `make
+  AVR=/path/to/bin/` points it elsewhere. The tests also need `gcc`, `g++` and
+  `node`.
 
 ## Getting started
 
-1. **On Linux, let the browser and Micronucleus reach the board.** Every
-   hidraw and USB device is root-only until a udev rule says otherwise:
+1. **On Linux, let the browser reach the board.** Every hidraw and USB device
+   is root-only until a udev rule says otherwise:
    ```
    sudo cp web/60-digimacro.rules /etc/udev/rules.d/
    sudo udevadm control --reload
    ```
-   On Windows, Micronucleus needs a driver once: run
+   On Windows, Micronucleus needs a driver once, for setting a board up: run
    [Zadig](https://zadig.akeo.ie/) while the board sits in its bootloader, the
    first few seconds after plugging it in, and install WinUSB for it. The
    keyboard itself needs nothing anywhere.
-2. **Flash the firmware.** Either build and upload it with `./build.sh upload`,
-   or upload the released one with `micronucleus --run
-   web/firmware/digimacro.hex`. Plug the board in when Micronucleus asks for
-   it. After this first time, the app updates it.
-3. **Open the app.** It is not hosted anywhere yet, so serve it yourself.
+2. **Open the app.** It is not hosted anywhere yet, so serve it yourself.
    WebHID needs a secure context, and `localhost` counts:
    ```
    cd web && python3 -m http.server 8000
    ```
    Then open `http://localhost:8000/app.html`. Any https host serving `web/`
    works the same way.
+3. **Put v2 on the board.** A Digispark as it comes: press **Set up a new
+   board**, plug the board in, press it again within five seconds and pick
+   *Micronucleus*. A board running v1: connect it, and follow **(move to
+   v2…)** in the status line. Either way the board comes back as DigiMacro
+   with no firmware yet, and the page offers to install it — see *Setting a
+   board up* below. With a programmer instead: see *With a programmer*.
 4. **Connect.** Pick the board, then **hold the pad for four seconds**. The
    page reads everything the board holds by itself; if the board has a
    password, type it and press Unlock.
@@ -169,6 +181,9 @@ rather than typing something else.
 One macro can type itself when the board is plugged in. It is stored as the
 code rather than a position in the table, so reordering the macros cannot
 point it somewhere else, and a code that is no longer there types nothing.
+It is a setting rather than a macro, so it has a Save of its own; it waits
+while the table has a macro still to write that it would name, and writing a
+table that drops the startup macro's code clears it.
 
 It waits for the host to have somewhere to put the keystrokes, which is not
 the same as being plugged in. The host reads the descriptors early and
@@ -182,9 +197,11 @@ up waiting after a second and a half in case a host never does.
 
 What follows is layered, optional, and absent on an erased chip: a board that
 types eleven right-arrows at a television should not ask anybody for
-anything. None of it protects the EEPROM from someone with the board and a
-laptop; [HARDENED_MODE.md](HARDENED_MODE.md) is for that, and sets out what
-each layer stops and what it does not.
+anything. Without a password none of it protects the EEPROM from someone with
+the board and a laptop, since the board takes new firmware from anyone in the
+seconds after a replug. With one, an update needs it too; a programmer still
+reads the chip unless it is hardened. [HARDENED_MODE.md](HARDENED_MODE.md)
+sets out what each layer stops and what it does not.
 
 ### The hold
 
@@ -194,10 +211,16 @@ a hostile page and the macros.
 
 ### The password
 
-A *second* gate on the table. The window says somebody is at the board; the
-password says they are the right somebody, which a thief holding the board is
-not. It does not gate *playing* a macro: a device that wants a password before
-it will type is a device nobody would carry.
+A *second* gate on the table, and the only gate on the firmware. The window
+says somebody is at the board; the password says they are the right
+somebody, which a thief holding the board is not. It does not gate *playing*
+a macro: a device that wants a password before it will type is a device
+nobody would carry.
+
+The board's core checks it, not the firmware, because it guards updates even
+when there is no firmware to ask — after an update cut off half way, say,
+when the EEPROM still holds every secret. Setting, changing and removing it
+are the firmware's.
 
 A wrong answer costs a second, and with the lockout on it counts as a wrong
 code. That is all: the password is never refused for being locked, because it
@@ -298,8 +321,9 @@ second instead, on a clock of its own.
 
 **Backup** saves the board's whole EEPROM to a file — macros, startup,
 lockout, host key, password and serial number — and **Restore** puts it back,
-so a board erased to update it comes back as itself, Chrome's permission and
-host key files included. The password goes in last, or the board would lock
+so a board erased by a programmer comes back as itself, Chrome's permission
+and host key files included. v1 and v2 keep the same EEPROM map, so a v1
+board's backup restores onto a v2 one. The password goes in last, or the board would lock
 itself half way through its own restore, and the lockout's wrong-code and
 soft-lock counts start again. Then the board restarts itself — leaves the bus and comes back, as if
 replugged — because the serial number is only sent when the board is plugged
@@ -320,8 +344,11 @@ backup onto another gives the second the first's identity.
 
 ### Every board has a serial number
 
-Four random bytes, made once on a chip that has never had one and kept in
-EEPROM, rendered as eight hex digits after `postcogito.org:`. The prefix is
+Four random bytes, made once by the firmware's first start on a chip that has
+never had one and kept in EEPROM, rendered as eight hex digits after
+`postcogito.org:`; the core reads them each time the host asks. Until the
+firmware has made one — a new board with only the core on it — the serial is
+`FFFFFFFF`, and Chrome sees a new device once more when it changes. The prefix is
 obdev's rule for `16c0:27db`, the shared ID for keyboards told apart by serial
 number: the serial must begin with a domain the author owns, so that devices
 from different people on the same ID cannot be confused. Chrome remembers a WebHID permission
@@ -338,12 +365,74 @@ board's life.
 
 The status line shows the board's firmware version, followed by **(latest)**,
 or by **(update…)** when the page carries something newer; that opens a
-dialog with the update in it. The board restarts into its bootloader,
-Micronucleus, and the browser asks you to pick it — a second picker, because
-the bootloader is a different kind of USB device, plain vendor class reached
-over WebUSB. The macros, the password, the lockout, the host key and the
-serial number all live in EEPROM, which Micronucleus leaves alone, so they
-survive.
+dialog with the update in it. Press **Update the firmware** with the window
+open, or hold the pad when it asks: the page writes the new firmware over the
+same connection, a page of flash at a time, and the board restarts into it a
+few seconds later and asks for the hold again. No bootloader, no second
+picker, no driver. The macros, the password, the lockout, the host key and
+the serial number all live in EEPROM, which an update leaves alone.
+
+- **Six seconds.** While firmware runs, the core takes the first page of an
+  update only in the six seconds after the board was plugged in, as
+  Micronucleus did — or after the firmware opens that window again, which
+  the page asks it to do behind the hold and the password. With a password
+  set, the core wants it as well, either way.
+- **Cut off half way**, by a cable pulled or a page closed, the board has no
+  firmware to run: the core erased the old one's header first, so it never
+  runs half of one. It comes back as DigiMacro with only its core, and the
+  page says **DigiMacro is not running on this board** and offers to install
+  it again — behind the password, if the board has one, and nothing else.
+- **Firmware that stops answering** for two seconds is reset by the
+  watchdog, and the core does not start it again: the page shows the same
+  view. Unplugging the board and plugging it back in gives it another try.
+- **Another tab or program talking to the board** at the same time does no
+  harm: the page only trusts an answer to its own question, and checks every
+  page it writes by reading it back.
+
+### Setting a board up
+
+**Set up a new board**, beside Connect, puts v2 on a Digispark as it comes.
+Press it, plug the board in, and press it again within five seconds: the
+browser asks you to pick *Micronucleus*, and the page writes v2's core
+through it. The board then comes back as DigiMacro with only its core —
+serial `FFFFFFFF` until the firmware makes one — and **Connect** leads to the
+install. The firmware goes on over Micronucleus itself, and at its first page
+the core takes back the reset vector Micronucleus had pointed at itself, so
+Micronucleus is never run again. A power cut in those few milliseconds needs
+a programmer to put right, the same risk as any upload through Micronucleus;
+it happens once in a board's life.
+
+**A v1 board** moves the same way: connect it, and **(move to v2…)** in the
+status line opens the firmware dialog with the move ticked. The board
+restarts into Micronucleus, as v1 updates do, takes the core, and comes back
+asking for the firmware. Its macros, password, host key and serial number
+come along: v2 keeps v1's EEPROM map.
+
+Micronucleus is reached over WebUSB: Linux needs its line in
+`web/60-digimacro.rules`, and Windows needs [Zadig](https://zadig.akeo.ie/)
+once, run while the board is in Micronucleus, to install WinUSB for it.
+
+### With a programmer
+
+`web/firmware/digimacro-v2-full.hex` is the core and the firmware in one
+image, with the fuses a v2 board wants:
+
+```
+avrdude -c <programmer> -p t85 -e -U flash:w:web/firmware/digimacro-v2-full.hex:i \
+        -U lfuse:w:0xe1:m -U hfuse:w:0xdd:m -U efuse:w:0xfe:m
+```
+
+Low `0xE1` is the Digispark's clock (`0xF1` works as well); high `0xDD` turns
+on brown-out detection, which a chip that writes its own flash wants;
+extended `0xFE` keeps SELFPRGEN, without which the board cannot update itself.
+The erase takes the EEPROM with it: back up first. Hardening goes further:
+[HARDENED_MODE.md](HARDENED_MODE.md).
+
+### v1 boards
+
+A board still on v1 updates through Micronucleus, as before. The board
+restarts into its bootloader and the browser asks you to pick it — a second
+picker, plain vendor class over WebUSB.
 
 - **Pick it within a few seconds.** The bootloader waits about six and then
   goes back to the old firmware, so the click that starts an update has to
@@ -354,25 +443,25 @@ survive.
   bootloader again (it waits for you this time), and then writes the
   firmware.
 - **Firmware older than 3** cannot restart itself into the bootloader, so it
-  needs one update with `./build.sh upload`. The page says so.
-- **A hardened board** has no bootloader, and says **(hardened)** instead, or
-  **(not fully hardened…)** with a list of what is missing — *(hardened: no
-  bootloader)* on firmware older than 8. See [HARDENED_MODE.md](HARDENED_MODE.md).
-- **Linux** needs the Micronucleus line in `web/60-digimacro.rules`.
-- **Windows** needs a driver for the bootloader once: run
-  [Zadig](https://zadig.akeo.ie/) while the board is in Micronucleus, and
-  install WinUSB for it. The keyboard itself needs nothing.
+  needs one update by hand: `micronucleus --run web/firmware/digimacro.hex`.
+- **A hardened v1 board** has no bootloader, and says **(hardened)** instead,
+  or **(not fully hardened…)** with a list of what is missing — *(hardened:
+  no bootloader)* on firmware older than 8.
+- v1's REBOOT command sits behind the window and the password: a board in its
+  bootloader can be flashed with anything.
 
-The REBOOT command sits behind the window and the password like everything
-else, and for a sharper reason than the table does: a board in its bootloader
-can be flashed with anything, including a sketch that reads the table out.
+The uploader is [DigiISP](https://digiisp.postcogito.org)'s, ported to plain
+JavaScript in `web/micronucleus.js`.
 
-A new firmware reaches the app through `./build.sh release`, which copies the
-build and its version number into `web/firmware/`. Commit that, and the page
-offers it to every board running something older. The page carries the files
-itself, so serving it needs no AVR toolchain. The uploader is
-[DigiISP](https://digiisp.postcogito.org)'s, ported to plain JavaScript in
-`web/micronucleus.js`.
+### Releasing
+
+A new firmware reaches the page through `make release`, which copies the
+build into `web/firmware/` with a json naming its version and the core it is
+for: `digimacro-v2.hex` for updates, `digimacro-v2-core.hex` for setting a
+board up, `digimacro-v2-full.hex` for a programmer. Commit them, and the page
+offers the update to every board running something older — only if its core
+speaks the same API. The page carries the files itself, so serving it needs
+no AVR toolchain. `digimacro.hex` is v1.0's firmware 9, for v1 boards.
 
 ## How it works
 
@@ -391,6 +480,23 @@ at a time notices. And there is no landing page: Chrome offers one for a
 WebUSB device, not a HID one. An earlier version re-enumerated as a WebUSB
 device after the hold, and back again afterwards; `PLAN.md` tells that story.
 
+### The core and the firmware
+
+The flash is split at `0x1000`. Below it, the **core**: V-USB and the
+descriptors, the feature report, the password check, and the page writer
+that takes new firmware and refuses any address below the boundary. It is
+never rewritten from USB, so it is kept small and dull, and tested on the
+host harder than anything else. Above it, the **firmware**: the pad, morse,
+the table, playback, the lockout, the host check, the clock and the window.
+
+They call each other through two tables of jumps at fixed addresses — the
+core's just below the boundary, the firmware's header at it — and agree on
+nothing else; `core/layout.h` is the whole contract. The firmware's header
+carries a magic, its length, its version and the core API it was built for,
+and a CRC follows it: the core runs only firmware that checks out. Every
+interrupt but V-USB's is passed on to the firmware, and the watchdog watches
+it. `PLAN-v2.md` tells how it was decided and why.
+
 ### The protocol
 
 One 36-byte feature report on the vendor collection, both ways. Set it to ask,
@@ -400,20 +506,27 @@ and get it to see the answer:
  [0] command   [1] address low   [2] address high   [3] count   [4..35] data
 ```
 
+Protocol 3, which v2 speaks. The core answers INFO, PAGE, FREAD and COMMIT,
+and UNLOCK when there is no firmware; the firmware answers the rest.
+
 | | |
 |---|---|
-| `0x40` INFO | always answers: `[1..2]` "DM", `[3]` protocol (2), `[4]` firmware, `[5..6]` EEPROM size, `[7]` state, and from firmware 8 `[8..11]` the low, high and extended fuses and the lock byte, as the chip reads them |
-| `0x41` REBOOT | into the bootloader, for a firmware update. Absent from the hardened build |
-| `0x42` RESTART | off the bus and back, as if replugged, without a reset: the serial number is made again from EEPROM, so a restored one takes effect. The window closes, and the power-on macro does not type |
-| `0x60` READ | address and count in, up to 32 bytes back |
+| `0x40` INFO | always answers: `[1..2]` "DM", `[3]` protocol (3), `[4]` the core's version, `[5..6]` EEPROM size, `[7]` state, `[8..11]` the low, high and extended fuses and the lock byte as the chip reads them, `[12]` the core's state (below), `[13]` the firmware's version, 0 for none, `[14]` the core's API, `[15..18]` where the firmware may go, `[19]` the flash page size |
+| `0x42` RESTART | off the bus and back, as if replugged, without a reset: the serial number is read again, so a restored one takes effect. The window closes, and the power-on macro does not type |
+| `0x60` READ | address and count in, up to 32 bytes of EEPROM back |
 | `0x61` WRITE | address, count and up to 32 bytes in |
 | `0x62` UNLOCK | the password, if the board has one |
 | `0x63` SETPASS | a new password, or none at all with a count of 0 |
 | `0x64` HOSTAUTH | the host key. Needs neither the window nor the password, and does nothing else |
-| `0xEE` | comes back in place of the command when a request is refused: the window is shut, the password has not been given, the password or host key is wrong or came within a second of a wrong one, or the command is not one this build has |
+| `0x65` PAGE | half a page of new firmware, 32 bytes at an address; the second half writes it |
+| `0x66` FREAD | flash, up to 32 bytes: published firmware, so no gate. Refused while a page waits to be written |
+| `0x67` COMMIT | the new firmware checks out: start it |
+| `0x68` UPDATE | the firmware opens the update window: six seconds for the first PAGE |
+| `0xEE` | comes back in place of the command when a request is refused: the window is shut, the password has not been given, the password or host key is wrong or came within a second of a wrong one, or the command is not one there is |
 
-Everything but INFO and HOSTAUTH needs the window, and the password if one is
-set. INFO's state byte:
+INFO, HOSTAUTH and FREAD need no gate. PAGE needs the password if one is set,
+and with firmware running, the update window. Everything else needs the
+window, and the password if one is set. INFO's state byte:
 
 | bit | |
 |---|---|
@@ -424,7 +537,10 @@ set. INFO's state byte:
 | `0x10` | hard lock |
 | `0x20` | the host sent its key lately |
 | `0x40` | there is a host key |
-| `0x80` | built with no bootloader |
+| `0x80` | v1 only: built with no bootloader |
+
+and the core's, in `[12]`: `0x01` firmware running, `0x02` taking pages,
+`0x04` firmware there but stopped by the watchdog.
 
 READ and WRITE reach the whole EEPROM, reserved bytes included — that is how
 the app writes the settings, and why they sit behind both gates. A read past
@@ -433,10 +549,18 @@ time because an EEPROM byte takes 3.4 ms and the device can answer nothing
 else while it writes. They use `eeprom_update_byte`, so a table saved
 unchanged costs no wear.
 
+The board has one report for everybody, so another program asking between a
+question and its answer would have the answer read as its own. The page asks
+again unless the answer echoes its command and address.
+
 Whether the report ID travels in the payload as well as in the request is the
 one thing the HID specification leaves to taste. Chrome does not send one
 back; the app looks rather than assuming, and the firmware accepts either,
 which is safe because no command byte is 2.
+
+v1 (protocol 2) differs in INFO — `[4]` is its firmware's version, and
+`[12..19]` are not there — has `0x41` REBOOT into Micronucleus, and none of
+PAGE to UPDATE.
 
 ### The table
 
@@ -513,24 +637,27 @@ table.
 ## Building
 
 ```
-./build.sh upload               # the firmware, through Micronucleus
-./build.sh                      # just build it
+make                            # the core and DigiMacro, into build/v2/
+make release                    # ...and into web/firmware/, for the page
+make test                       # the core's own tests
 ```
 
-Options, which mostly combine — `release` takes none, `isp` cannot `upload`,
-and `rc` is for a pad, not a `button`:
+`make` writes `digimacro.hex`, the firmware for updates, and
+`digimacro-full.hex`, the core and the firmware for a programmer. Options,
+each `=1`:
 
-- `button`: a pushbutton from P0 to ground instead of a pad.
-- `rc`: a pad read through a bleed resistor rather than the chip's pull-up.
-- `ledecho`: the LED follows the input while tapping. For working on the input
-  path only, since it shows a bystander the code.
-- `touchdebug`: the board types its own pad readings twice a second, the only
+- `BUTTON`: a pushbutton from P0 to ground instead of a pad.
+- `RC`: a pad read through a bleed resistor rather than the chip's pull-up.
+- `LEDECHO`: the LED follows the input while tapping. For working on the
+  input path only, since it shows a bystander the code.
+- `TOUCHDEBUG`: the board types its own pad readings twice a second, the only
   diagnostic channel a device with no serial port has. `web/README.md` says
   how to read them.
-- `isp`: no bootloader, for [hardened mode](HARDENED_MODE.md). This one is
-  flashed with a programmer, not uploaded.
-- `release`: the stock firmware, copied into `web/firmware/` for the app to
-  offer.
+
+`make release` takes none: it is the stock firmware. `make spike` and `make
+page` build what proved v2 before DigiMacro moved onto it — a core that keeps
+below Micronucleus, three small apps, and a page that swaps them — into
+`build/v2-spike/`.
 
 ## Testing
 
@@ -543,35 +670,41 @@ exercises the table walk, every escape, the bounds that keep a malformed table
 from reaching the reserved bytes, the morse decoding from the input pin, the
 password, the lockout and the host check, and both ways of reading the pad.
 Then the app's macro language on its own; the two languages against each
-other; the firmware the app ships, laid out for the bootloader, with both
-jumps decoded and followed to where they land; the backups, with scrypt
-checked against node's own and a file that opens only for its password; and
-last, across the language boundary, a table encoded by `web/table.js` played
-through the firmware. Eight suites, a few seconds. Without `node`, the five
-that need it are skipped.
+other; v1's firmware laid out for Micronucleus, with both jumps decoded and
+followed to where they land; the page's updates against a fake v2 board that
+halts, reads back old pages, is interrupted by another program and is
+unplugged half way; the core itself, compiled for the host with the
+firmware's library and asked everything a host can ask, twice — with the
+firmware's region to the end of the chip and stopping below Micronucleus;
+the backups, with scrypt checked against node's own and a file that opens
+only for its password; and last, across the language boundary, a table
+encoded by `web/table.js` played through the firmware. Ten suites, a few
+seconds. Without `node`, the six that need it are skipped.
 
 ## Layout
 
 | | |
 |---|---|
-| `DigiMacro.ino` | the firmware: touch, morse, the table walk, playback, the password, the lockout, the host check |
-| `DigiHidUSB/` | the V-USB stack: a keyboard, and the vendor collection the app talks to |
-| `build.sh` | builds and flashes everything here |
+| `DigiMacro.ino` | the firmware: touch, morse, the table walk, playback, the lockout, the host check |
+| `app/` | what every firmware links: its header, the calls into the core, and `hidusb.c` — the clock, the window, typing and the protocol's verbs. Also the spike's apps, `spikectl.py` and its page |
+| `core/` | the core: V-USB with its configuration, the descriptors, the password check and the page writer; `layout.h`, the contract with the firmware; and its host tests |
+| `Makefile` | builds all of it |
 | `test/` | host build of the real sketch against stub hardware, and the web side's tests |
 | `tools/hostauth/` | the client that sends the host key, for Linux and Windows |
-| `web/` | `app.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `micronucleus.js` the uploader, `backup.js` the backups, `60-digimacro.rules` the udev rule |
-| `web/firmware/` | what the app installs: the released firmware, and the Micronucleus 2.6 upgrader |
+| `web/` | `app.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `backup.js` the backups, `60-digimacro.rules` the udev rule |
+| `web/firmware/` | what the page installs: v2's firmware, core and full image, v1's firmware 9 for v1 boards, and the Micronucleus 2.6 upgrader |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |
-| `PLAN.md` | design, decisions and how it got here |
-| `PLAN-v2.md` | the next version's plan: the firmware updates itself, and Micronucleus goes. Not built |
+| `PLAN.md` | v1's design, decisions and how it got there |
+| `PLAN-v2.md` | v2's: the core, the spike that proved it, and what was decided |
 
 ## Related
 
 - [DigiISP](https://digiisp.postcogito.org) turns a Digispark into an AVR
   programmer from the browser. It is what hardened mode is set up with, and
-  where the firmware uploader and the serial-number trick came from.
+  where the Micronucleus uploader and the serial-number trick came from.
 - [V-USB](https://www.obdev.at/products/vusb/) is the USB stack, and
-  [Micronucleus](https://github.com/micronucleus/micronucleus) the bootloader.
+  [Micronucleus](https://github.com/micronucleus/micronucleus) the bootloader
+  v1 used and v2 is set up through.
 
 ## Licence
 

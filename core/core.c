@@ -6,11 +6,13 @@
  * descriptors, the serial, the feature report's plumbing -- it reads flash
  * and fuses, it writes the app's pages and decides whether there is an app
  * to run, and it checks the password that guards those pages, app or no
- * app. Everything else, time included, is the app's (layout.h), so that a
- * bug there is one update away from fixed.
+ * app. Put on a board through Micronucleus, it takes its reset vector back
+ * before its first page (ownResetVector()). Everything else, time included,
+ * is the app's (layout.h), so that a bug there is one update away from
+ * fixed.
  *
  * It cannot be fixed without a programmer, so it is kept small and dull,
- * and test/core_test.c compiles this very file for the host.
+ * and core/test/core_test.c compiles this very file for the host.
  */
 #include <stdint.h>
 #include <string.h>

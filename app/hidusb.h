@@ -6,8 +6,8 @@
  * Linked into every app, and replaced with it, so a bug here is fixed by an
  * update. The firmware provides the hooks, as it did in v1.
  */
-#ifndef PROTO_H
-#define PROTO_H
+#ifndef HIDUSB_H
+#define HIDUSB_H
 
 #include <stdint.h>
 #include <avr/io.h>
@@ -68,4 +68,4 @@ uint8_t hidHostAuth(const uint8_t *p, uint8_t n);
 #ifdef __cplusplus
 }
 #endif
-#endif /* PROTO_H */
+#endif /* HIDUSB_H */

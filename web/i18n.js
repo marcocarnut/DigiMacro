@@ -130,8 +130,8 @@ en: {
   'bk-why':         'Everything on the board — the macros, the startup macro, '
                   + 'the lockout, the host key, the password and the serial '
                   + 'number — saved to a file, and put back. A board erased with '
-                  + 'a programmer — to harden it, or to start over — loses all '
-                  + 'of it; restored, it comes back as itself. With a password the file '
+                  + 'a programmer — to start over, or to install with one — loses '
+                  + 'all of it; restored, it comes back as itself. With a password the file '
                   + 'is encrypted with it, so keep that password: without it the '
                   + 'file is no use to anyone, you included.',
   'bk-save':        'Save a backup',
@@ -346,7 +346,7 @@ en: {
   'rec-none':       'The board\'s core is running, with no DigiMacro on top of '
                   + 'it: either this is a first install, or an update was cut '
                   + 'off half way. Either way, it picks up from here.',
-  'rec-halted':     'DigiMacro stopped answering, and the board\'s watchdog reset '
+  'rec-halted':     'DigiMacro stopped answering, or crashed, and the board reset '
                   + 'it, so the core did not start it again. Install it again '
                   + 'from here -- or unplug the board and plug it back in, to '
                   + 'give it another try.',
@@ -560,9 +560,9 @@ pt: {
   'bk-why':         'Tudo o que está na placa — as macros, a macro de '
                   + 'inicialização, o bloqueio, a chave de computador, a senha e '
                   + 'o número de série — salvo num arquivo, e restaurado. Uma '
-                  + 'placa apagada com um gravador — para protegê-la, ou para '
-                  + 'recomeçar — perde tudo isso; restaurada, ela volta a ser a '
-                  + 'mesma. '
+                  + 'placa apagada com um gravador — para recomeçar, ou para '
+                  + 'instalar com ele — perde tudo isso; restaurada, ela volta a '
+                  + 'ser a mesma. '
                   + 'Com senha, o arquivo é cifrado com ela, então guarde essa '
                   + 'senha: sem ela o arquivo não serve para ninguém, nem para '
                   + 'você.',
@@ -788,7 +788,7 @@ pt: {
   'rec-none':       'O núcleo da placa está rodando, sem o DigiMacro em cima '
                   + 'dele: ou esta é a primeira instalação, ou uma atualização '
                   + 'foi interrompida no meio. Em qualquer caso, continua daqui.',
-  'rec-halted':     'O DigiMacro parou de responder, e o watchdog da placa a '
+  'rec-halted':     'O DigiMacro parou de responder, ou travou, e a placa o '
                   + 'reiniciou, então o núcleo não o iniciou de novo. Instale de '
                   + 'novo daqui -- ou desconecte a placa e conecte de novo, para '
                   + 'dar outra chance.',

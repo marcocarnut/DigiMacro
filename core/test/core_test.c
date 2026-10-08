@@ -423,6 +423,37 @@ int main(void)
     boot();
     CHECK(mode == DM_CORE_APP && !hidUnlocked());   /* a new session */
 
+    printf("with no firmware, the session ends by itself\n");
+    setup(); storePass("test");
+    memset(FLASH + APP_START, 0xFF, PAGE); boot();
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_FUNC_UNLOCK);
+    for (long i = 0; i < 65535; i++) turn();
+    CHECK(hidUnlocked());                               /* not quite yet */
+    turn();
+    CHECK(!hidUnlocked());                              /* about seven seconds */
+    /* ...and an update left hanging, page closed, board still plugged in */
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_FUNC_UNLOCK);
+    makeImage(900, 3, 0x33);
+    CHECK(sendImage(1, 3) == 3);
+    for (long i = 0; i < 65536; i++) turn();
+    CHECK(!hidUnlocked());
+    CHECK(ask(DM_FUNC_PAGE, APP_START + 5 * PAGE, 32, data)[0] == DM_REFUSED);
+    /* while pages keep coming, it never ends */
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_FUNC_UNLOCK);
+    for (int k = 0; k < 4; k++) {
+        for (long i = 0; i < 40000; i++) turn();
+        CHECK(sendPage(APP_START + (3 + k) * PAGE, image + (3 + k) * PAGE));
+    }
+    CHECK(hidUnlocked());
+    /* with firmware running, the window is what ends it, not this */
+    setup(); storePass("test"); hidAllow(30000);
+    CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_FUNC_UNLOCK);
+    for (int k = 0; k < 4; k++) {                       /* 80000 turns */
+        for (long i = 0; i < 20000; i++) turn();
+        hidAllow(30000);                                /* as a held pad would */
+    }
+    CHECK(hidUnlocked());
+
     printf("no password, no app: open, as v1 was to Micronucleus\n");
     setup(); memset(FLASH + APP_START, 0xFF, PAGE); boot();
     makeImage(900, 8, 0x88);

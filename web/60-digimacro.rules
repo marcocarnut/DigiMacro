@@ -12,6 +12,7 @@
 # live on the USB device, which is the hidraw node's grandparent.
 KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="27db", MODE="0660", TAG+="uaccess"
 
-# Micronucleus, the bootloader, for "Update the firmware": a plain USB device
-# that the app reaches over WebUSB while the board is being upgraded.
+# Micronucleus, the bootloader: a plain USB device that the app reaches over
+# WebUSB to set a board up with v2, to move a v1 board to v2, and to update
+# a v1 board. A v2 board needs only the line above.
 SUBSYSTEM=="usb", ATTR{idVendor}=="16d0", ATTR{idProduct}=="0753", MODE="0660", TAG+="uaccess"

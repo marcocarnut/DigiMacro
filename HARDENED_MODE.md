@@ -11,7 +11,8 @@ hold, the lockout and the host check all live in the firmware, which is
 exactly what such firmware replaces.
 
 **A password closes that door.** The board's core checks it, not the
-firmware, and an update needs it, whether firmware is running or not. But a
+firmware, and an update needs it, whether firmware is running or not — and
+a board left half updated ends its own unlock after a few seconds. But a
 password does nothing about someone who opens the chip with a programmer:
 reading flash and EEPROM directly, password and all. Hardened mode closes
 that door too. It needs an ISP programmer once, it is permanent until you

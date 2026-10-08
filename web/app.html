@@ -443,14 +443,15 @@ function renderWho() {
       const b = document.createElement('button');
       b.className = 'link';
       b.textContent = t('fw-link-update');
-      b.onclick = openFirmware;
+      b.onclick = () => { $('fwmove').checked = false; openFirmware(); };
       el.append(b);
     } else if (!core && fwLatest() === fwOnBoard && fwHereV2 && stage === 'board') {
       /* v1's latest, and v2 to move to */
       const b = document.createElement('button');
       b.className = 'link';
       b.textContent = t('fw-link-move');
-      b.onclick = openFirmware;
+      /* the dialog opens on the move: that is what was asked for */
+      b.onclick = () => { $('fwmove').checked = true; openFirmware(); };
       el.append(b);
     } else {
       el.append(t(fwOnBoard < latest ? 'fw-link-available' : 'fw-link-latest'));

@@ -201,12 +201,22 @@ static uint16_t restartMark __attribute__((section(".noinit")));
 static uint16_t commitWait;
 
 /* The core keeps no clock -- time is the app's -- so its few waits are
-   counted in turns of this: a poll and a tenth of a millisecond. */
+   counted in turns of this: a poll and a tenth of a millisecond.
+
+   With no firmware running -- an update under way or cut off, or firmware
+   the watchdog stopped -- there is no window to end the session, and a
+   board left that way would take pages from anyone until a replug. So the
+   core ends it: 65536 turns, about seven seconds, with neither a page nor
+   the right password. An update sends a page every few tens of
+   milliseconds. */
+static uint16_t idleTurns;
+
 static void turn(void)
 {
     wdt_reset();
     usbPoll();
     _delay_us(100);
+    if (!F.app && ++idleTurns == 0) hidLock();
 }
 
 /* ===================================================================== */
@@ -249,6 +259,7 @@ uint8_t __attribute__((noinline)) hidUnlock(const uint8_t *p, uint8_t n)
         return DM_PASS_WRONG;
     }
     unlocked = 1;
+    idleTurns = 0;
     return DM_PASS_RIGHT;
 }
 
@@ -334,6 +345,7 @@ static void takePage(uint16_t addr, uint8_t n)
         return;
     }
     memcpy(pageBuf + second, vnd + DM_VND_DATA, DM_VND_CHUNK);
+    idleTurns = 0;              /* still at it: see turn() */
     pageAt = addr & ~(PAGE - 1);
     pageHalf = !second;
     if (second) {
@@ -769,6 +781,7 @@ int main(void)
     for (;;) {
         corePoll();
         if (F.app) APP(APP_LOOP, appVoid)();
+        else turn();            /* the core alone: its session counts down */
     }
 }
 #endif

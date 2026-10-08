@@ -26,8 +26,8 @@ and Linux needs one udev rule.
 > laboratory, and it does nothing about the computer the board types into.
 > The document explains each of those trade-offs. Do not skip it.
 
-**DigiMacro v2 is firmware 12 on core 1.** The flash is split at `0x1000`:
-below it a core of 4010 bytes, which is the USB device, checks the password
+**DigiMacro v2 is firmware 12 on core 2.** The flash is split at `0x1000`:
+below it a core of 4056 bytes, which is the USB device, checks the password
 and writes the firmware above it; above it the firmware, 3076 of its 4096
 bytes. There is no bootloader: the core takes the firmware over the same
 connection the page uses for everything else. The firmware counts its own
@@ -51,8 +51,8 @@ is at tag `v1.0`.
   pad.
 - **Chrome or Edge**, on a computer: WebHID — and WebUSB, to reach
   Micronucleus when a board is set up — are not in Firefox or Safari. Tested
-  on Linux and Windows 10; macOS should work the same way, needing nothing
-  installed, but nobody has tried it yet.
+  on Linux, and on Windows 10 in a virtual machine; macOS should work the
+  same way, needing nothing installed, but nobody has tried it yet.
 - **To install it,** nothing but the page: the released firmware is committed
   in `web/firmware/`.
 - **To build it,** `make`, `python3` and avr-gcc, on Linux. The Makefile looks
@@ -223,12 +223,17 @@ when the EEPROM still holds every secret. Setting, changing and removing it
 are the firmware's.
 
 A wrong answer costs a second, and with the lockout on it counts as a wrong
-code. That is all: the password is never refused for being locked, because it
+code — with firmware running. With only the core, after an update cut off,
+it has no lockout to count against, and the second is all that limits
+guessing: one more reason for twelve characters. That is all: the password is never refused for being locked, because it
 is what lifts a hard lock, and a limit on it is the one lock that can shut the
 owner out too. Its defence against guessing is its own length, up to twelve
 characters. The comparison runs to the end whatever happens, so its timing
 says nothing about how much of the answer was right. The unlock lasts as long
-as the window and lives in RAM, so unplugging the board locks it again.
+as the window and lives in RAM, so unplugging the board locks it again. With
+only the core running, there is no window: the core ends the unlock itself
+after about seven seconds without a page of firmware arriving, so a board
+left half updated does not stay open.
 
 ### The lockout
 
@@ -310,8 +315,9 @@ becomes "while I am logged in". The client finds every board plugged in by
 its serial number, so one key file serves several boards. `-k` names another
 key file; on Linux the default honours `$XDG_CONFIG_HOME`.
 
-Sending the key is the one request, beside INFO, that needs neither the hold
-nor the password, because nobody is at the board. So it can do nothing else:
+Sending the key needs neither the hold nor the password, because nobody is
+at the board — like INFO, and reading the flash, which holds nothing secret.
+So it can do nothing else:
 it opens no window, unlocks nothing and reads nothing, and a wrong key does
 **not** count against the lockout. If it did, any program on any computer
 could hard-lock the board without anyone touching it. A wrong key costs a
@@ -364,8 +370,9 @@ board's life.
 ## Updating the firmware
 
 The status line shows the board's firmware version, followed by **(latest)**,
-or by **(update…)** when the page carries something newer; that opens a
-dialog with the update in it. Press **Update the firmware** with the window
+or by **(update…)** when the page carries something newer — *(update
+available)* until the hold has let the page in; that opens a dialog with the
+update in it. Press **Update the firmware** with the window
 open, or hold the pad when it asks: the page writes the new firmware over the
 same connection, a page of flash at a time, and the board restarts into it a
 few seconds later and asks for the hold again. No bootloader, no second
@@ -382,9 +389,12 @@ the serial number all live in EEPROM, which an update leaves alone.
   runs half of one. It comes back as DigiMacro with only its core, and the
   page says **DigiMacro is not running on this board** and offers to install
   it again — behind the password, if the board has one, and nothing else.
+  Left plugged in with the page closed, the board ends its unlock by itself
+  after about seven seconds.
 - **Firmware that stops answering** for two seconds is reset by the
-  watchdog, and the core does not start it again: the page shows the same
-  view. Unplugging the board and plugging it back in gives it another try.
+  watchdog — and firmware that crashes, jumping back to the start — and the
+  core does not start it again: the page shows the same view. Unplugging the
+  board and plugging it back in gives it another try.
 - **Another tab or program talking to the board** at the same time does no
   harm: the page only trusts an answer to its own question, and checks every
   page it writes by reading it back.
@@ -403,7 +413,9 @@ a programmer to put right, the same risk as any upload through Micronucleus;
 it happens once in a board's life.
 
 **A v1 board** moves the same way: connect it, and **(move to v2…)** in the
-status line opens the firmware dialog with the move ticked. The board
+status line opens the firmware dialog with the move ticked. On v1 firmware
+older than 9 the link reads **(update…)**; tick *Move this board to v2* in
+the dialog. The board
 restarts into Micronucleus, as v1 updates do, takes the core, and comes back
 asking for the firmware. Its macros, password, host key and serial number
 come along: v2 keeps v1's EEPROM map.
@@ -511,8 +523,8 @@ and UNLOCK when there is no firmware; the firmware answers the rest.
 
 | | |
 |---|---|
-| `0x40` INFO | always answers: `[1..2]` "DM", `[3]` protocol (3), `[4]` the core's version, `[5..6]` EEPROM size, `[7]` state, `[8..11]` the low, high and extended fuses and the lock byte as the chip reads them, `[12]` the core's state (below), `[13]` the firmware's version, 0 for none, `[14]` the core's API, `[15..18]` where the firmware may go, `[19]` the flash page size |
-| `0x42` RESTART | off the bus and back, as if replugged, without a reset: the serial number is read again, so a restored one takes effect. The window closes, and the power-on macro does not type |
+| `0x40` INFO | always answers: `[1..2]` "DM", `[3]` protocol (3), `[4]` the core's version, `[5..6]` EEPROM size, `[7]` state, `[8..11]` the low, high and extended fuses and the lock byte as the chip reads them, `[12]` the core's state (below), `[13]` the firmware's version, 0 for none, `[14]` the core's API, `[15..18]` where the firmware may go, `[19]` the flash page size. With no firmware running, the firmware's parts — `[5..6]`, and all of `[7]` but the password bits — read 0 |
+| `0x42` RESTART | off the bus and back, as if replugged, without a reset: the serial number is read again, so a restored one takes effect. The window closes, the host's trust is forgotten, and the power-on macro does not type; the six seconds for an update do not start again |
 | `0x60` READ | address and count in, up to 32 bytes of EEPROM back |
 | `0x61` WRITE | address, count and up to 32 bytes in |
 | `0x62` UNLOCK | the password, if the board has one |
@@ -525,8 +537,10 @@ and UNLOCK when there is no firmware; the firmware answers the rest.
 | `0xEE` | comes back in place of the command when a request is refused: the window is shut, the password has not been given, the password or host key is wrong or came within a second of a wrong one, or the command is not one there is |
 
 INFO, HOSTAUTH and FREAD need no gate. PAGE needs the password if one is set,
-and with firmware running, the update window. Everything else needs the
-window, and the password if one is set. INFO's state byte:
+and with firmware running, the update window; COMMIT needs only pages taken
+and firmware that checks out. UNLOCK needs the window — and with only the
+core, nothing at all. Everything else needs the window, and the password if
+one is set. INFO's state byte:
 
 | bit | |
 |---|---|
@@ -540,7 +554,8 @@ window, and the password if one is set. INFO's state byte:
 | `0x80` | v1 only: built with no bootloader |
 
 and the core's, in `[12]`: `0x01` firmware running, `0x02` taking pages,
-`0x04` firmware there but stopped by the watchdog.
+`0x04` firmware there but not started — the watchdog reset it, or it
+crashed.
 
 READ and WRITE reach the whole EEPROM, reserved bytes included — that is how
 the app writes the settings, and why they sit behind both gates. A read past

@@ -396,7 +396,9 @@ mostly V-USB.
 
 After the spike, DigiMacro moved onto the core, three reviewers read all of
 it, Marco's two-stage install replaced the programmer, and a trimming pass
-measured where the bytes went. All of it tried on boards, Linux and Windows.
+measured where the bytes went. Tried on boards under Linux, and Windows in a
+virtual machine; moving a v1 board, and the watchdog and crash paths, only
+on the host so far.
 
 ### The port
 
@@ -484,9 +486,9 @@ with routines the app links anyway — 144 bytes.
 
 | | |
 |---|---|
-| the core | **4010 bytes**, 54 under its table at `0xFE0`; RAM to `0x14A` |
+| the core | **4056 bytes**, 8 under its table at `0xFE0`; RAM to `0x14C`. Core 2: the last 46 bytes end the session by itself when no firmware runs, after the documentation check found a board left half updated stayed unlocked |
 | the firmware | **3076 of 4096 bytes, 1020 free**, against v1's 684 — firmware 12 |
-| in all | 7086 bytes, against v1's 5966: v2 carries its own updater |
+| in all | 7132 bytes, against v1's 5966: v2 carries its own updater |
 
 ### What it taught
 

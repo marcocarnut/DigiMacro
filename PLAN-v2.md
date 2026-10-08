@@ -2,9 +2,10 @@
 
 The firmware updates itself, and Micronucleus goes.
 
-Marco's idea, written down while v1 is being finished so that none of it is
-lost. Nothing here is built yet. v1 — `PLAN.md` — is the working version,
-and stays the shipping one until v2 has earned its place.
+Marco's idea, written down while v1 was being finished so that none of it
+was lost. Nothing here is built yet. v1 — `PLAN.md`, tagged **v1.0** at
+firmware 9 — is the working version, and stays the shipping one until v2 has
+earned its place.
 
 ## The idea
 
@@ -59,10 +60,11 @@ In rough order of difficulty.
 1. **Two programs that must agree forever.**
    - The core and the app are linked separately, and call each other through
      fixed jump tables.
-     - The core offers the app hidKey, hidPoll, hidAllow and the rest.
+     - The core offers the app hidKey, hidPoll, hidAllow, hidAllowed,
+       hidReady, hidAwake and the rest.
      - The app offers the core what are now weak hooks: hidPassSet,
        hidUnlocked, hidUnlock, hidSetPass, hidLockState, hidHostAuth,
-       hidHostState.
+       hidHostState, hidHostForget.
    - RAM must be split so the app's `.data` and `.bss` never land on the
      core's: V-USB's buffers, the feature report, the serial descriptor. The
      stack is shared.
@@ -102,7 +104,7 @@ In rough order of difficulty.
 | | |
 |---|---|
 | the core | V-USB (assembly and C), the descriptors, the feature-report dispatch, the page writer, clock calibration, the timer |
-| guess | **2–2.5 KB**, so the boundary lands nearer `0xA00` than the `0x800` first imagined |
+| guess | **2.5–3 KB**, so the boundary lands nearer `0xC00` than the `0x800` first imagined — see *What v1 taught* |
 | the app | today's firmware less its USB half, plus the jump tables |
 | gain | Micronucleus's 1.5 KB, less jump tables, padding to a page boundary and lost link-time optimisation: perhaps **1–1.3 KB net** |
 
@@ -133,6 +135,58 @@ What changes for hardened mode:
   keep hardened mode's v1 guarantee for anyone who wants it, at the cost of
   restoring a backup after every update.
 
+## What v1 taught, by v1.0
+
+Written after the plan above, from what v1 became. Start v2 from here.
+
+- **The core is bigger than first guessed.** Measured on firmware 9's ELF
+  (link-time optimisation blurs it, so this is rough): `usbPoll` 874 bytes
+  with the request handling and calibration inlined, most of `vndAnswer`'s
+  802, V-USB's assembly interrupt handler (no size symbol; roughly 500–600),
+  the descriptors around 300, `initSerial` 244, `sendReport` 152, the timer
+  interrupt 142, `hidPoll` 116. Hence 2.5–3 KB and a boundary nearer `0xC00`.
+  v1 is 5966 of 6650 bytes; without Micronucleus the chip has 8192.
+- **The core does more than USB now:** the serial number (made from watchdog
+  jitter when the EEPROM has none), the fuse and lock read at boot (with
+  interrupts off: the core's millisecond timer is already running), the
+  window (`hidAllow`/`hidAllowed`), the RESTART verb, the INFO answer, and
+  wiping the report buffer after anything that carried a secret. All of it
+  belongs in the core, which makes the size above believable.
+- **The millisecond timer is Timer1 on the Digistump core,** and both halves
+  read it. 16-bit millisecond comparisons wrap in 65 seconds, so anything
+  compared against them must be asked more often than every 32 — v1's
+  `clocks_poll()` does it between every step of a macro. The core's window
+  and the app's clocks both depend on that.
+- **Every build calibrates its own clock** at each bus reset (`osccal.h`,
+  included by `usbconfig.h`), so a board without Micronucleus needs nothing
+  more for USB. v1's hardened build proves it on hardware.
+- **Never poll USB from inside a V-USB callback.** Note in the callback, act
+  in the main loop, as REBOOT and RESTART do. The page writer must follow it:
+  a 4.5 ms SPM inside a callback would be the same mistake.
+- **The hardening check changes meaning.** v1's app says "(hardened)" for no
+  bootloader, lock byte `0xFC`, EESAVE unprogrammed and debugWIRE off, keyed
+  on INFO's no-bootloader bit `0x80`. In v2 every board has no bootloader but
+  can write its own flash, so that bit and the checklist need rethinking:
+  probably SELFPRGEN programmed becomes required, and the wipe-before-update
+  option, if built, joins the list.
+- **The app has the patterns to reuse:** `run()` with its hold-and-password
+  access, `busy` and device affinity; the note-then-act RESTART after a
+  restore; the firmware dialog; backups, which make "erase and come back as
+  itself" routine. `web/micronucleus.js` stays for v1 boards until they move.
+- **Testing the page without hardware worked well:** a fake board in
+  JavaScript speaking the feature-report protocol, loaded ahead of the app in
+  headless Chrome, scenarios that wait on results rather than clock times
+  (scrypt is real CPU time under a virtual clock). It lived in a scratch
+  directory and is gone; for v2 it belongs in `test/`, with the page writer's
+  protocol in the fake.
+- **Host tests do not reach the USB library.** The firmware review found the
+  gate matrix, READ/WRITE clamping, report-ID stripping and `restart()` all
+  untested. A core that can never be fixed in the field must not repeat that:
+  give it a host build against a stub `usbdrv.h` from the start.
+- **Hardware rhythm that worked:** every firmware change confirmed on a board
+  before committing; Marco has a stock Digispark, a hardened one, an XGecu
+  driven by minipro for high-voltage programming, and Windows 10 to test on.
+
 ## A spike first
 
 As the vendor collection was proven, before anything of DigiMacro moves:
@@ -149,7 +203,9 @@ What it must prove, on hardware:
 - the shared interrupts and timer;
 - page writes without dropping USB, through a full app replacement;
 - recovery from an update pulled out half way;
-- the measured core size, which sets the boundary.
+- the measured core size, which sets the boundary;
+- a host-side test of the core's request handling, before it is ever
+  frozen.
 
 If the spike works, porting the app is mostly mechanical. The installer for
 boards without a programmer comes last.

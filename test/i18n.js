@@ -68,5 +68,12 @@ msg = null;
 try { table.encodeMacro('{Blah}'); } catch (e) { msg = e.message; }
 check(/is not a key/.test(msg), `English should come back: ${JSON.stringify(msg)}`);
 
+console.log('6. Portuguese wherever the browser lists it');
+for (const [langs, want] of [[['pt-BR'], 'pt'], [['en-US', 'pt-BR'], 'pt'],
+                             [['en-US', 'en', 'pt'], 'pt'], [['fr-FR', 'en-GB'], 'en'],
+                             [['en-US'], 'en'], [['de'], 'en'], [[], 'en']])
+  check(i18n.preferredLang(langs) === want,
+        `${JSON.stringify(langs)} -> ${i18n.preferredLang(langs)}, not ${want}`);
+
 console.log(fails ? '\nSOME CHECKS FAILED' : '\nall checks passed');
 process.exit(fails ? 1 : 0);

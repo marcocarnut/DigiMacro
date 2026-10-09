@@ -927,12 +927,14 @@ function applyLang(root) {
 }
 
 /* What the browser asks for, if we speak it. */
-function preferredLang() {
-  for (const l of (typeof navigator !== 'undefined' ? navigator.languages || [] : [])) {
-    const short = l.toLowerCase().split('-')[0];
-    if (STRINGS[short]) return short;
-  }
-  return 'en';
+/* Portuguese if the browser lists it at all, even after English: a
+   Brazilian's browser often says en-US first. Otherwise the first language
+   there are strings for. */
+function preferredLang(langs = typeof navigator !== 'undefined'
+                                ? navigator.languages || [] : []) {
+  const short = langs.map(l => l.toLowerCase().split('-')[0]);
+  if (short.includes('pt')) return 'pt';
+  return short.find(l => STRINGS[l]) || 'en';
 }
 
 if (typeof module !== 'undefined')

@@ -207,6 +207,13 @@ en: {
                   + 'stop at the check every time.',
   'ref-host':       'stop here unless this computer sent the host key lately',
   'ref-host-loud':  '...and stop as if the code were not there',
+  'ref-ir':         'where the IR remote\'s button 00 45 starts typing, on to '
+                  + 'the end of the macro; typed from the code, it is nothing',
+  'ir-learn':       'remote button',
+  'ir-learning':    'Press a button on the remote, pointed at the board: it '
+                  + 'types the button\'s two bytes here.',
+  'ir-refused':     'The board did not take it: its firmware has no remote, or '
+                  + 'the window has closed.',
   'fw-summary':     'Firmware',
   'fw-how':         'The board restarts into its bootloader, Micronucleus, and '
                   + 'the browser asks you to pick it — a second picker, because '
@@ -422,6 +429,8 @@ en: {
   'nested-repeat':  'a count inside a group: the firmware has one mark, so the '
                   + 'inner count would take the outer one over',
   'goto-nowhere':   '{{goto {what}}}: there is no macro with that code',
+  'ir-button':      '{{what}}: a remote\'s button is {IR} and two bytes in hex, '
+                  + 'as in {IR 00 45}',
   'loop-empty':     '{what}: these only jump to each other and never type or '
                   + 'pause, so the firmware would give up on them rather than '
                   + 'run them',
@@ -646,6 +655,13 @@ pt: {
   'ref-host':       'parar aqui a menos que este computador tenha enviado a '
                   + 'chave há pouco',
   'ref-host-loud':  '...e parar como se o código não existisse',
+  'ref-ir':         'onde o botão 00 45 do controle remoto começa a digitar, até '
+                  + 'o fim da macro; digitada pelo código, não faz nada',
+  'ir-learn':       'botão do controle',
+  'ir-learning':    'Aperte um botão do controle, apontado para a placa: ela '
+                  + 'digita aqui os dois bytes do botão.',
+  'ir-refused':     'A placa não aceitou: o firmware dela não tem controle '
+                  + 'remoto, ou a janela fechou.',
   'fw-summary':     'Firmware',
   'fw-how':         'A placa reinicia no seu bootloader, o Micronucleus, e o '
                   + 'navegador pede para você escolhê-lo — uma segunda lista, '
@@ -863,6 +879,8 @@ pt: {
   'nested-repeat':  'uma contagem dentro de um grupo: o firmware tem uma marca '
                   + 'só, então a contagem de dentro tomaria o lugar da de fora',
   'goto-nowhere':   '{{goto {what}}}: não existe macro com esse código',
+  'ir-button':      '{{what}}: um botão do controle remoto é {IR} e dois bytes '
+                  + 'em hexa, como em {IR 00 45}',
   'loop-empty':     '{what}: estas só pulam umas para as outras e nunca '
                   + 'digitam nem pausam, então o firmware desiste delas em vez '
                   + 'de executá-las',

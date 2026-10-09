@@ -23,6 +23,8 @@ const ROWS = [
   { code: '-.',  text: '{Ctrl+Shift+Left}{Shift+Left}{Alt+Tab}{F5}' },
   { code: '--',  text: 'A!Z {{x}} \\t' },
   { code: '...', text: 'coração{Enter}' },      /* needs the dead keys below */
+  { code: '..-', text: 'tv{IR 00 45}on{IR 80 c5}!' },  /* and the remote's: see
+                                                     run.sh */
 ];
 
 /* The rows include accented text, so the layout has to be the one that can
@@ -214,8 +216,42 @@ check(msg !== null && /never type or pause/.test(msg), 'a check is not an action
    rather than trust that somebody remembered to change both. */
 const ino = require('fs').readFileSync(require('path').join(__dirname, '../DigiMacro.ino'), 'utf8');
 const def = name => Number(new RegExp(`#define ${name}\\s+(0x[0-9A-Fa-f]+|\\d+)`).exec(ino)?.[1]);
-for (const name of ['ESC_HOST', 'HOST_SILENT', 'HOST_LOUD', 'ESC_JUMP', 'ESC_MARK'])
+for (const name of ['ESC_HOST', 'HOST_SILENT', 'HOST_LOUD', 'ESC_JUMP', 'ESC_MARK',
+                    'ESC_IR'])
   check(def(name) === t[name], `${name}: the firmware says ${def(name)}, table.js ${t[name]}`);
+
+console.log('5e. the remote');
+const ir = text => JSON.stringify(t.encodeMacro(text));
+check(ir('{IR 00 45}') === JSON.stringify([t.ESC_IR, 0x80, 0xC5, 0x80]),
+      `{IR 00 45}: ${ir('{IR 00 45}')}`);
+check(ir('{ir FF 80}') === JSON.stringify([t.ESC_IR, 0xFF, 0x80, 0x83]),
+      `{ir FF 80}: high bits in the third byte, any case: ${ir('{ir FF 80}')}`);
+check(ir('{IR 7 a}') === ir('{IR 07 0a}'), 'one digit is a byte too');
+for (const bad of ['{IR}', '{IR 00}', '{IR 100 00}', '{IR 00 45 01}', '{IR xx 00}',
+                   '{IR0045}'])
+  { msg = null; try { t.encodeMacro(bad); } catch (e) { msg = e.message; }
+    check(msg !== null && /two bytes/.test(msg), `${bad} is refused: ${msg}`); }
+check(!t.encodeMacro('{IR 00 45}x').includes(0), 'never a zero, address 0 or not');
+for (const text of ['{IR 00 45}', 'a{IR ff ff}b', '{IR 80 c5}{IR 01 7f}',
+                    '{IR 80 45}{IR 00 c5}',
+                    '{IR 02 03}x{2}'])
+  check(t.decodeMacro(t.encodeMacro(text)) === text,
+        `${text} reads back as ${t.decodeMacro(t.encodeMacro(text))}`);
+/* {IR 02 03} holds 0x82 and 0x83 -- the mark's and the host check's values
+   -- so anything that walks a macro byte by byte rather than escape by
+   escape finds things that are not there. */
+check(!t.hasHostCheck(t.encodeMacro('{IR 02 03}')), 'an {IR} is no host check');
+check(t.macroWarnings(t.encodeMacro('{IR 02 02}{host!}x')).length === 0,
+      'and nothing shows: a {host!} after one is still first');
+msg = null;
+try { t.encodeMacro('(a{IR 02 03}){2}'); } catch (e) { msg = e.message; }
+check(msg === null, `nor a mark or a count inside a group: ${msg}`);
+msg = null;
+try { t.encodeMacro('x{IR 00 45}{2}'); } catch (e) { msg = e.message; }
+check(msg !== null, 'a place is not a thing a count can count');
+msg = null;
+try { t.encodeTable([{ code: '.', text: '{IR 00 45}{goto .}' }]); } catch (e) { msg = e.message; }
+check(msg !== null && /never type or pause/.test(msg), 'nor an action');
 
 console.log('6. accents, on a layout that can type them');
 /* The board sends scan codes, so an accent is the host's business: two

@@ -73,6 +73,7 @@ void app_loop(void)
 void    hidPassWrong(void)                       { }
 void    hidPassRight(void)                       { }
 void    hidPassChanged(void)                     { }
+void    hidLearn(void)                           { }
 uint8_t hidLockState(void)                       { return 0; }
 uint8_t hidHostState(void)                       { return 0; }
 void    hidHostForget(void)                      { }

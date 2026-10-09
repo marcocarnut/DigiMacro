@@ -227,6 +227,7 @@ uint8_t app_request(uint8_t *v)
         return 1;
 
     case DM_FUNC_UPDATE:
+    case DM_FUNC_LEARN:
     case DM_FUNC_RESTART:
     case DM_FUNC_READ:
     case DM_FUNC_WRITE:
@@ -252,6 +253,10 @@ uint8_t app_request(uint8_t *v)
         /* Somebody at the board, with the password: the core may take
            pages for the next six seconds. */
         DM_WINDOW = 0;
+        break;
+
+    case DM_FUNC_LEARN:
+        hidLearn();
         break;
 
     case DM_FUNC_RESTART:

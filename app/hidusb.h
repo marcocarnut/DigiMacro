@@ -16,7 +16,7 @@
 
 /* DigiMacro's own version, in INFO's [13] as the app's. v1 counted to 9
    in [4]; v2 goes on from there, and [4] is the core's now. */
-#define DM_FW_VERSION       12
+#define DM_FW_VERSION       13
 
 #define DM_FUNC_RESTART     0x42    /* off the bus and back, as if replugged */
 #define DM_FUNC_READ        0x60    /* address, count -> EEPROM */
@@ -26,6 +26,7 @@
 #define DM_FUNC_HOSTAUTH    0x64    /* count, host key; needs no gate */
 #define DM_FUNC_UPDATE      0x68    /* open the update window: six seconds
                                        for the first page (layout.h) */
+#define DM_FUNC_LEARN       0x69    /* type the remote's next button */
 
 #define DM_INFO_EESIZE      5       /* [5..6] EEPROM size */
 #define DM_INFO_STATE       7       /* [7] the state byte */
@@ -60,6 +61,7 @@ void     hidTypeChar(char c, uint8_t mod);  /* US layout; mod adds to it */
 void    hidPassWrong(void);     /* a wrong password: a wrong code */
 void    hidPassRight(void);     /* the right one: the lockout clears */
 void    hidPassChanged(void);   /* a new one, or none: a clean slate */
+void    hidLearn(void);         /* LEARN: the firmware's, if it has a remote */
 uint8_t hidLockState(void);
 uint8_t hidHostState(void);
 void    hidHostForget(void);

@@ -194,6 +194,8 @@
             title="( )">( )</button>
     <label style="margin-left:.8rem"><span data-t="goto">goto</span> <select id="gotoval"></select></label>
     <button data-ins="goto" data-t="insert">insert</button>
+    <button data-ins="ir" style="margin-left:.8rem" data-t="ir-learn"
+            title="{IR }">remote button</button>
   </div>
 </div>
 <p class="hint" data-t="pad-hint"></p>
@@ -284,6 +286,7 @@
     <tr><td>{goto .-}</td><td data-t="ref-goto"></td></tr>
     <tr><td>{host}</td><td data-t="ref-host"></td></tr>
     <tr><td>{host!}</td><td data-t="ref-host-loud"></td></tr>
+    <tr><td>{IR 00 45}</td><td data-t="ref-ir"></td></tr>
     <tr><td>á ç ã</td><td data-t="ref-accent"></td></tr>
     <tr><td>{'}</td><td data-t="ref-bare-mark"></td></tr>
   </table>
@@ -348,6 +351,7 @@ const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61;
 const F_UNLOCK = 0x62, F_SETPASS = 0x63, F_REFUSED = 0xEE;
 const F_REBOOT = 0x41, F_RESTART = 0x42;
 const F_UPDATE = 0x68;           /* v2: the firmware opens the update window */
+const F_LEARN = 0x69;            /* ...types the remote's next button */
 const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
 const ST_SOFTLOCK = 0x08, ST_HARDLOCK = 0x10;
 const ST_HOST = 0x20, ST_NOBOOT = 0x80;
@@ -1940,6 +1944,11 @@ $('pad').addEventListener('click', e => {
     return;
   }
 
+  /* The board types the remote's next button itself, as two hex bytes, so
+     the caret is left inside the braces for it: the field keeps the focus,
+     and the keystrokes land there. */
+  if (t.dataset.ins === 'ir') { irLearn(); return; }
+
   /* A count counts the thing before it, and that thing is one keystroke
      unless something says otherwise. Parentheses are how you say otherwise:
      around a selection if there is one, ready to type into if there is not. */
@@ -1960,6 +1969,19 @@ $('pad').addEventListener('click', e => {
     lastField = el;
   }
 });
+
+function irLearn() {
+  insert('{IR }');
+  const el = lastField;
+  if (!el) return;
+  const at = el.selectionStart - 1;
+  el.setSelectionRange(at, at);
+  run('table-note', async () => {
+    try { await ask(F_LEARN); }
+    catch (e) { throw e.message === 'REFUSED' ? new Error(t('ir-refused')) : e; }
+    note('table-note', t('ir-learning'), 'dim');
+  });
+}
 
 let savedLang = null;
 try { savedLang = localStorage.getItem('digimacro.lang'); } catch (e) {}

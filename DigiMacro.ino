@@ -55,6 +55,7 @@
 
 #include <hidusb.h>
 #include <avr/eeprom.h>
+#include <avr/interrupt.h>
 #include <util/delay.h>
 
 /* ---- options -------------------------------------------------------- */
@@ -82,6 +83,10 @@
 #define HAVE_HOST 1         /* 0 = no {host} checks, and no host key */
 #endif
 
+#ifndef HAVE_IR
+#define HAVE_IR 1           /* 0 = no IR remote on P2 */
+#endif
+
 #ifndef TOUCH_DEBUG
 #define TOUCH_DEBUG 0       /* 1 = type the pad readings twice a second, into
                                whatever window has focus. See below. */
@@ -93,6 +98,7 @@
 #define PIN_BUTTON              0
 #define PIN_TOUCH   PIN_BUTTON      /* the same pin; a pad rather than a switch */
 #define PIN_LED                 1   /* clones with the LED on P0 must move it */
+#define PIN_IR                  2   /* INT0: an IR receiver's output, if any */
 
 #define LED_SET(v)   do { if (v) PORTB |=  (1 << PIN_LED); \
                           else   PORTB &= ~(1 << PIN_LED); } while (0)
@@ -161,6 +167,8 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *      0x83 nn   stop unless the host has proved itself lately: quietly
  *                if nn is 1, and if nn is 2 exactly as if the code were
  *                not in the table at all -- see "the host" below
+ *      0x80 a c x   where the remote's button a/c starts this macro -- see
+ *                "the remote" below. Playing past it does nothing
  *
  * The jump's argument is the header plus one, because a zero byte ends a
  * macro and the header of "." is zero. No valid header is 0xFC or above, so
@@ -194,6 +202,13 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *
  * 0x04 is not free, though it might look it: it is the usage for "a". The
  * escapes have to live where no key does.
+ *
+ * 0x80 -- Shift and usage zero, which is no key at all -- is the last value
+ * the test lets through, and the remote has it. A remote's button is two
+ * bytes, an address and a command, and either may be zero, which a macro
+ * cannot hold; so they take three, each with bit 7 set: a and c with it
+ * forced on, and x = 0x80 plus the two bits that pushed out, a's in bit 0
+ * and c's in bit 1. Walking a macro has to know it takes three, not one.
  */
 
 #define TABLE_BASE      ((uint8_t *)0x000)
@@ -210,6 +225,7 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define ESC_JUMP        0x81
 #define ESC_MARK        0x82
 #define ESC_HOST        0x83
+#define ESC_IR          0x80        /* the last escape there is: see below */
 #define HOST_SILENT     1           /* its argument, and what macro_play() */
 #define HOST_LOUD       2           /* ...returns when the check refuses */
 
@@ -273,6 +289,8 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define FLAG_AUTODONE   8       /* the power-on macro has had its turn */
 #define FLAG_AUTOWAIT  16       /* ...and is waiting for the host to settle */
 #define FLAG_HELD      32       /* the hold has already fired for this press */
+#define FLAG_IR        64       /* the remote has sent a code (ir_addr/ir_cmd) */
+#define FLAG_LEARN    128       /* ...type the next one rather than play it */
 #define FLAGS           GPIOR1
 
 /* ==================================================================== */
@@ -752,19 +770,23 @@ void touch_poll(void)
 /* Typing the readings out                                              */
 /* ==================================================================== */
 
-#if TOUCH_DEBUG
+#if TOUCH_DEBUG || HAVE_IR
+/* Straight to usages, lower case, rather than through hidTypeChar(): it
+   would bring the whole keymap with it for sixteen characters. */
 static void type_nib(uint8_t n)
 {
     n &= 0x0F;
-    hidTypeChar(n < 10 ? '0' + n : 'A' + n - 10, 0);
+    hidKey(0, !n ? 0x27 : n < 10 ? 0x1D + n : n - 6);  /* 0, 1-9, a-f */
 }
 
-static void type_hex(uint8_t v)
+__attribute__((noinline)) static void type_hex(uint8_t v)
 {
     type_nib(v >> 4);
     type_nib(v);
 }
+#endif
 
+#if TOUCH_DEBUG
 uint16_t touch_polls;           /* polls since the last reading was typed */
 
 static void type_reading(void)
@@ -876,7 +898,18 @@ void handle_input(void)
    above five, a query can never match the byte that ends the table.
    
    Taking the header rather than the count and symbols is what lets the
-   power-on macro be stored as one byte and found with the same walk. */
+   power-on macro be stored as one byte and found with the same walk.
+
+   IR_WANT, which no header is, asks instead for the place just after the
+   {IR} of the remote's button in ir_key -- see "the remote" below. That
+   needs the walk to go escape by escape, since 0x80 is also a perfectly
+   good pause, modifier or count, and only a walk knows which it is
+   reading. */
+#define IR_WANT 0xFF
+#if HAVE_IR
+static uint8_t ir_key[3];       /* the button, as its {IR} holds it */
+#endif
+
 uint8_t *find_header(uint8_t want)
 {
     uint8_t *a = TABLE_BASE;
@@ -888,8 +921,20 @@ uint8_t *find_header(uint8_t want)
         /* Step over the keystrokes and their terminator. Bounded by the
            table, so a table written with no terminator stops here rather
            than walking on into the reserved bytes above it. */
-        while (a < TABLE_TOP && eeprom_read_byte(a)) a++;
-        a++;
+        uint8_t c;
+        while (a < TABLE_TOP && (c = eeprom_read_byte(a++))) {
+            if (c == ESC_IR) {
+                uint8_t i = 0;
+#if HAVE_IR
+                if (want == IR_WANT)
+                    while (i < 3 && eeprom_read_byte(a + i) == ir_key[i]) i++;
+#endif
+                a += 3;
+                if (i == 3) return a;
+            } else if (IS_ESC(c) && c != ESC_MARK) {
+                a++;            /* its argument, which may be anything */
+            }
+        }
     }
     return 0;
 }
@@ -973,6 +1018,18 @@ uint8_t macro_play(uint8_t *a)
             if (c == ESC_MARK) {        /* no argument: where it sits is the
                                            argument */
                 mark = a;
+                continue;
+            }
+            if (c == ESC_IR) {          /* a place the remote starts from;
+                                           played through, it is nothing --
+                                           even in a build with no remote.
+                                           Its three bytes all have bit 7
+                                           set, and one that does not is a
+                                           table to stop in, not to skip
+                                           through: past its end, perhaps */
+                uint8_t i = 3;
+                while (i && (eeprom_read_byte(a) & 0x80)) { a++; i--; }
+                if (i) break;
                 continue;
             }
             if (a >= TABLE_TOP) break;  /* an escape in the last table byte
@@ -1102,6 +1159,125 @@ void autoexec_run(void)
 }
 #endif
 
+#if HAVE_IR
+/* ==================================================================== */
+/* The remote                                                           */
+/* ==================================================================== */
+
+/* An IR receiver -- a TSOP4838 or any of its kind, whose output idles high
+ * and goes low while it sees the carrier -- on P2, which is INT0. A remote
+ * speaking NEC, which most cheap ones do, sends a frame per press:
+ *
+ *      9 ms of carrier, 4.5 ms of none, then 32 bits, each 0.56 ms of
+ *      carrier and 0.56 ms (a 0) or 1.69 ms (a 1) of none, low bit first:
+ *      address, its complement, command, its complement
+ *
+ * and, while the button stays down, a repeat every 108 ms that carries no
+ * code. Only the falling edges matter: from one to the next is 13.5 ms
+ * before the first bit, and 1.125 or 2.25 ms for a bit. Timer0 runs free at
+ * CK/1024, 62 us a tick, and the interrupt reads and clears it, so each
+ * interval arrives as one byte; a gap of more than 16 ms wraps it, and the
+ * wrap's flag says so.
+ *
+ * Only the command's complement is checked. The address's is not, since
+ * "extended NEC" remotes use that byte as more address; such a remote is
+ * known here by its first address byte alone. Repeats are ignored: holding
+ * a button plays its macro once.
+ *
+ * A button found in the table starts typing just after its {IR a c} --
+ * wherever in a macro that is -- and on to the end of that macro, exactly
+ * as if it had been played from there. A button that is not there does
+ * nothing, and counts for nothing: rooms are full of other people's
+ * remotes, and a lockout that counted them would be a lockout anyone could
+ * set off with a television. Locked, the remote is ignored, as a tapped
+ * code is. A {host} check still applies.
+ */
+#define IR_T(us)    ((uint8_t)((us) * (F_CPU / 1024) / 1000000UL))
+
+static uint8_t  ir_left;        /* bits of this frame still to come; 0 is
+                                   between frames, so a stray edge is no bit */
+static uint16_t ir_bits;        /* the last sixteen: at half time the
+                                   address and its complement, at the end
+                                   the command and its */
+static volatile uint8_t ir_addr, ir_cmd;    /* the last good one: FLAG_IR */
+
+/* Not blocking, like the clock's: V-USB's interrupt has to start within a
+   few cycles, and this one comes first in the chip's order. A frame that
+   arrives while USB holds the CPU arrives a few tens of us late, against
+   half a millisecond between a 0 and a 1. */
+ISR(INT0_vect, ISR_NOBLOCK)
+{
+    uint8_t t = TCNT0;
+
+    TCNT0 = 0;
+    if (TIFR & (1 << TOV0)) {   /* longer than anything inside a frame */
+        TIFR = 1 << TOV0;
+        t = 0xFF;
+    }
+    if (t >= IR_T(12500) && t <= IR_T(14500)) {
+        ir_left = 32;           /* the start of a frame */
+    } else if (ir_left && t >= IR_T(800) && t <= IR_T(2800)) {
+        ir_bits >>= 1;
+        if (t > IR_T(1690)) ir_bits |= 0x8000;
+        if (--ir_left == 16) {
+            ir_addr = ir_bits;
+        } else if (!ir_left) {
+            uint8_t c = ir_bits;
+            if (c == (uint8_t)~(ir_bits >> 8)) {
+                ir_cmd = c;
+                FLAGS |= FLAG_IR;
+            }
+        }
+    } else {
+        ir_left = 0;            /* a repeat, a gap, noise: not a frame */
+    }
+}
+
+static void ir_begin(void)
+{
+    PORTB |= (1 << PIN_IR);     /* the pull-up: with no receiver there, a
+                                   floating pin would be a remote of noise */
+    TCCR0A = 0;
+    TCCR0B = (1 << CS02) | (1 << CS00);         /* CK/1024 */
+    MCUCR |= (1 << ISC01);                      /* INT0 on a falling edge */
+    GIMSK |= (1 << INT0);
+}
+
+/* LEARN, from the app: the next button is typed as "a c", in hex, for the
+   {IR } the app has just put under the cursor. Only while the window is
+   open, so a forgotten LEARN cannot type into whatever has focus later. */
+void hidLearn(void)
+{
+    FLAGS |= FLAG_LEARN;
+}
+
+static void ir_poll(void)
+{
+    uint8_t a = ir_addr, c = ir_cmd, x = 0x80;
+
+    FLAGS &= ~FLAG_IR;
+    if (FLAGS & FLAG_LEARN) {
+        FLAGS &= ~FLAG_LEARN;
+        if (hidAllowed()) {
+            type_hex(a);
+            hidKey(0, 0x2C);    /* a space */
+            type_hex(c);
+        }
+        return;
+    }
+    if (hidLockState()) return;
+    if (a & 0x80) x |= 1;       /* as the table holds it: see the escapes */
+    if (c & 0x80) x |= 2;
+    ir_key[0] = a | 0x80;
+    ir_key[1] = c | 0x80;
+    ir_key[2] = x;
+    uint8_t *p = find_header(IR_WANT);
+    if (p) macro_play(p);
+}
+#else
+void hidLearn(void) { }         /* no remote to learn from */
+#endif
+
 /* ==================================================================== */
 
 void update_led(void)
@@ -1145,6 +1321,9 @@ void app_setup(void)
     PORTB |=  (1 << PIN_BUTTON);        /* ...with the pull-up on */
 #endif
     hidBegin();
+#if HAVE_IR
+    ir_begin();                 /* after hidBegin(), which borrows Timer0 */
+#endif
 }
 
 /* ...and this, over and over. */
@@ -1160,6 +1339,9 @@ void app_loop(void)
     handle_input();
     clocks_poll();
     update_led();
+#if HAVE_IR
+    if (FLAGS & FLAG_IR) ir_poll();
+#endif
 
 #if HAVE_AUTOEXEC
     /* The startup macro waits here rather than holding up setup(), and waits

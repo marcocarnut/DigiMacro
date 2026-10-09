@@ -269,14 +269,19 @@ int main(void)
     CHECK(!strcmp(play("."), "<00/04>"),
           "must stop at the bad escape: \"%s\"", typed);
 
-    printf("9. an escape this build does not have stops the macro\n");
-    /* 0x80 is the one escape value nothing uses yet. A table that holds it
-       came from something newer, and guessing at it would be worse than
-       stopping. The argument is not zero, so this is not test 8 again. */
+    printf("9. a remote's place is skipped when played through, and a bad one stops\n");
+    /* 0x80 was the last escape value free, and the remote has it: three
+       bytes, each with bit 7 set. One without would have the walk step over
+       the macro's end, so it stops instead. */
     table_reset();
-    add(".", { K('a'), 0x80, 0x05, K('b') });
+    add(".", { K('a'), ESC_IR, 0x81, 0xC5, 0x82, K('b') });
+    CHECK(!strcmp(play("."), "<00/04><00/05>"),
+          "an {IR} types nothing: \"%s\"", typed);
+    table_reset();
+    add(".", { K('a'), ESC_IR, 0x05, K('b') });
+    add("-", { K('c') });
     CHECK(!strcmp(play("."), "<00/04>"),
-          "an unknown escape must stop, not guess: \"%s\"", typed);
+          "a short {IR} must stop, not run on into \"-\": \"%s\"", typed);
 
     printf("10. the walk cannot leave the table\n");
     /* A table with no terminator would otherwise run straight into the
@@ -919,6 +924,122 @@ int main(void)
           "the host key fills the gap between the serial and the lockout");
     CHECK(0x1F2 > (size_t)LOCK_CLEARED && 0x1F2 < (size_t)AUTO_ADDR,
           "and its wait the byte between the lockout and the power-on byte");
+
+    printf("24. the remote\n");
+    /* Through the interrupt, as the board takes it: each falling edge with
+       Timer0's count since the last. */
+    {
+        auto edge = [](uint8_t t, bool wrapped) {
+            TCNT0 = t; TIFR = wrapped ? 1 << TOV0 : 0; isr_int0();
+        };
+        auto frame = [&](uint8_t a, uint8_t na, uint8_t c, uint8_t nc) {
+            uint32_t f = a | (uint32_t)na << 8 | (uint32_t)c << 16 | (uint32_t)nc << 24;
+            edge(0, true);                      /* out of silence */
+            edge(IR_T(13500), false);           /* 9 + 4.5 ms */
+            for (int i = 0; i < 32; i++)
+                edge((f >> i) & 1 ? IR_T(2250) : IR_T(1125), false);
+        };
+        auto press = [&](uint8_t a, uint8_t c) {
+            typedn = 0; typed[0] = 0;
+            frame(a, (uint8_t)~a, c, (uint8_t)~c);
+            app_loop();
+            return (const char *)typed;
+        };
+        /* {IR a c}, as table.js writes it */
+        #define IRTAG(a, c) ESC_IR, (uint8_t)((a) | 0x80), (uint8_t)((c) | 0x80), \
+            (uint8_t)(0x80 | ((a) >> 7) | (((c) >> 7) << 1))
+
+        table_reset();
+        add(".", { K('a'), IRTAG(0x00, 0x45), K('b'), K('c') });
+        add("-", { IRTAG(0x80, 0xC5), K('d'), IRTAG(0x00, 0x46), K('e') });
+        CHECK(!strcmp(press(0x00, 0x45), "<00/05><00/06>"),
+              "a button starts just after its {IR}: \"%s\"", typed);
+        CHECK(!strcmp(press(0x00, 0x46), "<00/08>"),
+              "...wherever in a macro it is: \"%s\"", typed);
+        CHECK(!strcmp(press(0x80, 0xC5), "<00/07><00/08>"),
+              "...with the high bits, and on through the next {IR}: \"%s\"", typed);
+        CHECK(!strcmp(press(0x00, 0xC5), ""), "a different address is a different button");
+        CHECK(!strcmp(press(0x80, 0x45), ""), "and the high bits count: \"%s\"", typed);
+        CHECK(!strcmp(press(0x01, 0x45), ""), "nothing for a button not there");
+        CHECK(!strcmp(play("."), "<00/04><00/05><00/06>"),
+              "tapped, the macro plays whole, {IR} and all: \"%s\"", typed);
+
+        typedn = 0; typed[0] = 0;
+        frame(0x00, 0xFF, 0x45, 0x45);  app_loop();
+        CHECK(!typedn, "a command that is not its complement's is noise");
+        frame(0x00, 0x12, 0x45, 0xBA);  app_loop();
+        CHECK(!strcmp(typed, "<00/05><00/06>"),
+              "the address's complement is not checked: extended NEC: \"%s\"", typed);
+
+        typedn = 0; typed[0] = 0;
+        edge(0, true); edge(IR_T(11250), false); edge(IR_T(1125), false);
+        app_loop();
+        CHECK(!typedn, "a repeat plays nothing");
+        edge(0, true); edge(IR_T(13500), false);
+        for (int i = 0; i < 20; i++) edge(IR_T(1125), false);
+        edge(0, true);                          /* cut off: a long gap */
+        for (int i = 0; i < 12; i++) edge(IR_T(1125), false);
+        app_loop();
+        CHECK(!typedn, "a frame cut off and stray bits after it are nothing");
+        edge(0, true); edge(IR_T(13500), false);
+        for (int i = 0; i < 16; i++) edge(IR_T(1125), false);
+        edge(IR_T(400), false);                 /* a glitch mid-frame */
+        for (int i = 0; i < 16; i++) edge(IR_T(1125), false);
+        app_loop();
+        CHECK(!typedn, "a glitch ends the frame");
+        /* ...even one that would have made a good frame of it: a blip just
+           before the last edge, where that bit was a 0 anyway. */
+        {
+            uint32_t f = 0x80 | 0x7Fu << 8 | 0xC5u << 16 | 0x3Au << 24;
+            edge(0, true); edge(IR_T(13500), false);
+            for (int i = 0; i < 31; i++)
+                edge((f >> i) & 1 ? IR_T(2250) : IR_T(1125), false);
+            edge(IR_T(400), false);
+            edge(IR_T(725), false);
+            app_loop();
+            CHECK(!typedn, "a blip is not a bit: \"%s\"", typed);
+        }
+
+        /* A {pause 12.8} is 0x01 0x80, and what follows it can look like
+           an {IR}'s bytes; the walk knows it is a pause. */
+        table_reset();
+        add(".", { ESC_PAUSE, 0x80, (uint8_t)(0x05 | 0x80), (uint8_t)(0x06 | 0x80),
+                   0x80 | 0x02, K('z'), K('z') });
+        add("-", { IRTAG(0x07, 0x08), K('y') });
+        CHECK(!strcmp(press(0x05, 0x86), ""),
+              "an argument of 0x80 is not an {IR}: \"%s\"", typed);
+        CHECK(!strcmp(press(0x07, 0x08), "<00/1C>"),
+              "and the walk goes on past it: \"%s\"", typed);
+
+        printf("24b. the remote counts for nothing, and does nothing locked\n");
+        setpass((const uint8_t *)"secret", 6);
+        lockout(2, 0xFF, 1);
+        press(0x01, 0x01); press(0x01, 0x02); press(0x01, 0x03);
+        CHECK(!hidLockState(), "buttons not in the table are not wrong codes");
+        miss(); miss();
+        CHECK(hidLockState() == DM_ST_SOFTLOCK, "two wrong taps lock it");
+        CHECK(!strcmp(press(0x07, 0x08), ""), "and locked, the remote plays nothing");
+        setpass(0, 0);
+        lockout(0xFF, 0xFF, 0xFF);
+        memset(EE + (size_t)LOCK_MISSES, 0xFF, 3);
+        CHECK(!hidLockState(), "(unlocked again)");
+
+        printf("24c. LEARN types the next button, only while the window is open\n");
+        hidAllow(1000);
+        hidLearn();
+        CHECK(!strcmp(press(0x07, 0xA8), "<00/27><00/24><00/2C><00/04><00/25>"),
+              "\"07 a8\", and not the macro: \"%s\"", typed);
+        CHECK(!strcmp(press(0x07, 0x08), "<00/1C>"), "once: the next one plays");
+        hidLearn();
+        fake_ms += 2000;
+        CHECK(!strcmp(press(0x07, 0x08), ""),
+              "learning with the window shut types nothing at all: \"%s\"", typed);
+        CHECK(!strcmp(press(0x07, 0x08), "<00/1C>"), "and is forgotten");
+        typedn = 0; typed[0] = 0;
+        type_hex(0x00); type_hex(0x9F); type_hex(0x10);
+        CHECK(!strcmp(typed, "<00/27><00/27><00/26><00/09><00/1E><00/27>"),
+              "every digit: \"%s\"", typed);
+    }
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "all checks passed");
     return fails != 0;

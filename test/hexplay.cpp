@@ -52,6 +52,15 @@ int main(int argc, char **argv)
     fprintf(stderr, "loaded %u bytes\n", n);
 
     for (int i = 1; i < argc; i++) {
+        unsigned ia, ic;
+        if (sscanf(argv[i], "ir%2x%2x", &ia, &ic) == 2) {
+            /* irAACC: the remote's button, as the interrupt leaves it */
+            typedn = 0; typed[0] = 0;
+            ir_addr = ia; ir_cmd = ic;
+            ir_poll();
+            printf("%s %s\n", argv[i], typed);
+            continue;
+        }
         uint8_t bits = 0, len = 0;
         for (const char *s = argv[i]; *s; s++) {
             bits = (bits << 1) | (*s == '-');

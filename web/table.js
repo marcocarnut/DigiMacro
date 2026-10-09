@@ -9,8 +9,8 @@
  * Keep the escape values in step with DigiMacro.ino; test/webtable.js reads
  * them out of it and checks. Note that 0x04 is NOT free: it is the usage for
  * "a". The escapes live in 0x01 to 0x03, which are states a keyboard reports
- * rather than keys anyone presses, and the same three with bit 7 set -- and
- * all six are now taken.
+ * rather than keys anyone presses, the same three with bit 7 set, and 0x80
+ * -- Shift and no key at all -- and all seven are now taken.
  */
 
 const ESC_PAUSE  = 0x01;    /* nn tenths of a second */
@@ -23,7 +23,23 @@ const ESC_MARK   = 0x82;    /* the repeat after this goes back to here */
 const ESC_HOST   = 0x83;    /* stop unless the host has proved itself: */
 const HOST_SILENT = 1;      /* ...quietly, {host} */
 const HOST_LOUD   = 2;      /* ...as if the code were not there, {host!} */
+const ESC_IR     = 0x80;    /* where the remote's button starts: a, c, x --
+                               three bytes, each with bit 7 set, since the
+                               button's address and command may be zero */
 const SHIFT      = 0x80;    /* in a stored keystroke */
+
+/* {IR a c} as the table holds it, and back */
+const irBytes = (a, c) => [ESC_IR, a | 0x80, c | 0x80,
+                           0x80 | (a >> 7) | ((c >> 7) << 1)];
+const irButton = (b, i) => [(b[i] & 0x7F) | ((b[i + 2] & 1) << 7),
+                            (b[i + 1] & 0x7F) | ((b[i + 2] & 2) << 6)];
+const irHex = v => v.toString(16).padStart(2, '0');
+
+/* How many bytes the thing at b[i] takes: a keystroke or a mark one, an
+   {IR} four, any other escape two. Everything that walks a macro walks it
+   with this, since an argument can be any byte at all. */
+const escStep = (b, i) => b[i] === ESC_IR ? 4
+                     : (b[i] & 0x7F) < 0x04 && b[i] !== ESC_MARK ? 2 : 1;
 
 const AUTO_ADDR  = 0x1F3;   /* the macro to type when the board is plugged
                                in, as a header byte; anything impossible as
@@ -101,6 +117,8 @@ const MSG = {
   'nested-repeat':   () => 'a count inside a group: the firmware has one mark, '
                          + 'so the inner count would take the outer one over',
   'goto-nowhere':    p => `{goto ${p.what}}: there is no macro with that code`,
+  'ir-button':       p => `{${p.what}}: a remote's button is {IR} and two bytes `
+                         + `in hex, as in {IR 00 45}`,
   'loop-empty':      p => `${p.what}: these only jump to each other and never `
                          + `type or pause, so the firmware would give up on `
                          + `them rather than run them`,
@@ -216,6 +234,7 @@ function usages(text) {
  *                        expression -- eleven in all, not eleven more
  *    (ab){3}             ...of a whole group, rather than one thing
  *    {goto .-}           carry on with another macro, and never come back
+ *    {IR 00 45}          where the remote's button 00 45 starts typing
  *    \(  \)              a parenthesis that is only a parenthesis
  *
  * The group exists because a keystroke stopped being a character. "ç" on a
@@ -283,8 +302,9 @@ function encodeMacro(text) {
         /* The firmware keeps one mark, so a count inside a group would send
            the group's own repeat back to the wrong place. Refusing says so;
            emitting it would type something nobody asked for. */
-        if (body.includes(ESC_REPEAT) || body.includes(ESC_MARK))
-          fail('nested-repeat');
+        for (let j = 0; j < body.length; j += escStep(body, j))
+          if (body[j] === ESC_REPEAT || body[j] === ESC_MARK)
+            fail('nested-repeat');
         unitAt = out.length;
         push(ESC_MARK);             /* explicit groups always get one, so that
                                        what comes back reads the same way */
@@ -336,6 +356,16 @@ function encodeMacro(text) {
         push(ESC_HOST, host[1] ? HOST_LOUD : HOST_SILENT);
         unitAt = -1;                            /* a check is not a thing to
                                                    count */
+        continue;
+      }
+
+      /* {IR a c}: the remote's button a c starts typing from here. Played
+         through from the code, it is nothing. */
+      if (/^ir(\s|\d|$)/i.test(body)) {
+        const ir = /^ir\s+([0-9a-f]{1,2})\s+([0-9a-f]{1,2})$/i.exec(body);
+        if (!ir) fail('ir-button', { what: body });
+        push(...irBytes(parseInt(ir[1], 16), parseInt(ir[2], 16)));
+        unitAt = -1;                            /* a place, not a thing */
         continue;
       }
 
@@ -458,6 +488,13 @@ function decodeMacro(bytes) {
       }
     }
 
+    if (b === ESC_IR) {
+      const [a, c] = irButton(bytes, i + 1);
+      out += `{IR ${irHex(a)} ${irHex(c)}}`;
+      i += 3;
+      continue;
+    }
+
     if ((b & 0x7F) < 0x04) {                    /* an escape */
       const arg = bytes[++i];
       if (b === ESC_PAUSE)  { out += `{pause ${(arg / 10).toFixed(1)}}`; continue; }
@@ -536,13 +573,12 @@ function codeOf(header) {
    the first one counts -- and only what happens BEFORE it ever runs. */
 function entryFate(bytes) {
   let acts = false;
-  for (let i = 0; i < bytes.length; i++) {
+  for (let i = 0; i < bytes.length; i += escStep(bytes, i)) {
     const b = bytes[i];
     if (b === ESC_JUMP)  return { acts, goes: bytes[i + 1] - 1 };
-    if (b === ESC_MARK)  continue;
-    if (b === ESC_HOST || b === ESC_MOD) { i++; continue; } /* nothing shows */
-    if ((b & 0x7F) < 0x04) { acts = true; i++; continue; }  /* a pause, say */
-    acts = true;                                            /* a keystroke */
+    if (b === ESC_MARK || b === ESC_IR || b === ESC_HOST || b === ESC_MOD)
+      continue;                                 /* nothing shows */
+    acts = true;                                /* a keystroke, a pause */
   }
   return { acts, goes: null };
 }
@@ -582,26 +618,20 @@ function loopCheck(entries) {
 function macroWarnings(bytes) {
   const warn = [];
   let shown = false;
-  for (let i = 0; i < bytes.length; i++) {
+  for (let i = 0; i < bytes.length; i += escStep(bytes, i)) {
     const b = bytes[i];
-    if (b === ESC_MARK) continue;
-    if (b === ESC_HOST) {
-      if (bytes[i + 1] === HOST_LOUD && shown) warn.push('host-late');
-      i++;
-      continue;
-    }
-    if (b === ESC_MOD) { i++; continue; }
-    if ((b & 0x7F) < 0x04) { i++; if (b !== ESC_JUMP) shown = true; continue; }
+    if (b === ESC_HOST && bytes[i + 1] === HOST_LOUD && shown)
+      warn.push('host-late');
+    if (b === ESC_MARK || b === ESC_IR || b === ESC_HOST || b === ESC_MOD ||
+        b === ESC_JUMP) continue;
     shown = true;
   }
   return warn;
 }
 
 const hasHostCheck = bytes => {
-  for (let i = 0; i < bytes.length; i++) {
+  for (let i = 0; i < bytes.length; i += escStep(bytes, i))
     if (bytes[i] === ESC_HOST) return true;
-    if ((bytes[i] & 0x7F) < 0x04 && bytes[i] !== ESC_MARK) i++;
-  }
   return false;
 };
 
@@ -678,6 +708,7 @@ function sampleRows() {
 if (typeof module !== 'undefined') module.exports = {
   ESC_PAUSE, ESC_MOD, ESC_REPEAT, ESC_JUMP, SHIFT, TABLE_TOP, MAX_SYM,
   ESC_MARK, ESC_HOST, HOST_SILENT, HOST_LOUD, macroWarnings, hasHostCheck,
+  ESC_IR,
   AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
   usages, header, codeOf, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows };

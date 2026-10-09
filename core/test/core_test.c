@@ -99,13 +99,14 @@ void usbDeviceDisconnect(void) { }
 
 /* ---- the firmware's hooks, as hidusb.c calls them ---- */
 static uint8_t lockState, hostState, hostAuthOk;
-static int hostForgot, passWrongs, passRights, passChanges;
+static int hostForgot, passWrongs, passRights, passChanges, learns;
 static void    tVoid(void) { }
 static int setupSawWatchdog;            /* was it armed when setup ran? */
 static void    tSetup(void) { setupSawWatchdog = wdtEnabled; }
 void    hidPassWrong(void) { passWrongs++; }
 void    hidPassRight(void) { passRights++; }
 void    hidPassChanged(void) { passChanges++; }
+void    hidLearn(void) { learns++; }
 uint8_t hidLockState(void) { return lockState; }
 uint8_t hidHostState(void) { return hostState; }
 void    hidHostForget(void) { hostForgot++; }
@@ -473,12 +474,18 @@ int main(void)
     DM_WINDOW = 250;
     for (int i = 0; i < 2000; i++) TIMER1_COMPA_vect();
     CHECK(DM_WINDOW == 255);
-    /* the app opens it again: behind both of its gates */
+    /* the app opens it again: behind both of its gates -- and so is
+       LEARN, the remote's, which types */
     CHECK(ask(DM_FUNC_UPDATE, 0, 0, NULL)[0] == DM_REFUSED);  /* no window */
+    CHECK(ask(DM_FUNC_LEARN, 0, 0, NULL)[0] == DM_REFUSED);
     CHECK(DM_WINDOW == 255);
     hidAllow(30000); storePass("test");
     CHECK(ask(DM_FUNC_UPDATE, 0, 0, NULL)[0] == DM_REFUSED);  /* locked */
+    CHECK(ask(DM_FUNC_LEARN, 0, 0, NULL)[0] == DM_REFUSED);
+    CHECK(learns == 0);
     CHECK(askPass(DM_FUNC_UNLOCK, "test")[0] == DM_FUNC_UNLOCK);
+    CHECK(ask(DM_FUNC_LEARN, 0, 0, NULL)[0] == DM_FUNC_LEARN);
+    CHECK(learns == 1);
     CHECK(ask(DM_FUNC_UPDATE, 0, 0, NULL)[0] == DM_FUNC_UPDATE);
     CHECK(DM_WINDOW == 0);
     CHECK(ask(DM_FUNC_PAGE, APP_START + PAGE, 32, data)[0] == DM_FUNC_PAGE);

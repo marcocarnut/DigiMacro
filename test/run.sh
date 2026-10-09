@@ -82,7 +82,8 @@ echo "== ...and against the firmware's decoder =="
 if command -v node >/dev/null 2>&1; then
     g++ -w -I. -I.. -o "$OUT"_hexplay hexplay.cpp
     node webtable.js --emit \
-      | "$OUT"_hexplay . - .. .- -. -- ... 2>/dev/null > "$OUT"_played
+      | "$OUT"_hexplay . - .. .- -. -- ... ..- ir0045 ir80c5 ir0145 2>/dev/null \
+      > "$OUT"_played
     if diff -u webtable.expected "$OUT"_played; then
         echo "web/table.js and DigiMacro.ino agree"
     else

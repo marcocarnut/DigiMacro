@@ -63,10 +63,11 @@ Be honest with yourself about these before relying on it.
   the password already gives them, but it is worth knowing that the password
   is the whole of it.
 - **A laboratory.** The ATtiny85 is a general-purpose microcontroller, not a
-  secure element. Lock bits on chips like it have been defeated by voltage and
-  clock glitching, and by opening the package. Hardened mode stops someone
-  with a programmer and an afternoon. It does not stop someone with equipment,
-  skill and a reason.
+  secure element. Lock bits on chips like it have been defeated by techniques
+  like voltage and clock glitching, and by opening the package ("delidding
+  the chip", as it is called). Hardened mode stops someone with a programmer
+  and an afternoon. It does not stop someone with equipment, money, time, skill
+  and a reason.
 - **The computer it types into.** A macro types its secret as keystrokes, so
   anything on that computer that sees keystrokes sees the secret: a keylogger,
   a malicious program, a screen recorder, whatever field had focus. Host trust
@@ -88,6 +89,16 @@ Be honest with yourself about these before relying on it.
   guessed at offline, with no hold and no one-second wait. A board with no
   password backs up in the clear. Keep backups where you would keep the
   secrets themselves.
+- **A counterfeit or tampered-with page.** The page reads every macro and
+  holds the password, so if someone can change the code it runs, all bets
+  are off. Ours is served over HTTPS and we did our homework, but it is
+  hosted by an inexpensive cloud provider that we cannot guarantee will be
+  hack-proof forever. Taking the computer offline is not enough on its own:
+  a page loaded while online can keep what it reads and send it once the
+  computer reconnects. Use a copy served from your own checkout of the
+  repository (`cd web && python3 -m http.server 8000`), on a computer that
+  is offline — no Wi-Fi, no Bluetooth, no Ethernet — while the page is
+  open.
 
 ## What it costs
 

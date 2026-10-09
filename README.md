@@ -3,39 +3,35 @@
 A morse-activated macro keyboard on an ATtiny85 Digispark, configured from a
 web page.
 
-Touch a pad in dots and dashes; if the code matches an entry in the board's
-table, the macro is typed as keystrokes. Hold the pad for four seconds and a
-page in Chrome or Edge may read and write the table over WebHID — and update
-the board's firmware, over the same connection. There is no terminal, and the
-board never stops being an ordinary keyboard: Windows needs nothing installed,
-and Linux needs one udev rule.
+Web configuration app: https://digimacro.postcogito.org
+
+Presents itself to the host PC or smartphone as a USB keyboard. By tapping
+on a touch pad in morse code, it types one of 62 possible keystroke sequences
+you pre-program via the accompanying web page (requires Chrome or Edge).
+It can also be triggered by an infrared remote control if you add an infrared
+sensor (TSOP4838 or similar).
+
+It can also automatically type on power-up (that was actually the original
+use case of the very first version many years ago: having an LG TV start
+its built-in browser automatically when turned on.)
 
 > ### ⚠️ Storing passwords or secrets? Read [HARDENED_MODE.md](HARDENED_MODE.md) first — all of it.
 >
-> **A board with no password protects nothing from anyone who holds it.** It
-> takes new firmware from anyone in the six seconds after it is plugged in,
-> and firmware that types out the EEPROM takes seconds to write: every macro
-> and the host key along with it. **Set a password**, and an update needs it
-> too, with or without firmware on the board.
+> Over the years I had people use this to automate typing passwords into
+> all kinds of systems. I always warned them that it was a bad idea, but,
+> since it didn't stop anybody, I decided to make it an officially supported
+> feature and do the best I could to mitigate the obvious security problems.
+> If that's what you want to do, read the above document in its entirety and
+> do all it says. Even so, I accept no responsibility if your password/secrets
+> ever leak.
 >
-> Even then, a programmer reads the chip out directly, password and all,
-> unless the board is hardened: lock bits set, EESAVE unprogrammed, brown-out
-> detection on. That needs an ISP programmer once — a second Digispark running
-> [DigiISP](https://digiisp.postcogito.org) will do — and a hardened board
-> still updates from the page. It stops a determined person, not a
-> laboratory, and it does nothing about the computer the board types into.
-> The document explains each of those trade-offs. Do not skip it.
+> **At the very least, set a password.** A board without one takes new
+> firmware from anyone in the six seconds after it is plugged in, and
+> firmware that types out every macro takes seconds to write.
 
-**DigiMacro v2 is firmware 12 on core 2.** The flash is split at `0x1000`:
-below it a core of 4056 bytes, which is the USB device, checks the password
-and writes the firmware above it; above it the firmware, 3512 of its 4096
-bytes. There is no bootloader: the core takes the firmware over the same
-connection the page uses for everything else. The firmware counts its own
-versions, and the page uses them to decide what a board can do.
-
-**v1 boards** — firmware 9 and earlier, with Micronucleus — keep working with
-the page, which offers to move them to v2 and no longer updates them within
-v1. v1 itself is at tag `v1.0`.
+v1 of the firmware and the page is at tag `v1.0`, kept for history. It is
+entirely deprecated, and as far as I know there are none left in the wild:
+v2 is better in every way. The page still offers to move a v1 board to v2.
 
 ## What you need
 
@@ -43,13 +39,14 @@ v1. v1 itself is at tag `v1.0`.
   through the Micronucleus bootloader it ships with, which v2 then replaces.
   Or any ATtiny85 board and an ISP programmer.
 - **A touch pad on P0.** Any small piece of metal will do — a bare wire, a
-  coin, a square of copper tape — and no other parts are needed. A pushbutton
+  coin, a square of copper tape, or even the pin header that sometimes already
+  comes soldered to the board — and no other parts are needed. A pushbutton
   from P0 to ground works too (`make BUTTON=1`), as does a pad read
   through a bleed resistor of about 1 MΩ (`make RC=1`).
 - **The board's LED on P1**, which is where the Digispark has it. A clone with
   its LED on P0 needs `PIN_LED` changed in `DigiMacro.ino`, since P0 is the
   pad.
-- **An IR receiver on P2, if you like:** a TSOP4838 or any of its kind, with
+- **An optional IR receiver on P2:** a TSOP4838 or any of its kind, with
   its output on P2, lets a remote control that speaks NEC — most cheap ones
   do — start macros. Nothing else is needed, and a board without one is no
   different.
@@ -75,19 +72,25 @@ v1. v1 itself is at tag `v1.0`.
    On Windows, Micronucleus needs a driver once, for setting a board up: run
    [Zadig](https://zadig.akeo.ie/) while the board sits in its bootloader, the
    first few seconds after plugging it in, and install WinUSB for it. The
-   keyboard itself needs nothing anywhere.
-2. **Open the app.** It is not hosted anywhere yet, so serve it yourself.
-   WebHID needs a secure context, and `localhost` counts:
+   keyboard itself needs nothing anywhere. If the board was set up on
+   Linux, Windows needs nothing installed at all.
+2. **Open the app.** Point your browser to:
+
+   https://digimacro.postcogito.org/
+
+   Or serve it yourself. WebHID needs a secure context, and `localhost`
+   counts:
+
    ```
    cd web && python3 -m http.server 8000
    ```
-   Then open `http://localhost:8000/app.html`. Any https host serving `web/`
-   works the same way.
+
+   Then open `http://localhost:8000/app.html`. Any https host serving
+   `web/` works the same way.
 3. **Put v2 on the board.** A Digispark as it comes: press **Set up a new
    board**, plug the board in, press it again within five seconds and pick
-   *Micronucleus*. A board running v1: connect it, and follow **(move to
-   v2…)** in the status line. Either way the board comes back as DigiMacro
-   with no firmware yet, and the page offers to install it — see *Setting a
+   *Micronucleus*. After that the board comes back as DigiMacro but with no
+   firmware yet, and the page offers to install it — see *Setting a
    board up* below. With a programmer instead: see *With a programmer*.
 4. **Connect.** Pick the board, then **hold the pad for four seconds**. The
    page reads everything the board holds by itself; if the board has a

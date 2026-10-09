@@ -437,6 +437,8 @@ en: {
                   + 'keyboard setting beside Macros',
   'not-a-code':     'not a code: "{what}"',
   'code-twice':     '"{what}" is used twice',
+  'ir-only':        'Not tappable: only the remote reaches it, or a {goto}. '
+                  + 'Codes IR1 to IR30 are for IR-only macros.',
   'not-a-byte':     '"{what}" has a byte that is not a byte',
   'has-a-zero':     '"{what}" contains a zero, which would end it early',
   'too-big':        '{n} bytes of table, and only {fits} fit',
@@ -880,6 +882,8 @@ pt: {
                   + 'a opção de teclado ao lado de Macros',
   'not-a-code':     'não é um código: "{what}"',
   'code-twice':     '"{what}" está sendo usado duas vezes',
+  'ir-only':        'Não se digita no toque: só o controle remoto chega aqui, ou um {goto}. '
+                  + 'Os códigos IR1 a IR30 são para macros só do controle.',
   'not-a-byte':     '"{what}" tem um byte que não é um byte',
   'has-a-zero':     '"{what}" contém um zero, que a encerraria antes da hora',
   'too-big':        '{n} bytes de tabela, e só cabem {fits}',

@@ -575,10 +575,11 @@ function draw() {
     if (st.each[i].error) msgRow(st.each[i].error, 'err');
     else if (st.each[i].bytes && macroWarnings(st.each[i].bytes).length)
       msgRow(macroWarnings(st.each[i].bytes).map(k => t(k)).join(' '), 'err dim');
+    else if (!tappable(r.code)) msgRow(t('ir-only'), 'dim');
   });
 
   $('gotoval').innerHTML = macros
-    .map(m => `<option>${m.code.replace(/[^.-]/g, '')}</option>`).join('');
+    .map(m => `<option>${m.code.replace(/[^.\-\w]/g, '')}</option>`).join('');
   $('budget').textContent = t('budget', { n: st.total, max: TABLE_TOP });
   $('budget').className = st.error ? 'bad' : 'dim';
   const m = $('meter');
@@ -1152,7 +1153,7 @@ function drawLock() {
   $('lockstate').className = 'prose ' + (has ? 'bad' : 'dim');
 
   const s = lockSettings();
-  const n = macros.filter(m => m.code).length;
+  const n = macros.filter(m => tappable(m.code)).length;
   $('lockodds').textContent = !on || !has ? ''
     : !s.ok ? t('lock-bad')
     : t(s.hard ? 'lock-odds' : 'lock-odds-nohard', {

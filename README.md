@@ -192,6 +192,10 @@ Tapped by its code, the same macro types straight through the `{IR}`, which
 does nothing. A macro can hold several, so one macro can be a menu of
 starting points.
 
+A macro that only the remote should reach gets a code from `IR1` to `IR30`
+instead of dots and dashes. No tapping makes those codes, so no tap and no
+guess ever types it; a `{goto IR1}` still can.
+
 To find a button's two bytes, put the cursor in a macro and press **remote
 button** in the key pad: it puts `{IR }` there, and the board types the next
 button it sees — within ten seconds — into the braces. That needs neither the

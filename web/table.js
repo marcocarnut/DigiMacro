@@ -369,7 +369,7 @@ function encodeMacro(text) {
         continue;
       }
 
-      const go = /^goto\s+([.-]+)$/i.exec(body);
+      const go = /^goto\s+([.-]+|ir\d+)$/i.exec(body);
       if (go) {
         push(ESC_JUMP, header(go[1]) + 1);
         unitAt = -1;                            /* nothing after it runs */
@@ -552,8 +552,14 @@ function decodeMacro(bytes) {
 /* ==================================================================== */
 
 /* ".-" -> the header byte: three bits of count-minus-one, five of symbols,
-   a dash being a 1 and the first symbol in the highest bit the count uses. */
+   a dash being a 1 and the first symbol in the highest bit the count uses.
+   "IR1" to "IR30" are headers no tapping can make: one symbol, with bits
+   set above it. The remote reaches them, and so does a goto. */
+const IR_CODES = 30;
+
 function header(code) {
+  const ir = /^ir([1-9]\d?)$/i.exec(code);
+  if (ir && +ir[1] <= IR_CODES) return (+ir[1] + 1) << 3;
   if (!new RegExp(`^[.-]{1,${MAX_SYM}}$`).test(code))
     fail('not-a-code', { what: code });
   let bits = 0;
@@ -561,12 +567,19 @@ function header(code) {
   return (bits << 3) | (code.length - 1);
 }
 
+/* Any other untappable header comes back as something header() refuses,
+   rather than as the tappable code its low bits spell. */
 function codeOf(header) {
   const n = (header & 0x07) + 1, bits = header >> 3;
+  if (bits >> n) return n === 1 ? 'IR' + (bits - 1)
+                                : '#' + header.toString(16).padStart(2, '0');
   let code = '';
   for (let i = n - 1; i >= 0; i--) code += (bits >> i) & 1 ? '-' : '.';
   return code;
 }
+
+/* Whether a code can be tapped at all. */
+function tappable(code) { return /^[.-]+$/.test(code); }
 
 /* Where a macro goes when it is done, and whether it does anything on the
    way. Execution is linear until a jump, and a jump never comes back, so only
@@ -710,5 +723,5 @@ if (typeof module !== 'undefined') module.exports = {
   ESC_MARK, ESC_HOST, HOST_SILENT, HOST_LOUD, macroWarnings, hasHostCheck,
   ESC_IR,
   AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
-  usages, header, codeOf, packTable, unpackTable,
+  usages, header, codeOf, tappable, IR_CODES, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows };

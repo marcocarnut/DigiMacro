@@ -16,6 +16,8 @@ const check = (ok, what) => { if (!ok) { console.log('  FAIL: ' + what); fails++
 /* Every macro the tests write, in one place: what the firmware plays is
    built from the same list the round trip is checked against. */
 const ROWS = [
+  { code: 'IR3', text: 'x{IR 00 46}y' },  /* first, so a tap that wrongly
+                                             matched it would show */
   { code: '.',   text: 'hello from DigiMacro\\n' },
   { code: '-',   text: 'wait{pause 1.0} ok' },
   { code: '..',  text: 'ab{4}' },      /* four b in all, not five */
@@ -25,6 +27,7 @@ const ROWS = [
   { code: '...', text: 'coração{Enter}' },      /* needs the dead keys below */
   { code: '..-', text: 'tv{IR 00 45}on{IR 80 c5}!' },  /* and the remote's: see
                                                      run.sh */
+  { code: '...-', text: 'z{goto IR3}' },
 ];
 
 /* The rows include accented text, so the layout has to be the one that can
@@ -252,6 +255,38 @@ check(msg !== null, 'a place is not a thing a count can count');
 msg = null;
 try { t.encodeTable([{ code: '.', text: '{IR 00 45}{goto .}' }]); } catch (e) { msg = e.message; }
 check(msg !== null && /never type or pause/.test(msg), 'nor an action');
+
+console.log('5f. IR1 to IR30, the codes no tapping makes');
+const tapped = [];
+for (let n = 1; n <= t.MAX_SYM; n++)
+  for (let b = 0; b < 1 << n; b++) {
+    let code = '';
+    for (let i = n - 1; i >= 0; i--) code += (b >> i) & 1 ? '-' : '.';
+    tapped.push(code);
+  }
+check(tapped.length === 62, 'sixty-two codes can be tapped');
+for (const code of tapped)
+  check(t.codeOf(t.header(code)) === code && t.tappable(code), `${code} round trips`);
+const tapHdr = new Set(tapped.map(t.header));
+for (let k = 1; k <= t.IR_CODES; k++) {
+  const h = t.header('IR' + k);
+  check(!tapHdr.has(h), `IR${k} is no tapped code's header`);
+  check(t.codeOf(h) === 'IR' + k && !t.tappable('IR' + k), `IR${k} round trips`);
+  check((h & 0x07) < t.MAX_SYM && h + 1 < 0xFD, `IR${k} is a header a goto can name`);
+}
+check(t.header('ir7') === t.header('IR7'), 'either case');
+for (const bad of ['IR0', 'IR31', 'IR', 'IR 3', 'IR03', 'IR-1']) {
+  msg = null;
+  try { t.header(bad); } catch (e) { msg = e.message; }
+  check(msg !== null && /not a code/.test(msg), `${bad} is refused: ${msg}`);
+}
+/* Untappable headers the page never writes come back as something it
+   refuses, not as the tappable code their low bits spell. */
+check(t.codeOf(0x21) === '#21', `0x21 reads as ${t.codeOf(0x21)}`);
+msg = null;
+try { t.header(t.codeOf(0x21)); } catch (e) { msg = e.message; }
+check(msg !== null, 'and is not written back');
+check(t.decodeMacro(t.encodeMacro('{goto ir5}')) === '{goto IR5}', 'a goto to one');
 
 console.log('6. accents, on a layout that can type them');
 /* The board sends scan codes, so an accent is the host's business: two

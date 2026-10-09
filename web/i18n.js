@@ -290,8 +290,9 @@ en: {
                   + 'no way to type one at all, so the editor says so rather '
                   + 'than typing something else.',
 
-  'no-webhid':      'navigator.hid is missing. WebHID needs Chrome or Edge, '
-                  + 'over https or localhost.',
+  'no-webhid':      'This browser cannot reach the board: WebHID needs Chrome '
+                  + 'or Edge on a computer, over https or localhost — not '
+                  + 'Safari, Firefox, or any browser on a phone or tablet.',
   refused:          'The board said no. Hold the pad for four seconds and try '
                   + 'again — reaching the table needs somebody at the board.',
   'udev-hint':      'On Linux a hidraw device is root-only until a udev rule '
@@ -738,8 +739,10 @@ pt: {
                   + 'Num teclado US puro não há como digitar um acento, então '
                   + 'o editor avisa em vez de digitar outra coisa.',
 
-  'no-webhid':      'navigator.hid não existe. WebHID precisa do Chrome ou do '
-                  + 'Edge, por https ou localhost.',
+  'no-webhid':      'Este navegador não consegue falar com a placa: WebHID '
+                  + 'precisa do Chrome ou do Edge num computador, por https ou '
+                  + 'localhost — não do Safari, do Firefox, nem de navegador '
+                  + 'de celular ou tablet.',
   refused:          'A placa recusou. Segure o sensor por quatro segundos e '
                   + 'tente de novo — chegar à tabela exige alguém na placa.',
   'udev-hint':      'No Linux um dispositivo hidraw é só do root até que uma '

@@ -10,7 +10,7 @@ Aplicativo web de configuração: https://digimacro.postcogito.org
 Para o PC ou o celular, ele se apresenta como um teclado USB. Tocando um
 sensor em código morse, ele digita uma de 62 sequências de teclas possíveis,
 que você programa antes pela página web que o acompanha (precisa do Chrome ou
-do Edge). Ele também pode ser acionado por um controle remoto infravermelho,
+do Edge num computador: não do Safari, e não num celular). Ele também pode ser acionado por um controle remoto infravermelho,
 se você acrescentar um sensor de infravermelho (TSOP4838 ou similar).
 
 Ele também pode digitar sozinho ao ser ligado (esse foi, aliás, o uso
@@ -49,7 +49,9 @@ v2.
 
 - **Um Digispark** (ATtiny85) ou um clone, do jeito que vem: a página grava a
   v2 nele pelo bootloader Micronucleus que vem de fábrica, que a v2 depois
-  substitui. Ou qualquer placa ATtiny85 e um gravador ISP.
+  substitui. Ou qualquer placa ATtiny85 e um gravador ISP. O
+  [Franzininho](https://franzininho.com.br/) funciona do jeito que vem, com
+  o pino P0 da sua barra de pinos como sensor.
 - **Um sensor no P0.** Qualquer pedacinho de metal serve — um fio desencapado,
   uma moeda, um quadrado de fita de cobre, ou até a barra de pinos que às
   vezes já vem soldada na placa — e nenhum outro componente é necessário. Um
@@ -64,14 +66,26 @@ v2.
   ele não muda em nada.
 - **Chrome ou Edge**, num computador: WebHID — e WebUSB, para chegar ao
   Micronucleus ao preparar uma placa — não existem no Firefox nem no Safari.
-  Testado no Linux, e no Windows 10 numa máquina virtual; o macOS deve
-  funcionar do mesmo jeito, sem instalar nada, mas ninguém testou ainda.
+  Nem no celular ou tablet: todo navegador de iPhone ou iPad é Safari por
+  baixo, e o Chrome do Android não tem WebHID. Testado no Linux, e no
+  Windows 10 numa máquina virtual; o macOS deve funcionar do mesmo jeito no
+  Chrome ou no Edge, sem instalar nada, mas ninguém testou ainda. A placa em
+  si digita em qualquer coisa que aceite um teclado USB, celulares
+  inclusive; só a configuração precisa da página.
 - **Para instalar,** nada além da página: o firmware publicado está versionado
   em `web/firmware/`.
 - **Para compilar,** `make`, `python3` e avr-gcc, no Linux. O Makefile procura
   o avr-gcc que o core AVR do Arduino instala em `~/.arduino15`; `make
   AVR=/caminho/para/bin/` aponta para outro lugar. Os testes também precisam
   de `gcc`, `g++` e `node`.
+
+<p align="center">
+  <img src="docs/franzininho.jpg" width="300"
+       alt="Uma placa Franzininho DIY: um ATtiny85 num soquete, um conector USB e uma barra de pinos">
+</p>
+
+*Um [Franzininho](https://franzininho.com.br/) DIY. Tocar o P0 da barra de
+pinos é todo o sensor de que ele precisa.*
 
 ## Primeiros passos
 
@@ -800,7 +814,7 @@ são puladas.
 | `tools/hostauth/` | o cliente que manda a chave de computador, para Linux e Windows |
 | `web/` | `index.html` é o aplicativo, `hid.html` uma página de protocolo cru para desenvolvedores, `table.js` e `i18n.js` o que eles compartilham, `coreupdate.js` atualiza placas v2, `micronucleus.js` acessa o Micronucleus, `backup.js` as cópias de segurança, `60-digimacro.rules` a regra do udev |
 | `web/firmware/` | o que a página instala: o firmware, o núcleo e a imagem completa da v2 |
-| `docs/` | a foto lá de cima |
+| `docs/` | as fotos lá de cima |
 | `HARDENED_MODE.md` | como deixar uma placa apta a guardar segredos, e o que isso ainda não protege |
 | `*.pt-BR.md` | este README e o HARDENED_MODE.md em português do Brasil |
 

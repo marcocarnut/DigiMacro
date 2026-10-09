@@ -9,7 +9,8 @@ Web configuration app: https://digimacro.postcogito.org
 
 Presents itself to the host PC or smartphone as a USB keyboard. By tapping
 on a touch pad in morse code, it types one of 62 possible keystroke sequences
-you pre-program via the accompanying web page (requires Chrome or Edge).
+you pre-program via the accompanying web page (requires Chrome or Edge on a
+computer: not Safari, and not a phone).
 It can also be triggered by an infrared remote control if you add an infrared
 sensor (TSOP4838 or similar).
 
@@ -48,7 +49,9 @@ v2 is better in every way. The page still offers to move a v1 board to v2.
 
 - **A Digispark** (ATtiny85) or a clone, as it comes: the page puts v2 on it
   through the Micronucleus bootloader it ships with, which v2 then replaces.
-  Or any ATtiny85 board and an ISP programmer.
+  Or any ATtiny85 board and an ISP programmer. The
+  [Franzininho](https://franzininho.com.br/), a Brazilian Digispark, works
+  as it is, with its pin header's P0 pin as the pad.
 - **A touch pad on P0.** Any small piece of metal will do — a bare wire, a
   coin, a square of copper tape, or even the pin header that sometimes already
   comes soldered to the board — and no other parts are needed. A pushbutton
@@ -62,15 +65,27 @@ v2 is better in every way. The page still offers to move a v1 board to v2.
   do — start macros. Nothing else is needed, and a board without one is no
   different.
 - **Chrome or Edge**, on a computer: WebHID — and WebUSB, to reach
-  Micronucleus when a board is set up — are not in Firefox or Safari. Tested
-  on Linux, and on Windows 10 in a virtual machine; macOS should work the
-  same way, needing nothing installed, but nobody has tried it yet.
+  Micronucleus when a board is set up — are not in Firefox or Safari. Nor on
+  a phone or tablet: every browser on an iPhone or iPad is Safari underneath,
+  and Chrome on Android has no WebHID. Tested on Linux, and on Windows 10 in
+  a virtual machine; macOS should work the same way in Chrome or Edge,
+  needing nothing installed, but nobody has tried it yet. The board itself
+  types into anything that takes a USB keyboard, phones included; only
+  setting it up needs the page.
 - **To install it,** nothing but the page: the released firmware is committed
   in `web/firmware/`.
 - **To build it,** `make`, `python3` and avr-gcc, on Linux. The Makefile looks
   for the avr-gcc the Arduino AVR core installs under `~/.arduino15`; `make
   AVR=/path/to/bin/` points it elsewhere. The tests also need `gcc`, `g++` and
   `node`.
+
+<p align="center">
+  <img src="docs/franzininho.jpg" width="300"
+       alt="A Franzininho DIY board: an ATtiny85 in a socket, a USB plug and a pin header">
+</p>
+
+*A [Franzininho](https://franzininho.com.br/) DIY. Touching P0 on its pin
+header is all the pad it needs.*
 
 ## Getting started
 
@@ -762,7 +777,7 @@ Without `node`, the seven that need it are skipped.
 | `tools/hostauth/` | the client that sends the host key, for Linux and Windows |
 | `web/` | `index.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `backup.js` the backups, `60-digimacro.rules` the udev rule |
 | `web/firmware/` | what the page installs: v2's firmware, core and full image |
-| `docs/` | the photo above |
+| `docs/` | the photos above |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |
 | `*.pt-BR.md` | this README and HARDENED_MODE.md in Brazilian Portuguese |
 

@@ -30,10 +30,11 @@ static void *appSlots[16];
 /* The core's own reset vector, as the linker would put it at address 0:
    an rjmp to its start-up code. */
 #define RESET_WORD      0xC083
+#define USB_WORD        0xC0B4          /* ...and PCINT0's, V-USB's */
 
 /* Flash writes, checked: nothing may ever land below the boundary -- but
-   page 0, rewritten whole with only its reset vector changed back to the
-   core's own (core.c, ownResetVector()). */
+   page 0, rewritten whole with only its reset and USB vectors changed back
+   to the core's own (core.c, ownResetVector()). */
 static int erases, writes, softResets, belowBoundary, page0Writes;
 static int vectorsBlank;                /* page 0 erased and left so, between
                                            calls, interrupts on: a brick */
@@ -62,9 +63,10 @@ static void spmErase(uint16_t a)
 static void spmWrite(uint16_t a, const uint8_t *p)
 {
     if (a == 0) {
-        /* everything as it was but the first word, which is the core's own */
-        if ((p[0] | p[1] << 8) != RESET_WORD
-            || memcmp(p + 2, page0Before + 2, PAGE - 2)) belowBoundary++;
+        /* everything as it was but words 0 and 2, which are the core's own */
+        if ((p[0] | p[1] << 8) != RESET_WORD || (p[4] | p[5] << 8) != USB_WORD
+            || p[2] != page0Before[2] || p[3] != page0Before[3]
+            || memcmp(p + 6, page0Before + 6, PAGE - 6)) belowBoundary++;
         memcpy(FLASH, p, PAGE);
         page0Writes++;
         return;
@@ -233,6 +235,8 @@ static void setup(void)
     memset(FLASH, 0x5A, APP_START);     /* the core, which must never change */
     FLASH[0] = RESET_WORD & 0xFF;       /* its reset vector, as a programmer */
     FLASH[1] = RESET_WORD >> 8;         /* would have left it */
+    FLASH[4] = USB_WORD & 0xFF;
+    FLASH[5] = USB_WORD >> 8;
     page0Writes = 0;
     vectorsBlank = 0;
     memset(EE, 0xFF, sizeof EE);
@@ -277,7 +281,9 @@ static int strDesc(uint8_t which, const char *want)
 static int coreIntact(void)
 {
     if ((FLASH[0] | FLASH[1] << 8) != RESET_WORD) return 0;
-    for (int i = 2; i < APP_START; i++) if (FLASH[i] != 0x5A) return 0;
+    if ((FLASH[4] | FLASH[5] << 8) != USB_WORD) return 0;
+    for (int i = 2; i < APP_START; i++)
+        if (i != 4 && i != 5 && FLASH[i] != 0x5A) return 0;
     return 1;
 }
 
@@ -577,6 +583,18 @@ int main(void)
     CHECK(sendImage(1, -1) > 0);                        /* and no more */
     CHECK(page0Writes == 1 && coreIntact());
     CHECK(ask(DM_FUNC_COMMIT, 0, 0, NULL)[0] == DM_FUNC_COMMIT);
+    /* Micronucleus 1.x points PCINT0 at itself as well, and its copy of the
+       vectors is flash the app's pages then overwrite: the next USB
+       interrupt would jump into the app's bytes. A bricked board, once. */
+    printf("...and its USB vector too, which Micronucleus 1.x points at itself\n");
+    setup(); memset(FLASH + APP_START, 0xFF, PAGE); boot();
+    FLASH[0] = 0xBF; FLASH[1] = 0xCB;                   /* rjmp 0x1780 */
+    FLASH[4] = 0xBF; FLASH[5] = 0xCB;                   /* rjmp 0x1784 */
+    makeImage(900, 10, 0xAC);
+    CHECK(sendImage(1, 1) == 1);
+    CHECK(page0Writes == 1 && belowBoundary == 0 && coreIntact());
+    CHECK(vectorsBlank == 0);
+    CHECK(sendImage(1, -1) > 0 && page0Writes == 1 && coreIntact());
     printf("...and a core flashed by a programmer never touches page 0\n");
     setup(); hidAllow(1000);
     makeImage(900, 10, 0xAB);

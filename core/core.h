@@ -23,8 +23,9 @@
 #define DM_MAGIC0           'D'
 #define DM_MAGIC1           'M'
 #define DM_PROTOCOL_VERSION 3       /* 2 was v1's, with Micronucleus */
-#define DM_CORE_VERSION     2       /* 2: ends the session by itself when no
-                                       firmware runs */
+#define DM_CORE_VERSION     3       /* 2: ends the session by itself when no
+                                       firmware runs; 3: installs through
+                                       Micronucleus 1.x as well */
 
 /* The password: twelve bytes at the top of the EEPROM, zero-padded, the
    first 0xFF for none. The core checks it; the app sets it. */

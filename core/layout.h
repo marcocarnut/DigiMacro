@@ -25,7 +25,7 @@
 /* The boundary. The core lives below it and can never be written from
    USB; the app lives above it and can be replaced whole. */
 #ifndef APP_START
-#define APP_START       0x1000          /* 4 KB each side: the core is 3.8 */
+#define APP_START       0x1000          /* 4 KB each side: the core all but fills its own */
 #endif
 
 /* Where the app must stop: the end of the chip, since a v2 board has no

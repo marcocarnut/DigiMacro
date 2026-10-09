@@ -608,12 +608,16 @@ static void spmPage(uint16_t a, const uint8_t *p)
    one of two), starts with a reset vector that is not its own: Micronucleus
    points it at itself, at 0x1A00, and keeps the core's start in a jump just
    below. The app goes on top of Micronucleus, which would then leave a
-   reset jumping into the middle of the app.
+   reset jumping into the middle of the app. Micronucleus 1.x, which new
+   Digisparks still ship with, does the same to PCINT0's vector, V-USB's,
+   since it runs USB on interrupts: the core's USB then goes by way of the
+   bootloader's vectors, which the app's pages overwrite -- and the next
+   interrupt jumps into the app's bytes. That bricked a board.
 
-   So before its first page the core takes the vector back -- page 0 as it
-   is, with its first word its own again -- and Micronucleus is never run
-   again. It is the one page below the boundary the core ever writes, and
-   only ever with that one word changed: nothing a host sends reaches it.
+   So before its first page the core takes both back -- page 0 as it is,
+   with words 0 and 2 its own again -- and Micronucleus is never run again.
+   It is the one page below the boundary the core ever writes, and only
+   ever with those two words changed: nothing a host sends reaches it.
    Power lost in the few milliseconds of it would need a programmer, the
    same risk as every Micronucleus upload, which rewrites page 0 each time;
    it happens once in a board's life.
@@ -624,8 +628,15 @@ static void spmPage(uint16_t a, const uint8_t *p)
    an erased vector: a bricked board. One halt meeting one poll costs the
    host a retry. */
 #ifndef RESET_WORD
-extern void __init(void);
-#define RESET_WORD      (0xC000 | (((uint16_t)(uintptr_t)__init - 1) & 0x0FFF))
+/* The rjmp that vector n holds to reach sym: 0xC000 plus the word distance
+   less one. The core is below 4 KB, so nothing wraps and that is a plain
+   sum, which the linker works out itself: two ldi, where C would compute
+   it at run time. */
+#define VECTOR_WORD(sym, n) ({ uint16_t w; asm ("ldi %A0, lo8(pm(" #sym "+%1))\n\t" \
+                                                "ldi %B0, hi8(pm(" #sym "+%1))" \
+                                                : "=d" (w) : "i" (2L * (0xC000 - (n) - 1))); w; })
+#define RESET_WORD      VECTOR_WORD(__init, 0)
+#define USB_WORD        VECTOR_WORD(__vector_2, 2)      /* PCINT0, V-USB's */
 #endif
 
 static void ownResetVector(void)
@@ -637,6 +648,9 @@ static void ownResetVector(void)
     flashCopy(page, 0, PAGE);
     page[0] = (uint8_t)want;
     page[1] = want >> 8;
+    uint16_t usb = USB_WORD;
+    page[4] = (uint8_t)usb;
+    page[5] = usb >> 8;
     spmSlot();
     spm(0, page, 1);
 }

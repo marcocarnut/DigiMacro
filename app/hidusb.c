@@ -208,6 +208,13 @@ uint8_t app_request(uint8_t *v)
 
     if (n > DM_VND_CHUNK) n = DM_VND_CHUNK;
 
+    /* No gate: the worst LEARN does is type the remote's next button as hex
+       rather than play it, once, and it reads nothing. */
+    if (v[0] == DM_FUNC_LEARN) {
+        hidLearn();
+        return 1;
+    }
+
     switch (v[0]) {
     case DM_FUNC_INFO:
         /* The core has filled in what it knows. INFO answers whatever the
@@ -220,14 +227,14 @@ uint8_t app_request(uint8_t *v)
         return 1;
 
     case DM_FUNC_HOSTAUTH:
-        /* The one request with no gate: the point is a program on the host
-           doing it with nobody at the board. It can do nothing else. */
+        /* No gate: the point is a program on the host doing it with nobody
+           at the board. It can do nothing else. */
         if (!hidHostAuth(d, n)) v[0] = DM_REFUSED;
         wipe();                 /* the key, whether it was right or not */
         return 1;
 
+
     case DM_FUNC_UPDATE:
-    case DM_FUNC_LEARN:
     case DM_FUNC_RESTART:
     case DM_FUNC_READ:
     case DM_FUNC_WRITE:
@@ -253,10 +260,6 @@ uint8_t app_request(uint8_t *v)
         /* Somebody at the board, with the password: the core may take
            pages for the next six seconds. */
         DM_WINDOW = 0;
-        break;
-
-    case DM_FUNC_LEARN:
-        hidLearn();
         break;
 
     case DM_FUNC_RESTART:

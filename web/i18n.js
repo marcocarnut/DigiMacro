@@ -212,8 +212,8 @@ en: {
   'ir-learn':       'remote button',
   'ir-learning':    'Press a button on the remote, pointed at the board: it '
                   + 'types the button\'s two bytes here.',
-  'ir-refused':     'The board did not take it: its firmware has no remote, or '
-                  + 'the window has closed.',
+  'ir-refused':     'The board did not take it: its firmware has no remote. '
+                  + 'Update it.',
   'fw-summary':     'Firmware',
   'fw-how':         'The board restarts into its bootloader, Micronucleus, and '
                   + 'the browser asks you to pick it — a second picker, because '
@@ -222,15 +222,12 @@ en: {
                   + 'old firmware. The macros, the password, the lockout, the '
                   + 'host key and the serial number all stay as they are. On Windows the bootloader needs a '
                   + 'driver once: Zadig, installing WinUSB for "Micronucleus".',
-  'fw-boot':        'If the board\'s Micronucleus is older than 2.6, replace it '
-                  + 'with 2.6 first',
   'fw-update':      'Update the firmware',
-  'fw-continue':    'Continue',
   'fw-who':         'updating the firmware…',
-  'fw-too-old':     'That firmware cannot restart itself into the bootloader, '
-                  + 'so update it once by hand -- "micronucleus --run '
-                  + 'web/firmware/digimacro.hex", then plug the board in -- and '
-                  + 'from then on this page can do it.',
+  'fw-too-old':     'Firmware {on} cannot restart itself into the bootloader, '
+                  + 'so write v2\'s core by hand -- "micronucleus --run '
+                  + 'web/firmware/digimacro-v2-core.hex", then plug the board '
+                  + 'in -- and this page takes it from there.',
   'fw-none-here':   'The board runs firmware {on}. This page has no firmware to '
                   + 'offer; serve it from the project\'s web folder.',
   'fw-newer':       'The board runs firmware {on}, and firmware {here} is '
@@ -244,16 +241,11 @@ en: {
   'fw-rebooting':   'Restarting the board into its bootloader…',
   'fw-pick':        'Pick "Micronucleus" in the browser\'s list.',
   'fw-found':       'Micronucleus {version} found.',
-  'fw-pick-again':  'Micronucleus 2.6 is in. It will wait for you now: press '
-                  + 'Continue and pick it again.',
   'fw-erasing':     'Erasing, for {what}…',
   'fw-writing':     'Writing {what}…',
   'fw-no-bootloader': 'No bootloader was picked, so nothing was written. The '
                   + 'board goes back to its old firmware by itself after a few '
                   + 'seconds.',
-  'fw-no-bootloader-again': 'The bootloader was not picked again. It is '
-                  + 'Micronucleus 2.6 now and waits with nothing to run: update '
-                  + 'again to finish.',
   'fw-failed':      'The update stopped: {msg}',
   'fw-udev':        'On Linux the bootloader needs the Micronucleus line from '
                   + 'web/60-digimacro.rules in /etc/udev/rules.d.',
@@ -380,8 +372,9 @@ en: {
                   + 'one yet.',
   'serial-tag':     'serial {serial}',
   'fw-link-move':   '(move to v2…)',
-  'fw-move':        'Move this board to v2: DigiMacro {fw}',
-  'fw-move-why':    'v2 has no bootloader: the board updates itself from here, '
+  'fw-move-why':    'The board runs v1\'s firmware {on}; this moves it to v2, '
+                  + 'DigiMacro {fw}. v2 has no bootloader: the board updates '
+                  + 'itself from here, '
                   + 'over the same connection, and is safe from a cut-off '
                   + 'update. This writes v2\'s core through Micronucleus; the '
                   + 'board then comes back asking for DigiMacro {fw}, which goes '
@@ -661,7 +654,7 @@ pt: {
   'ir-learning':    'Aperte um botão do controle, apontado para a placa: ela '
                   + 'digita aqui os dois bytes do botão.',
   'ir-refused':     'A placa não aceitou: o firmware dela não tem controle '
-                  + 'remoto, ou a janela fechou.',
+                  + 'remoto. Atualize-o.',
   'fw-summary':     'Firmware',
   'fw-how':         'A placa reinicia no seu bootloader, o Micronucleus, e o '
                   + 'navegador pede para você escolhê-lo — uma segunda lista, '
@@ -670,15 +663,12 @@ pt: {
                   + 'firmware antigo. As macros, a senha, o bloqueio, a chave de '
                   + 'computador e o número de série continuam como estão. No Windows o bootloader precisa de um driver '
                   + 'uma vez: o Zadig, instalando WinUSB para "Micronucleus".',
-  'fw-boot':        'Se o Micronucleus da placa for anterior ao 2.6, trocá-lo '
-                  + 'pelo 2.6 antes',
   'fw-update':      'Atualizar o firmware',
-  'fw-continue':    'Continuar',
   'fw-who':         'atualizando o firmware…',
-  'fw-too-old':     'Esse firmware não sabe reiniciar no bootloader, então '
-                  + 'atualize-o uma vez à mão -- "micronucleus --run '
-                  + 'web/firmware/digimacro.hex", e conecte a placa -- e daí em '
-                  + 'diante esta página consegue.',
+  'fw-too-old':     'O firmware {on} não sabe reiniciar no bootloader, então '
+                  + 'grave o núcleo da v2 à mão -- "micronucleus --run '
+                  + 'web/firmware/digimacro-v2-core.hex", e conecte a placa -- e '
+                  + 'esta página continua daí.',
   'fw-none-here':   'A placa roda o firmware {on}. Esta página não tem firmware '
                   + 'para oferecer; sirva-a a partir da pasta web do projeto.',
   'fw-newer':       'A placa roda o firmware {on}, e o firmware {here} está '
@@ -692,16 +682,11 @@ pt: {
   'fw-rebooting':   'Reiniciando a placa no bootloader…',
   'fw-pick':        'Escolha "Micronucleus" na lista do navegador.',
   'fw-found':       'Micronucleus {version} encontrado.',
-  'fw-pick-again':  'O Micronucleus 2.6 está instalado. Agora ele espera: '
-                  + 'clique em Continuar e escolha-o de novo.',
   'fw-erasing':     'Apagando, para {what}…',
   'fw-writing':     'Gravando {what}…',
   'fw-no-bootloader': 'Nenhum bootloader foi escolhido, então nada foi gravado. '
                   + 'A placa volta sozinha ao firmware antigo em alguns '
                   + 'segundos.',
-  'fw-no-bootloader-again': 'O bootloader não foi escolhido de novo. Ele já é '
-                  + 'o Micronucleus 2.6 e espera sem nada para rodar: atualize '
-                  + 'de novo para terminar.',
   'fw-failed':      'A atualização parou: {msg}',
   'fw-udev':        'No Linux o bootloader precisa da linha do Micronucleus de '
                   + 'web/60-digimacro.rules em /etc/udev/rules.d.',
@@ -830,8 +815,9 @@ pt: {
   'auto-write-first': 'Grave as macros antes: a placa ainda não tem esta.',
   'serial-tag':     'série {serial}',
   'fw-link-move':   '(mudar para a v2…)',
-  'fw-move':        'Mudar esta placa para a v2: DigiMacro {fw}',
-  'fw-move-why':    'A v2 não tem bootloader: a placa se atualiza daqui, pela '
+  'fw-move-why':    'A placa roda o firmware {on} da v1; isto a muda para a v2, '
+                  + 'DigiMacro {fw}. A v2 não tem bootloader: a placa se '
+                  + 'atualiza daqui, pela '
                   + 'mesma conexão, e resiste a uma atualização interrompida. '
                   + 'Isto grava o núcleo da v2 pelo Micronucleus; a placa então '
                   + 'volta pedindo o DigiMacro {fw}, que é gravado por cima do '

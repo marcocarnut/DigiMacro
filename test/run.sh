@@ -50,7 +50,7 @@ else
 fi
 
 echo
-echo "== v1 boards: firmware 9, laid out for Micronucleus =="
+echo "== v2's core, laid out for Micronucleus =="
 if command -v node >/dev/null 2>&1; then
     node micronucleus.js
 else

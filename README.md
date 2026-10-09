@@ -28,14 +28,14 @@ and Linux needs one udev rule.
 
 **DigiMacro v2 is firmware 12 on core 2.** The flash is split at `0x1000`:
 below it a core of 4056 bytes, which is the USB device, checks the password
-and writes the firmware above it; above it the firmware, 3076 of its 4096
+and writes the firmware above it; above it the firmware, 3512 of its 4096
 bytes. There is no bootloader: the core takes the firmware over the same
 connection the page uses for everything else. The firmware counts its own
 versions, and the page uses them to decide what a board can do.
 
 **v1 boards** — firmware 9 and earlier, with Micronucleus — keep working with
-the page, which still updates them and offers to move them to v2. v1 itself
-is at tag `v1.0`.
+the page, which offers to move them to v2 and no longer updates them within
+v1. v1 itself is at tag `v1.0`.
 
 ## What you need
 
@@ -49,6 +49,10 @@ is at tag `v1.0`.
 - **The board's LED on P1**, which is where the Digispark has it. A clone with
   its LED on P0 needs `PIN_LED` changed in `DigiMacro.ino`, since P0 is the
   pad.
+- **An IR receiver on P2, if you like:** a TSOP4838 or any of its kind, with
+  its output on P2, lets a remote control that speaks NEC — most cheap ones
+  do — start macros. Nothing else is needed, and a board without one is no
+  different.
 - **Chrome or Edge**, on a computer: WebHID — and WebUSB, to reach
   Micronucleus when a board is set up — are not in Firefox or Safari. Tested
   on Linux, and on Windows 10 in a virtual machine; macOS should work the
@@ -158,6 +162,7 @@ A macro is text, with braces for what text cannot say:
  (ab){3}                      ...of a whole group rather than one thing
  {goto .-}                    carry on with another macro, and never come back
  {host}  {host!}              stop unless this computer sent the host key lately
+ {IR 00 45}                   where the remote's button 00 45 starts typing
 ```
 
 `{11}` means eleven in all, as a quantifier does in a regular expression, and a
@@ -175,6 +180,25 @@ computer it is plugged into. Pick that layout beside the Macros heading and
 `coração` is accepted and expanded into the accent and then the letter. Leave
 it at plain US, where there is no way to type one, and the editor says so
 rather than typing something else.
+
+### The remote
+
+With an IR receiver on P2, a button on a remote starts typing just after its
+`{IR}`, wherever in a macro that is, and goes on to the end of that macro.
+Tapped by its code, the same macro types straight through the `{IR}`, which
+does nothing. A macro can hold several, so one macro can be a menu of
+starting points.
+
+To find a button's two bytes, put the cursor in a macro and press **remote
+button** in the key pad: it puts `{IR }` there, and the board types the next
+button it sees — within ten seconds — into the braces. That needs neither the
+hold nor the password: all it can do is type one button as hex.
+
+Buttons that are not in the table do nothing at all, and never count toward
+the lockout: rooms are full of other people's remotes. A locked board ignores
+the remote, as it ignores taps, and a `{host}` check holds wherever the
+remote starts. Holding a button plays its macro once. The receiver is
+optional, and `HAVE_IR 0` in `DigiMacro.ino` builds without it.
 
 ### Startup
 
@@ -413,11 +437,8 @@ a programmer to put right, the same risk as any upload through Micronucleus;
 it happens once in a board's life.
 
 **A v1 board** moves the same way: connect it, and **(move to v2…)** in the
-status line opens the firmware dialog with the move ticked. On v1 firmware
-older than 9 the link reads **(update…)**; tick *Move this board to v2* in
-the dialog. The board
-restarts into Micronucleus, as v1 updates do, takes the core, and comes back
-asking for the firmware. Its macros, password, host key and serial number
+status line opens the firmware dialog. The board restarts into Micronucleus,
+takes the core, and comes back asking for the firmware. Its macros, password, host key and serial number
 come along: v2 keeps v1's EEPROM map.
 
 Micronucleus is reached over WebUSB: Linux needs its line in
@@ -442,20 +463,19 @@ The erase takes the EEPROM with it: back up first. Hardening goes further:
 
 ### v1 boards
 
-A board still on v1 updates through Micronucleus, as before. The board
-restarts into its bootloader and the browser asks you to pick it — a second
-picker, plain vendor class over WebUSB.
+The only update a v1 board gets from the page is the move to v2: v1 is frozen
+at firmware 9, and v2 does everything it did. The board restarts into its
+bootloader and the browser asks you to pick it — a second picker, plain
+vendor class over WebUSB.
 
 - **Pick it within a few seconds.** The bootloader waits about six and then
-  goes back to the old firmware, so the click that starts an update has to
+  goes back to the old firmware, so the click that starts the move has to
   find the window already open. If it is not, that click asks for the hold,
-  and the next click does the update.
-- **An old Micronucleus is replaced first.** With the box ticked, which is the
-  default, the app installs the upstream 2.6 upgrader, has you pick the new
-  bootloader again (it waits for you this time), and then writes the
-  firmware.
+  and the next click does the move.
 - **Firmware older than 3** cannot restart itself into the bootloader, so it
-  needs one update by hand: `micronucleus --run web/firmware/digimacro.hex`.
+  needs the core written by hand: `micronucleus --run
+  web/firmware/digimacro-v2-core.hex`. Plug the board in, and the page
+  installs the firmware.
 - **A hardened v1 board** has no bootloader, and says **(hardened)** instead,
   or **(not fully hardened…)** with a list of what is missing — *(hardened:
   no bootloader)* on firmware older than 8.
@@ -473,7 +493,7 @@ for: `digimacro-v2.hex` for updates, `digimacro-v2-core.hex` for setting a
 board up, `digimacro-v2-full.hex` for a programmer. Commit them, and the page
 offers the update to every board running something older — only if its core
 speaks the same API. The page carries the files itself, so serving it needs
-no AVR toolchain. `digimacro.hex` is v1.0's firmware 9, for v1 boards.
+no AVR toolchain.
 
 ## How it works
 
@@ -709,7 +729,7 @@ seconds. Without `node`, the six that need it are skipped.
 | `test/` | host build of the real sketch against stub hardware, and the web side's tests |
 | `tools/hostauth/` | the client that sends the host key, for Linux and Windows |
 | `web/` | `app.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `backup.js` the backups, `60-digimacro.rules` the udev rule |
-| `web/firmware/` | what the page installs: v2's firmware, core and full image, v1's firmware 9 for v1 boards, and the Micronucleus 2.6 upgrader |
+| `web/firmware/` | what the page installs: v2's firmware, core and full image |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |
 
 ## Related

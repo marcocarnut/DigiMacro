@@ -1244,10 +1244,16 @@ static void ir_begin(void)
 }
 
 /* LEARN, from the app: the next button is typed as "a c", in hex, for the
-   {IR } the app has just put under the cursor. Only while the window is
-   open, so a forgotten LEARN cannot type into whatever has focus later. */
+   {IR } the app has just put under the cursor. Ungated, so it is good for
+   one button and ten seconds: a LEARN nobody followed up is forgotten, and
+   does not type hex into whatever has focus hours later. */
+#define LEARN_QS        40      /* ten seconds, in quarters */
+
+static uint8_t learn_at;        /* when, in quarter seconds (of 256 ms) */
+
 void hidLearn(void)
 {
+    learn_at = millis() >> 8;
     FLAGS |= FLAG_LEARN;
 }
 
@@ -1258,12 +1264,12 @@ static void ir_poll(void)
     FLAGS &= ~FLAG_IR;
     if (FLAGS & FLAG_LEARN) {
         FLAGS &= ~FLAG_LEARN;
-        if (hidAllowed()) {
+        if ((uint8_t)((millis() >> 8) - learn_at) < LEARN_QS) {
             type_hex(a);
             hidKey(0, 0x2C);    /* a space */
             type_hex(c);
-        }
-        return;
+            return;
+        }                       /* too late: an ordinary press */
     }
     if (hidLockState()) return;
     if (a & 0x80) x |= 1;       /* as the table holds it: see the escapes */

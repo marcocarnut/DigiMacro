@@ -11,24 +11,11 @@ For v2 boards, written by `make release`:
   the firmware was built for. The app offers the firmware only to a board
   whose core speaks that API.
 
-For v1 boards, frozen:
+v1 boards get nothing of their own: the page moves them to v2, writing
+`digimacro-v2-core.hex` through their Micronucleus as it does for a new
+board. v1.0's firmware 9 is at tag `v1.0`.
 
-- `digimacro.hex` and `digimacro.json`: v1.0's firmware 9, which the app
-  offers to v1 boards on anything older -- except firmware older than 3,
-  which cannot restart itself into the bootloader, and a hardened v1 board,
-  which has none.
-- `micronucleus-2.6-t85_default-upgrade.hex`: the unmodified upstream
-  Micronucleus upgrader (`firmware/upgrades/upgrade-t85_default.hex`,
-  upstream tag v2.6, commit 6dca90b, 2021-11-04). It is an application that,
-  uploaded through whatever Micronucleus a board has (1.x included), rewrites
-  the bootloader area with Micronucleus 2.6 and reboots into it. Copied from
-  DigiISP, which uses it the same way.
-
-Micronucleus 2.6 for the ATtiny85 (`t85_default`): bootloader at 0x1A00,
-entry on every reset, 6 s timeout, OSCCAL saved at 0x19FA. A v2 board set up
-through it overwrites it with the firmware, after the core has taken the
-reset vector back.
-
-Micronucleus is free software under the GNU GPL v2, like DigiMacro. Its
-corresponding source is the upstream repository at tag v2.6:
-https://github.com/micronucleus/micronucleus/tree/v2.6
+The core goes on through whatever Micronucleus the board has, 1.x or 2.x
+(`web/micronucleus.js` speaks both), and the firmware then overwrites it,
+after the core has taken the reset vector back. Nothing here is
+Micronucleus's own: the page ships none of it.

@@ -314,17 +314,8 @@
   <h2 data-t="fw-summary">Firmware</h2>
   <p id="fwwhy" class="prose"></p>
   <p class="dim prose" id="fwhow"></p>
-  <div class="form" id="fwmoverow" hidden>
-    <label class="check"><input id="fwmove" type="checkbox">
-      <span id="fwmovelabel"></span></label>
-  </div>
-  <div class="form" id="fwbootrow">
-    <label class="check"><input id="fwboot" type="checkbox" checked>
-      <span data-t="fw-boot"></span></label>
-  </div>
   <div class="bar">
     <button id="fwupdate" class="primary" data-t="fw-update">Update the firmware</button>
-    <button id="fwcontinue" class="primary" data-t="fw-continue" hidden>Continue</button>
     <progress id="fwbar" max="1" value="0" hidden></progress>
     <span class="spacer"></span>
     <button id="fwclose" data-t="close">Close</button>
@@ -439,23 +430,16 @@ function renderWho() {
     /* Hardened, by firmware too old to say how well. */
     el.append(' ' + t('fw-link-noboot'));
   }
-  /* A hardened v1 board cannot take an update from here; a v2 board can. */
+  /* A hardened v1 board cannot take an update from here; a v2 board can,
+     and any other v1 board moves to v2 -- whatever v1 firmware it runs. */
   const latest = fwLatest();
   if ((!meant || core) && latest !== null) {
     el.append(' ');
     if (fwOnBoard < latest && stage === 'board') {
       const b = document.createElement('button');
       b.className = 'link';
-      b.textContent = t('fw-link-update');
-      b.onclick = () => { $('fwmove').checked = false; openFirmware(); };
-      el.append(b);
-    } else if (!core && fwLatest() === fwOnBoard && fwHereV2 && stage === 'board') {
-      /* v1's latest, and v2 to move to */
-      const b = document.createElement('button');
-      b.className = 'link';
-      b.textContent = t('fw-link-move');
-      /* the dialog opens on the move: that is what was asked for */
-      b.onclick = () => { $('fwmove').checked = true; openFirmware(); };
+      b.textContent = t(core ? 'fw-link-update' : 'fw-link-move');
+      b.onclick = openFirmware;
       el.append(b);
     } else {
       el.append(t(fwOnBoard < latest ? 'fw-link-available' : 'fw-link-latest'));
@@ -1440,29 +1424,29 @@ $('bkrestore').onclick = async () => {
   });
 };
 
-/* ---- updating the firmware ------------------------------------------
+/* ---- moving a v1 board to v2 ------------------------------------------
  *
- * The board reboots into Micronucleus, which is a different USB device on a
- * different web API: plain vendor class, so WebUSB rather than WebHID, with a
- * picker of its own. Picking it needs a click no more than a few seconds old,
- * and the bootloader gives up and goes back to the old firmware about six
- * seconds after it starts -- so the click has to find the board ready, with
- * the window open and the password given. If it does not, this click gets it
- * ready and the next one does the update.
+ * The only update a v1 board gets from here: v1 is frozen at firmware 9, and
+ * v2 is better at everything v1 does. The board reboots into Micronucleus,
+ * which is a different USB device on a different web API: plain vendor
+ * class, so WebUSB rather than WebHID, with a picker of its own. Picking it
+ * needs a click no more than a few seconds old, and the bootloader gives up
+ * and goes back to the old firmware about six seconds after it starts -- so
+ * the click has to find the board ready, with the window open and the
+ * password given. If it does not, this click gets it ready and the next one
+ * does the move.
  *
- * Micronucleus does not touch the EEPROM, so the table, the password and the
- * serial number all survive.
+ * v2's core goes on through Micronucleus, and the board comes back asking
+ * for its firmware, which goes on over WebHID and over Micronucleus too.
+ * Neither touches the EEPROM, so the table, the password and the serial
+ * number all survive.
  */
 let fwOnBoard = 0;              /* what INFO said the board runs */
-let fwHere = null;              /* what web/firmware/ holds, once fetched */
 let upgrading = false;
 
 /* The first firmware that can reboot itself into the bootloader. Anything
-   older ignores the request, so it has to be updated the old way once. */
+   older ignores the request, so it has to be moved by hand. */
 const FW_FIRST_REBOOT = 3;
-
-fetch('firmware/digimacro.json', { cache: 'no-cache' }).then(r => r.json())
-  .then(j => { fwHere = j.fw; drawFirmware(); }).catch(() => {});
 
 /* For v2 boards: the firmware above the core, and the core API it was built
    for -- it goes only on a core that speaks the same. */
@@ -1471,15 +1455,15 @@ fetch('firmware/digimacro-v2.json', { cache: 'no-cache' }).then(r => r.json())
   .then(j => { fwHereV2 = j; drawFirmware();
                if (stage === 'recovery') drawRecovery(); }).catch(() => {});
 
-/* The newest firmware this page has for the board connected, or null. */
+/* The newest firmware this page has for the board connected, or null: on
+   v1, the v2 it would move to. */
 function fwLatest() {
-  if (!core) return fwHere;
+  if (!core) return fwHereV2 ? fwHereV2.app : null;
   return fwHereV2 && fwHereV2.api === core.api ? fwHereV2.app : null;
 }
 
 function drawFirmware() {
   $('fwhow').textContent = t(core ? 'fw-how-v2' : 'fw-how');
-  $('fwbootrow').hidden = !!core;       /* Micronucleus is v1's */
   if (core) {
     const here = fwLatest(), on = fwOnBoard;
     $('fwwhy').textContent = !fwHereV2 ? t('fw-none-here', { on })
@@ -1491,16 +1475,11 @@ function drawFirmware() {
     return;
   }
   const tooOld = fwOnBoard < FW_FIRST_REBOOT;
-  const moving = !!fwHereV2 && $('fwmove').checked;
-  $('fwmoverow').hidden = !fwHereV2;
-  $('fwmovelabel').textContent = fwHereV2 ? t('fw-move', { fw: fwHereV2.app }) : '';
-  $('fwbootrow').hidden = moving;       /* Micronucleus is about to go */
-  $('fwwhy').textContent = moving ? t('fw-move-why', { fw: fwHereV2.app })
-    : fwHere === null ? t('fw-none-here', { on: fwOnBoard })
-    : t(fwOnBoard < fwHere ? 'fw-newer' : 'fw-same', { on: fwOnBoard, here: fwHere })
-      + (tooOld ? ' ' + t('fw-too-old') : '');
-  $('fwwhy').className = 'prose' + (moving || (fwHere !== null && fwOnBoard < fwHere) ? ' ok' : ' dim');
-  $('fwupdate').disabled = busy || (!moving && fwHere === null) || tooOld;
+  $('fwwhy').textContent = !fwHereV2 ? t('fw-none-here', { on: fwOnBoard })
+    : t('fw-move-why', { on: fwOnBoard, fw: fwHereV2.app })
+      + (tooOld ? ' ' + t('fw-too-old', { on: fwOnBoard }) : '');
+  $('fwwhy').className = 'prose' + (fwHereV2 && !tooOld ? ' ok' : ' dim');
+  $('fwupdate').disabled = busy || !fwHereV2 || tooOld;
   renderWho();
 }
 
@@ -1560,7 +1539,6 @@ function openFirmware() {
   $('fwdialog').showModal();
 }
 $('fwclose').onclick = () => $('fwdialog').close();
-$('fwmove').addEventListener('change', drawFirmware);
 /* Not while an update runs: the board is half way to somewhere. */
 $('fwdialog').addEventListener('cancel', e => { if (busy) e.preventDefault(); });
 
@@ -1568,15 +1546,6 @@ async function fetchText(url) {
   const r = await fetch(url, { cache: 'no-cache' });
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
   return r.text();
-}
-
-/* A click on Continue, for when the picker needs one and the last click has
-   gone stale. */
-function nextClick() {
-  $('fwcontinue').hidden = false;
-  return new Promise(res => {
-    $('fwcontinue').onclick = () => { $('fwcontinue').hidden = true; res(); };
-  });
 }
 
 async function writeVia(m, app, what, noteId = 'fw-note', bar = $('fwbar')) {
@@ -1592,7 +1561,7 @@ async function writeVia(m, app, what, noteId = 'fw-note', bar = $('fwbar')) {
 
 $('fwupdate').onclick = async () => {
   if (core) { updateV2('fw-note', $('fwbar'), false); return; }
-  if (busy || !dev || fwHere === null) return;
+  if (busy || !dev || !fwHereV2) return;
   if (!navigator.usb) { note('fw-note', t('fw-no-webusb'), 'bad'); return; }
 
   /* Ready? If not, this click only gets it ready. */
@@ -1606,18 +1575,10 @@ $('fwupdate').onclick = async () => {
   }
 
   setBusy();
-  /* Moving to v2: v2's core goes on through Micronucleus, and the board
-     comes back asking for its firmware, which goes on over WebHID and over
-     Micronucleus too. No point upgrading a bootloader about to go. */
-  const moving = !!fwHereV2 && $('fwmove').checked;
-  const upgradeBoot = !moving && $('fwboot').checked;
   let done = false;
   try {
-    /* Both fetched before anything changes on the board. */
-    const app = parseIntelHex(await fetchText(moving ? 'firmware/digimacro-v2-core.hex'
-                                                     : 'firmware/digimacro.hex'), 8192);
-    const upgrader = upgradeBoot ? parseIntelHex(await fetchText(
-      'firmware/micronucleus-2.6-t85_default-upgrade.hex'), 8192) : null;
+    /* Fetched before anything changes on the board. */
+    const app = parseIntelHex(await fetchText('firmware/digimacro-v2-core.hex'), 8192);
 
     await access('fw-note');            /* the window is open: at most an unlock */
     upgrading = true;
@@ -1630,24 +1591,12 @@ $('fwupdate').onclick = async () => {
        as opened by the click: Chrome allows about five. */
     await sleep(1500);
     note('fw-note', t('fw-pick'), 'dim');
-    let m = await Micronucleus.request();
+    const m = await Micronucleus.request();
     if (!m) throw new Error(t('fw-no-bootloader'));
     m.checkChip();
     note('fw-note', t('fw-found', { version: m.info.version }), 'dim');
 
-    if (upgrader && !m.current) {
-      await writeVia(m, upgrader, 'Micronucleus 2.6');
-      await sleep(2500);                /* it rewrites itself, then reboots into
-                                           the new one, which waits: there is
-                                           no application to time out into */
-      note('fw-note', t('fw-pick-again'), 'ok');
-      await nextClick();
-      m = await Micronucleus.request();
-      if (!m) throw new Error(t('fw-no-bootloader-again'));
-      m.checkChip();
-    }
-
-    await writeVia(m, app, moving ? t('core-name') : `DigiMacro ${fwHere}`);
+    await writeVia(m, app, t('core-name'));
     done = true;
   } catch (e) {
     note('fw-note', e.message === 'REFUSED' ? t('refused')
@@ -1656,7 +1605,6 @@ $('fwupdate').onclick = async () => {
       note('fw-note', t('fw-failed', { msg: e.message }) + ' ' + t('fw-udev'), 'bad');
   } finally {
     $('fwbar').hidden = true;
-    $('fwcontinue').hidden = true;
     idle();
     if (upgrading) {
       /* The board left, so it is a new connection when it comes back: the
@@ -1669,8 +1617,7 @@ $('fwupdate').onclick = async () => {
       who('board-left', {}, 'dim');
       if (done) {
         $('fwdialog').close();
-        note('connect-note', moving ? t('fw-moved', { fw: fwHereV2.app })
-                                    : t('fw-done', { fw: fwHere }), 'ok');
+        note('connect-note', t('fw-moved', { fw: fwHereV2.app }), 'ok');
       }
       setTimeout(() => connect(false), done ? 1500 : 0);
     }
@@ -1970,17 +1917,21 @@ $('pad').addEventListener('click', e => {
   }
 });
 
-function irLearn() {
+/* No hold and no password: LEARN reads nothing, and the board types the
+   button once. */
+async function irLearn() {
+  if (busy || !dev) return;
   insert('{IR }');
   const el = lastField;
   if (!el) return;
   const at = el.selectionStart - 1;
   el.setSelectionRange(at, at);
-  run('table-note', async () => {
-    try { await ask(F_LEARN); }
-    catch (e) { throw e.message === 'REFUSED' ? new Error(t('ir-refused')) : e; }
+  try {
+    await ask(F_LEARN);
     note('table-note', t('ir-learning'), 'dim');
-  });
+  } catch (e) {
+    note('table-note', e.message === 'REFUSED' ? t('ir-refused') : e.message, 'bad');
+  }
 }
 
 let savedLang = null;

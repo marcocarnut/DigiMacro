@@ -1,6 +1,7 @@
-/* Checks web/micronucleus.js against the v1 firmware the app ships for v1
- * boards -- v1.0's firmware 9, frozen; v2 boards update without a bootloader
- * (test/coreupdate.js), and get their core through this same layout.
+/* Checks web/micronucleus.js against what the app writes through it: v2's
+ * core, which a new board and a v1 board moving to v2 both get through
+ * Micronucleus. Everything after that goes on without a bootloader
+ * (test/coreupdate.js).
  *
  * An upgrade that lays the reset vector out wrong is a board that sits in its
  * bootloader for ever, and nothing short of hardware would say so -- unless the
@@ -23,12 +24,12 @@ const target = (img, at) => {
   return ((((at >> 1) + (w & 0x0FFF) + 1) & 0x0FFF) << 1);
 };
 
-console.log('1. the shipped firmware parses, and fits');
-const app = mn.parseIntelHex(fs.readFileSync(path.join(FW, 'digimacro.hex'), 'utf8'), T85_FLASH);
+console.log('1. the shipped core parses, and fits');
+const app = mn.parseIntelHex(fs.readFileSync(path.join(FW, 'digimacro-v2-core.hex'), 'utf8'), T85_FLASH);
 check(app.end > 1000, `suspiciously small: ${app.end} bytes`);
 check(app.end <= APP_MAX, `${app.end} bytes, and Micronucleus 2.6 leaves ${APP_MAX}`);
-const version = JSON.parse(fs.readFileSync(path.join(FW, 'digimacro.json'), 'utf8')).fw;
-check(version === 9, `web/firmware says v1 is firmware ${version}; v1.0 shipped 9, and v1 is frozen`);
+check(!fs.existsSync(path.join(FW, 'digimacro.hex')),
+      'v1 firmware is back in web/firmware: v1 boards only move to v2 now');
 
 console.log('2. laid out for Micronucleus 2, reset goes to the bootloader');
 const img = mn.layoutApplication(app, APP_MAX, BOOT);
@@ -37,14 +38,14 @@ check(target(img, 0) === BOOT, `reset lands at 0x${(target(img, 0) || 0).toStrin
 
 console.log("3. ...and the bootloader's exit lands where the firmware's reset did");
 const own = target(app.data, 0);
-check(own !== null, "the firmware's own reset vector is not an rjmp");
+check(own !== null, "the core's own reset vector is not an rjmp");
 check(target(img, BOOT - 4) === own,
       `exit lands at 0x${(target(img, BOOT - 4) || 0).toString(16)}, reset was 0x${(own || 0).toString(16)}`);
 
 console.log('4. nothing else moved');
 let moved = 0;
 for (let a = 2; a < app.end; a++) if (img[a] !== app.data[a]) moved++;
-check(moved === 0, `${moved} bytes of the firmware changed`);
+check(moved === 0, `${moved} bytes of the core changed`);
 check(img[BOOT - 6] === 0xFF && img[BOOT - 5] === 0xFF,
       'the OSCCAL bytes must stay erased for the bootloader to fill');
 
@@ -53,14 +54,7 @@ let threw = false;
 try { mn.layoutApplication(app, app.end - 1, BOOT); } catch (e) { threw = true; }
 check(threw, 'an application one byte too big must be refused');
 
-console.log('6. the upgrader is an application that fits below the bootloader');
-const up = mn.parseIntelHex(fs.readFileSync(
-  path.join(FW, 'micronucleus-2.6-t85_default-upgrade.hex'), 'utf8'), T85_FLASH);
-check(up.end > 0 && up.end <= APP_MAX, `the upgrader is ${up.end} bytes`);
-check(target(mn.layoutApplication(up, APP_MAX, BOOT), 0) === BOOT,
-      'and lays out like any other application');
-
-console.log('7. a damaged hex file is refused');
+console.log('6. a damaged hex file is refused');
 const good = ':0400000001020304F2';
 threw = false;
 try { mn.parseIntelHex(good.replace('F2', 'F3'), 16); } catch (e) { threw = true; }

@@ -1024,7 +1024,7 @@ int main(void)
         memset(EE + (size_t)LOCK_MISSES, 0xFF, 3);
         CHECK(!hidLockState(), "(unlocked again)");
 
-        printf("24c. LEARN types the next button, only while the window is open\n");
+        printf("24c. LEARN types the next button, once, window or not, within ten seconds\n");
         hidAllow(1000);
         hidLearn();
         CHECK(!strcmp(press(0x07, 0xA8), "<00/27><00/24><00/2C><00/04><00/25>"),
@@ -1032,9 +1032,19 @@ int main(void)
         CHECK(!strcmp(press(0x07, 0x08), "<00/1C>"), "once: the next one plays");
         hidLearn();
         fake_ms += 2000;
-        CHECK(!strcmp(press(0x07, 0x08), ""),
-              "learning with the window shut types nothing at all: \"%s\"", typed);
+        CHECK(!hidAllowed(), "(the window has shut)");
+        CHECK(!strcmp(press(0x07, 0x08), "<00/27><00/24><00/2C><00/27><00/25>"),
+              "learning needs no window: \"%s\"", typed);
         CHECK(!strcmp(press(0x07, 0x08), "<00/1C>"), "and is forgotten");
+        hidLearn();
+        fake_ms += 9500;
+        CHECK(!strcmp(press(0x07, 0x08), "<00/27><00/24><00/2C><00/27><00/25>"),
+              "nine and a half seconds on, it still types: \"%s\"", typed);
+        hidLearn();
+        fake_ms += 10500;
+        CHECK(!strcmp(press(0x07, 0x08), "<00/1C>"),
+              "after ten, the button plays as if never asked: \"%s\"", typed);
+        CHECK(!strcmp(press(0x07, 0x08), "<00/1C>"), "and the next one too");
         typedn = 0; typed[0] = 0;
         type_hex(0x00); type_hex(0x9F); type_hex(0x10);
         CHECK(!strcmp(typed, "<00/27><00/27><00/26><00/09><00/1E><00/27>"),

@@ -1,6 +1,6 @@
 /*
  * v1's protocol, as the app now answers it: READ, WRITE, the password, the
- * host check, RESTART, and INFO's state bits. With it, what used to be the
+ * host check, RESTART, and INFO's state bits -- and v2's UPDATE and LEARN. With it, what used to be the
  * USB library's and is now the app's: the clock, the window, typing.
  *
  * Linked into every app, and replaced with it, so a bug here is fixed by an

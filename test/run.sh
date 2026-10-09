@@ -78,6 +78,14 @@ else
 fi
 
 echo
+echo "== the published page: one file, the firmware in it =="
+if command -v node >/dev/null 2>&1; then
+    node site.js
+else
+    echo "node not found, skipped"
+fi
+
+echo
 echo "== ...and against the firmware's decoder =="
 if command -v node >/dev/null 2>&1; then
     g++ -w -I. -I.. -o "$OUT"_hexplay hexplay.cpp

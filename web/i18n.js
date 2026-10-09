@@ -248,7 +248,8 @@ en: {
                   + 'seconds.',
   'fw-failed':      'The update stopped: {msg}',
   'fw-udev':        'On Linux the bootloader needs the Micronucleus line from '
-                  + 'web/60-digimacro.rules in /etc/udev/rules.d.',
+                  + 'web/60-digimacro.rules (github.com/marcocarnut/DigiMacro) '
+                  + 'in /etc/udev/rules.d.',
   'fw-done':        'Firmware {fw} written. The board is starting it now, and '
                   + 'will ask for the hold again.',
   'mn-too-big':     'the firmware is {n} bytes and this bootloader leaves {max}',
@@ -274,10 +275,11 @@ en: {
                   + 'quarter of a second is a dot, longer is a dash, and '
                   + '700 ms of silence ends it. Sixty-two codes exist, so a '
                   + 'table that uses many of them is easier to guess — which '
-                  + 'is what the lockout is for.',
+                  + 'is what the lockout is for. IR1 to IR30 are codes for '
+                  + 'macros only the remote reaches: no tapping makes them.',
   'ref-packed':     'Macros are packed end to end, so the only limit is 480 '
                   + 'bytes in total: two bytes of overhead each, one byte per '
-                  + 'keystroke, two per pause or repeat.',
+                  + 'keystroke, two per pause or repeat, four per {IR}.',
   'ref-layout':     'The board sends key presses, not letters, so what appears '
                   + 'is decided by the keyboard layout of the machine it is '
                   + 'plugged into — which is what the keyboard setting beside '
@@ -293,8 +295,8 @@ en: {
   refused:          'The board said no. Hold the pad for four seconds and try '
                   + 'again — reaching the table needs somebody at the board.',
   'udev-hint':      'On Linux a hidraw device is root-only until a udev rule '
-                  + 'says otherwise. web/60-digimacro.rules is that rule: copy '
-                  + 'it into /etc/udev/rules.d, run "sudo udevadm control '
+                  + 'says otherwise. web/60-digimacro.rules, in the source at '
+                  + 'github.com/marcocarnut/DigiMacro, is that rule: copy it into /etc/udev/rules.d, run "sudo udevadm control '
                   + '--reload", then unplug the board and plug it back in.',
   'connect-failed': 'could not connect: {msg}',
   connected:        'connected — firmware {fw}{state}, protocol {proto}',
@@ -307,7 +309,8 @@ en: {
   'hd-summary':     'Hardening',
   'hd-why':         'This board was built without a bootloader, for hardened '
                   + 'mode, and the chip says it is missing something hardened '
-                  + 'mode needs. HARDENED_MODE.md explains each. Before step 6, '
+                  + 'mode needs. v1.0\'s HARDENED_MODE.md explains each (git show '
+                  + 'v1.0:HARDENED_MODE.md). Before its step 6, '
                   + 'the lock bits are expected to be missing; after it, nothing '
                   + 'here should be.',
   'hd-boot':        'no bootloader',
@@ -691,7 +694,8 @@ pt: {
                   + 'segundos.',
   'fw-failed':      'A atualização parou: {msg}',
   'fw-udev':        'No Linux o bootloader precisa da linha do Micronucleus de '
-                  + 'web/60-digimacro.rules em /etc/udev/rules.d.',
+                  + 'web/60-digimacro.rules (github.com/marcocarnut/DigiMacro) '
+                  + 'em /etc/udev/rules.d.',
   'fw-done':        'Firmware {fw} gravado. A placa está iniciando agora, e vai '
                   + 'pedir o toque longo de novo.',
   'mn-too-big':     'o firmware tem {n} bytes e este bootloader deixa {max}',
@@ -718,11 +722,12 @@ pt: {
                   + 'traço, e 700 ms de silêncio encerram o código. Existem '
                   + 'sessenta e dois códigos, então uma tabela que use muitos '
                   + 'deles é mais fácil de adivinhar — que é para isso que '
-                  + 'serve o bloqueio.',
+                  + 'serve o bloqueio. IR1 a IR30 são códigos para macros que '
+                  + 'só o controle remoto alcança: nenhum toque os produz.',
   'ref-packed':     'As macros ficam empacotadas uma após a outra, então o '
                   + 'único limite são 480 bytes no total: dois bytes extras '
                   + 'cada, um byte por tecla, dois por pausa ou '
-                  + 'repetição.',
+                  + 'repetição, quatro por {IR}.',
   'ref-layout':     'A placa envia pressionamentos de tecla, não letras, então '
                   + 'o que aparece é decidido pelo layout de teclado da '
                   + 'máquina em que ela está ligada — que é o que a opção de '
@@ -738,8 +743,8 @@ pt: {
   refused:          'A placa recusou. Segure o sensor por quatro segundos e '
                   + 'tente de novo — chegar à tabela exige alguém na placa.',
   'udev-hint':      'No Linux um dispositivo hidraw é só do root até que uma '
-                  + 'regra do udev diga o contrário. web/60-digimacro.rules é '
-                  + 'essa regra: copie para /etc/udev/rules.d, rode "sudo '
+                  + 'regra do udev diga o contrário. web/60-digimacro.rules, no '
+                  + 'código em github.com/marcocarnut/DigiMacro, é essa regra: copie para /etc/udev/rules.d, rode "sudo '
                   + 'udevadm control --reload", depois desconecte e reconecte '
                   + 'a placa.',
   'connect-failed': 'não foi possível conectar: {msg}',
@@ -753,8 +758,8 @@ pt: {
   'hd-summary':     'Proteção',
   'hd-why':         'Esta placa foi gravada sem bootloader, para o modo '
                   + 'protegido, e o chip diz que falta algo de que o modo '
-                  + 'protegido precisa. O HARDENED_MODE.md explica cada item. '
-                  + 'Antes do passo 6 é normal faltarem os bits de trava; depois '
+                  + 'protegido precisa. O HARDENED_MODE.md da v1.0 explica cada '
+                  + 'item (git show v1.0:HARDENED_MODE.md). Antes do passo 6 dele é normal faltarem os bits de trava; depois '
                   + 'dele, nada aqui deveria faltar.',
   'hd-boot':        'sem bootloader',
   'hd-lock':        'bits de trava gravados, byte de trava 0xFC: um gravador não '
@@ -766,7 +771,7 @@ pt: {
                   + 'seletor, sem driver. É preciso segurar o sensor, e dar a '
                   + 'senha se houver uma. Interrompida no meio, a placa volta sem '
                   + 'firmware e pede de novo aqui. As macros, a senha, o '
-                  + 'bloqueio, a chave do computador e o número de série ficam '
+                  + 'bloqueio, a chave de computador e o número de série ficam '
                   + 'como estão.',
   'fw-api-other':   'O firmware desta página é para a API de núcleo {app}, e o '
                   + 'núcleo da placa fala {core}: não pode ir nesta placa.',
@@ -824,7 +829,7 @@ pt: {
                   + 'Isto grava o núcleo da v2 pelo Micronucleus; a placa então '
                   + 'volta pedindo o DigiMacro {fw}, que é gravado por cima do '
                   + 'Micronucleus, e o Micronucleus some. As macros, a senha, a '
-                  + 'chave do computador e o número de série ficam. Uma queda de '
+                  + 'chave de computador e o número de série ficam. Uma queda de '
                   + 'energia nos primeiros instantes desse segundo passo precisa '
                   + 'de um gravador para consertar, como qualquer gravação pelo '
                   + 'Micronucleus.',

@@ -155,6 +155,16 @@ release: $(O)/digimacro.hex $(O)/digimacro-full.hex
 	    > web/firmware/digimacro-v2.json
 	@cat web/firmware/digimacro-v2.json
 
+# What gets published, in build/release/: the page as one file, firmware
+# and all, and the host-key client for Linux (static, so it runs on any
+# distribution) and for Windows.
+site:
+	python3 tools/site.py build/release/index.html
+hosts:
+	$(MAKE) -C tools/hostauth static windows
+	mkdir -p build/release
+	cp tools/hostauth/digimacro-host-linux-x86_64 tools/hostauth/digimacro-host.exe build/release/
+
 # ---- the spike's apps --------------------------------------------------
 
 APPVER_A  = 1
@@ -197,5 +207,5 @@ clean:
 	rm -rf $(O)
 	$(MAKE) -C core/test clean
 
-.PHONY: all release spike page size test clean
+.PHONY: all release site hosts spike page size test clean
 .SECONDARY:

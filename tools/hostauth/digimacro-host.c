@@ -52,7 +52,7 @@
    with its author's domain and a colon, and this looks for that before it
    believes a device is a DigiMacro. Firmware 5 and older predate the prefix,
    and are known instead by their manufacturer and product names. Firmware 6
-   sent its serial cut short, as "postcogi", and matches no key: update it. */
+   sent its serial cut short, as "postcogi", and matches no key: move it to v2. */
 #define SERIAL_PREFIX   "postcogito.org:"
 #define OLD_NAME        "digimacro.postcogito.org DigiMacro"
 

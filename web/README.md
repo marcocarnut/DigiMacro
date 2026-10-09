@@ -10,7 +10,7 @@ then, in Chrome or Edge:
 
 | | |
 |---|---|
-| <http://localhost:8000/app.html> | **the app**: edit the macros and write them |
+| <http://localhost:8000/> | **the app**: edit the macros and write them |
 | <http://localhost:8000/hid.html> | a raw protocol page for developers: INFO, a dump, a write of the same bytes back |
 
 `table.js` turns macro text into the bytes the firmware plays, and back again
@@ -22,6 +22,13 @@ checked against each other rather than each being trusted alone.
 `i18n.js` holds every string the app says, in English and Brazilian
 Portuguese, and `test/i18n.js` checks that the two agree on which strings
 exist. `hid.html` is a developer tool and stays in English.
+
+**The published page is one file.** `make site` writes
+`build/release/index.html`: `index.html` with every script put inline and the
+firmware it installs embedded, so it fetches nothing and is all there is to
+upload. `hid.html` is not in it. `test/site.js` checks that the scripts still
+parse, that the firmware is carried byte for byte, and that the page asks for
+no file it does not carry.
 
 **`python3 -m http.server` sends no cache headers**, so Chrome applies its own
 heuristic freshness and will happily keep running an old `table.js` after you
@@ -59,8 +66,8 @@ grandparent, and a rule written with `ATTR` matches nothing and says nothing.
 Windows needs none of this: HID devices are openable as they are, which is the
 same reason WebHID wants no MS OS 2.0 descriptor.
 
-**Micronucleus is the exception, on both** -- setting a board up, moving a
-v1 board to v2, and updating a v1 board. Micronucleus is plain USB rather
+**Micronucleus is the exception, on both** -- setting a board up, and moving a
+v1 board to v2. Micronucleus is plain USB rather
 than HID, so the app reaches it over WebUSB. On Linux that needs the rule's
 last line; on Windows it needs a driver once, WinUSB installed with
 [Zadig](https://zadig.akeo.ie/) while the board is in its bootloader. A v2

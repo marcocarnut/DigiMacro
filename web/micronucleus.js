@@ -154,11 +154,6 @@ class Micronucleus {
     });
   }
 
-  /* 2.6 or newer, which is what the upgrader installs. */
-  get current() {
-    return this.info.major > 2 || (this.info.major === 2 && this.info.minor >= 6);
-  }
-
   /* An ATtiny85, as far as the bootloader says; 1.x does not say. */
   checkChip() {
     const s = this.info.signature;

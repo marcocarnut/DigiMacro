@@ -78,6 +78,12 @@
   [hidden] { display: none !important; }
   .note { font-size: .85rem; margin: .5rem 0 0; max-width: 44rem; }
   .note:empty, .prose:empty { display: none; }
+  /* A request for the hold: the one thing the page cannot do, so it should
+     not be missed. Steady, and bold, where motion is not wanted. */
+  .hold { color: var(--accent); font-weight: 600;
+          animation: hold-pulse 1.4s ease-in-out infinite; }
+  @keyframes hold-pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .hold { animation: none; } }
   .prose { max-width: 40rem; }
   #gate { margin-top: 1.4rem; }
   .form { display: grid; grid-template-columns: max-content 6rem;
@@ -889,6 +895,7 @@ function drawGate() {
   $('gate-msg').textContent = !open ? t(has ? 'gate-hold-password' : 'gate-hold')
                             : password === null && has ? t('gate-type-password')
                             : t('gate-reading');
+  $('gate-msg').classList.toggle('hold', !open);
   if (open && password === null && has && document.activeElement !== $('gatepass'))
     $('gatepass').focus();
 }
@@ -900,7 +907,7 @@ function givePassword() {
   if (!v) { note('gate-note', t('password-empty-unlock'), 'bad'); return; }
   password = v;
   $('gatepass').value = '';
-  note('gate-note', state_byte & ST_OPEN ? '' : t('gate-waiting'), 'dim');
+  note('gate-note', state_byte & ST_OPEN ? '' : t('gate-waiting'), 'hold');
   drawGate();
 }
 $('unlock').onclick = givePassword;
@@ -948,13 +955,14 @@ async function enterBoard() {
 async function access(noteId) {
   let s = await refreshState();
   if (!(s & ST_OPEN)) {
-    note(noteId, t('hold-now'), 'dim');
+    note(noteId, t('hold-now'), 'hold');
     const until = Date.now() + 60000;
     while (!(s & ST_OPEN)) {
       if (Date.now() > until) throw new Error(t('hold-timeout'));
       await sleep(400);
       s = await refreshState();
     }
+    note(noteId, '');                   /* held: stop asking */
   }
   if (!wantsPassword(s)) return;
   if (password !== null && await tryUnlock(noteId)) return;
@@ -1452,7 +1460,7 @@ const FW_FIRST_REBOOT = 3;
 /* For v2 boards: the firmware above the core, and the core API it was built
    for -- it goes only on a core that speaks the same. */
 let fwHereV2 = null;            /* { app, core, api } */
-fetch('firmware/digimacro-v2.json', { cache: 'no-cache' }).then(r => r.json())
+fetchText('firmware/digimacro-v2.json').then(JSON.parse)
   .then(j => { fwHereV2 = j; drawFirmware();
                if (stage === 'recovery') drawRecovery(); }).catch(() => {});
 
@@ -1543,7 +1551,13 @@ $('fwclose').onclick = () => $('fwdialog').close();
 /* Not while an update runs: the board is half way to somewhere. */
 $('fwdialog').addEventListener('cancel', e => { if (busy) e.preventDefault(); });
 
+/* The published page is one file: `make site` puts the firmware in it, as
+   EMBEDDED, and nothing is fetched. Served from web/, it fetches. */
 async function fetchText(url) {
+  if (typeof EMBEDDED !== 'undefined') {
+    if (url in EMBEDDED) return EMBEDDED[url];
+    throw new Error(`${url}: not in this page`);
+  }
   const r = await fetch(url, { cache: 'no-cache' });
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
   return r.text();

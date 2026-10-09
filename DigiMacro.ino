@@ -1,8 +1,9 @@
 /*
  * DigiMacro -- a morse-tapped macro keyboard on an ATtiny85 Digispark.
  *
- * One input, a touch pad on P0. Tap a code in dots and dashes; if the table
- * in EEPROM has an entry for that code, the board types it as keystrokes.
+ * A touch pad on P0, and optionally an IR remote on P2. Tap a code in dots
+ * and dashes; if the table in EEPROM has an entry for that code, the board
+ * types it as keystrokes.
  * Hold the pad four seconds and the app may read and write the table for the
  * next half minute.
  *

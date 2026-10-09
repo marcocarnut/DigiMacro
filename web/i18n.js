@@ -16,6 +16,8 @@ const STRINGS = {
 en: {
   'lang-name':      'English',
   tagline:          'Tap a code, type a macro.',
+  'whats-this':     "what's this?",
+  'readme-url':     'https://github.com/marcocarnut/DigiMacro#readme',
   keyboard:         'keyboard',
   language:         'language',
   connect:          'Connect',
@@ -451,6 +453,8 @@ en: {
 pt: {
   'lang-name':      'Português',
   tagline:          'Toque um código, digite uma macro.',
+  'whats-this':     'o que é isto?',
+  'readme-url':     'https://github.com/marcocarnut/DigiMacro/blob/main/README.pt-BR.md',
   keyboard:         'teclado',
   language:         'idioma',
   connect:          'Conectar',
@@ -926,7 +930,6 @@ function applyLang(root) {
     document.documentElement.lang = lang === 'pt' ? 'pt-BR' : 'en';
 }
 
-/* What the browser asks for, if we speak it. */
 /* Portuguese if the browser lists it at all, even after English: a
    Brazilian's browser often says en-US first. Otherwise the first language
    there are strings for. */

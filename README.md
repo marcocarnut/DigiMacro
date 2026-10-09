@@ -1,5 +1,7 @@
 # DigiMacro
 
+**English** · [Português](README.pt-BR.md)
+
 A morse-activated macro keyboard on an ATtiny85 Digispark, configured from a
 web page.
 
@@ -14,6 +16,15 @@ sensor (TSOP4838 or similar).
 It can also automatically type on power-up (that was actually the original
 use case of the very first version many years ago: having an LG TV start
 its built-in browser automatically when turned on.)
+
+<p align="center">
+  <img src="docs/digimacro.jpg" width="420"
+       alt="A Digispark with a bare wire soldered to P0 and an IR receiver wired to P2">
+</p>
+
+*The whole thing: a Digispark, a bare wire on P0 bent round the edge of the
+board as the touch pad, and — optional — a TSOP4838 IR receiver with its
+output wired to P2.*
 
 > ### ⚠️ Storing passwords or secrets? Read [HARDENED_MODE.md](HARDENED_MODE.md) first — all of it.
 >
@@ -85,7 +96,7 @@ v2 is better in every way. The page still offers to move a v1 board to v2.
    cd web && python3 -m http.server 8000
    ```
 
-   Then open `http://localhost:8000/app.html`. Any https host serving
+   Then open `http://localhost:8000/`. Any https host serving
    `web/` works the same way.
 3. **Put v2 on the board.** A Digispark as it comes: press **Set up a new
    board**, plug the board in, press it again within five seconds and pick
@@ -130,7 +141,7 @@ the board is locked.
 
 ## The app
 
-`web/app.html` shows one thing at a time:
+`web/index.html` shows one thing at a time:
 
 - **Nothing connected:** only Connect.
 - **Connected:** the hold, and the password if the board has one, typed before
@@ -316,7 +327,11 @@ guarded code on the wrong computer does not clear a guesser's misses.
 The key is eight random bytes, made in the app's Host section, written to the
 board, and downloaded as a file named after the board's serial number. The
 client is `tools/hostauth`, one C file with no library, for Linux and
-Windows. On Linux it needs the same udev rule as the app:
+Windows. Both are ready-built on the
+[releases page](https://github.com/marcocarnut/DigiMacro/releases):
+`digimacro-host-linux-x86_64`, statically linked so it runs on any
+distribution, and `digimacro-host.exe`. On Linux it needs the same udev rule
+as the app. Built from source:
 
 ```
 make -C tools/hostauth install            # into ~/.local/bin
@@ -327,9 +342,9 @@ digimacro-host                            # once
 digimacro-host -e 30                      # every 30 seconds, for as long as it runs
 ```
 
-For Windows, `make -C tools/hostauth windows` cross-compiles
-`digimacro-host.exe` with MinGW-w64 (`gcc-mingw-w64-x86-64` on Debian and
-Ubuntu). It is a single file needing nothing installed beside it, and it reads
+For Windows, take `digimacro-host.exe` from the releases page, or let
+`make -C tools/hostauth windows` cross-compile it with MinGW-w64
+(`gcc-mingw-w64-x86-64` on Debian and Ubuntu). It is a single file needing nothing installed beside it, and it reads
 its keys from `%APPDATA%\digimacro\host.key`:
 
 ```
@@ -502,6 +517,12 @@ offers the update to every board running something older — only if its core
 speaks the same API. The page carries the files itself, so serving it needs
 no AVR toolchain.
 
+What gets published goes into `build/release/`: `make site` builds the page
+as one file, `index.html`, with its scripts and the firmware inside it, and
+`make hosts` builds `digimacro-host-linux-x86_64` (static) and
+`digimacro-host.exe`. The page is all the website needs; the two clients go
+on the GitHub release.
+
 ## How it works
 
 ### It never stops being a keyboard
@@ -563,9 +584,10 @@ and UNLOCK when there is no firmware; the firmware answers the rest.
 | `0x66` FREAD | flash, up to 32 bytes: published firmware, so no gate. Refused while a page waits to be written |
 | `0x67` COMMIT | the new firmware checks out: start it |
 | `0x68` UPDATE | the firmware opens the update window: six seconds for the first PAGE |
+| `0x69` LEARN | the next remote button, within ten seconds, is typed as two hex bytes rather than played |
 | `0xEE` | comes back in place of the command when a request is refused: the window is shut, the password has not been given, the password or host key is wrong or came within a second of a wrong one, or the command is not one there is |
 
-INFO, HOSTAUTH and FREAD need no gate. PAGE needs the password if one is set,
+INFO, HOSTAUTH, FREAD and LEARN need no gate. PAGE needs the password if one is set,
 and with firmware running, the update window; COMMIT needs only pages taken
 and firmware that checks out. UNLOCK needs the window — and with only the
 core, nothing at all. Everything else needs the window, and the password if
@@ -631,8 +653,9 @@ layout mapping:
 
 Usages `0x01`–`0x03` are states a keyboard reports, never keys anyone
 presses, so those three values are free to be escapes, and so are the same
-three with bit 7 set. Hence the test for an escape: a byte whose low seven
-bits are below four. All six are taken:
+three with bit 7 set, and `0x80`, Shift with no key at all. Hence the test
+for an escape: a byte whose low seven bits are below four. All seven are
+taken:
 
 | | |
 |---|---|
@@ -642,6 +665,7 @@ bits are below four. All six are taken:
 | `0x81 hh` | carry on with the macro whose header is `hh-1` |
 | `0x82` | mark: what follows repeats as a group, not as one keystroke |
 | `0x83 nn` | stop unless the host sent its key lately: quietly if `nn` is 1, as an empty code if 2 |
+| `0x80 a c x` | where the remote's button `a`/`c` starts this macro: `a` and `c` with bit 7 forced on, `x` = `0x80` plus their own top bits (`a`'s in bit 0, `c`'s in bit 1). Played through, it does nothing |
 
 No argument may be zero, since a zero byte ends the macro. `0x03` is
 run-length coding: "left arrow eleven times" costs three bytes rather than
@@ -714,16 +738,17 @@ exercises the table walk, every escape, the bounds that keep a malformed table
 from reaching the reserved bytes, the morse decoding from the input pin, the
 password, the lockout and the host check, and both ways of reading the pad.
 Then the app's macro language on its own; the two languages against each
-other; v1's firmware laid out for Micronucleus, with both jumps decoded and
+other; v2's core laid out for Micronucleus, with both jumps decoded and
 followed to where they land; the page's updates against a fake v2 board that
 halts, reads back old pages, is interrupted by another program and is
 unplugged half way; the core itself, compiled for the host with the
 firmware's library and asked everything a host can ask, twice — with the
 firmware's region to the end of the chip and stopping below Micronucleus;
 the backups, with scrypt checked against node's own and a file that opens
-only for its password; and last, across the language boundary, a table
-encoded by `web/table.js` played through the firmware. Ten suites, a few
-seconds. Without `node`, the six that need it are skipped.
+only for its password; the published page, one file with the firmware in
+it; and last, across the language boundary, a table encoded by
+`web/table.js` played through the firmware. Eleven suites, a few seconds.
+Without `node`, the seven that need it are skipped.
 
 ## Layout
 
@@ -735,9 +760,11 @@ seconds. Without `node`, the six that need it are skipped.
 | `Makefile` | builds all of it |
 | `test/` | host build of the real sketch against stub hardware, and the web side's tests |
 | `tools/hostauth/` | the client that sends the host key, for Linux and Windows |
-| `web/` | `app.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `backup.js` the backups, `60-digimacro.rules` the udev rule |
+| `web/` | `index.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `backup.js` the backups, `60-digimacro.rules` the udev rule |
 | `web/firmware/` | what the page installs: v2's firmware, core and full image |
+| `docs/` | the photo above |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |
+| `*.pt-BR.md` | this README and HARDENED_MODE.md in Brazilian Portuguese |
 
 ## Related
 

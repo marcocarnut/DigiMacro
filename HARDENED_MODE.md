@@ -1,5 +1,7 @@
 # Hardened mode
 
+**English** · [Português](HARDENED_MODE.pt-BR.md)
+
 Read all of this before you put a password, a passphrase or anything else
 secret on a DigiMacro board.
 
@@ -253,8 +255,8 @@ again whenever the macros change.
 A v1 board — firmware 9 or older — keeps Micronucleus, which takes a new
 sketch from anyone for a few seconds after every replug, password or not:
 v1's password lives in its firmware, and the sketch replaces it. Hardening a
-v1 board therefore means removing the bootloader as well, and giving up
-updates from the page; v1.0's own copy of this document (`git show
+v1 board therefore means removing the bootloader as well, which also rules
+out the page's move to v2; v1.0's own copy of this document (`git show
 v1.0:HARDENED_MODE.md`) walks through it, and the page's status line still
 says **(hardened)** or **(not fully hardened…)** for such boards. Moving the
 board to v2 first is simpler, and keeps the updates.

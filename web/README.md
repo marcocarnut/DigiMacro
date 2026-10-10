@@ -73,6 +73,14 @@ last line; on Windows it needs a driver once, WinUSB installed with
 [Zadig](https://zadig.akeo.ie/) while the board is in its bootloader. A v2
 board updates over WebHID, and needs neither.
 
+**Chrome on Android has no WebHID.** There `webusb.js` stands in for it,
+sending the same feature reports to the vendor interface core 4 adds (see
+*It never stops being a keyboard* in the top README), and `vkbd.js` brings
+the keyboard Android puts away while the board is plugged in. To try a local
+copy on a phone, `adb reverse tcp:8000 tcp:8000` makes the phone's
+`localhost:8000` the computer's, which keeps it a secure context.
+`test/webusb.js` and `test/vkbd.js` check both in node.
+
 ## The raw protocol page
 
 `hid.html` speaks the vendor report as bytes, with none of the app's help:
@@ -82,3 +90,4 @@ back exactly the bytes it just read, since every byte of the EEPROM belongs to
 something now and there is nowhere safe to scribble. INFO always answers. READ
 and WRITE need the pad held first, and on a board with a password, the
 password given in the app — the unlock lasts until the window closes.
+It uses WebHID alone, so it does not run on Android.

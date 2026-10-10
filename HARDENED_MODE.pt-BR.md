@@ -15,7 +15,7 @@ moram todos no firmware, que é exatamente o que um firmware desses substitui.
 **Uma senha fecha essa porta.** Quem a verifica é o núcleo da placa, não o
 firmware, e uma atualização precisa dela, haja firmware rodando ou não — e
 uma placa que ficou com a atualização pela metade encerra o próprio
-desbloqueio depois de alguns segundos. Mas a senha não faz nada contra quem
+destravamento depois de alguns segundos. Mas a senha não faz nada contra quem
 abre o chip com um gravador: lendo a flash e a EEPROM diretamente, senha e
 tudo. O modo protegido fecha essa porta também. Ele precisa de um gravador
 ISP uma vez, é permanente até você decidir apagar tudo, e a placa continua se
@@ -136,7 +136,7 @@ tudo.
 Pela página — **Preparar uma placa nova** para um Digispark como vem de
 fábrica, **(mudar para a v2…)** para uma placa na v1 — ou com o gravador,
 gravando `web/firmware/digimacro-v2-full.hex` como mostra a seção *Com um
-gravador* do README. Conecte, e entre com o toque longo.
+gravador* do [README](README.pt-BR.md#com-um-gravador). Conecte, e entre com o toque longo.
 
 ### 2. Configure
 

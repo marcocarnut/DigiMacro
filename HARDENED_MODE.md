@@ -128,8 +128,8 @@ losing everything.
 
 From the page — **Set up a new board** for a Digispark as it comes, **(move
 to v2…)** for a board on v1 — or with the programmer, writing
-`web/firmware/digimacro-v2-full.hex` as the README's *With a programmer*
-shows. Connect, and get in with the hold.
+`web/firmware/digimacro-v2-full.hex` as the [README](README.md#with-a-programmer)'s *With a
+programmer* shows. Connect, and get in with the hold.
 
 ### 2. Set it up
 

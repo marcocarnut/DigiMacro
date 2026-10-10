@@ -72,10 +72,13 @@ v2 is better in every way. The page still offers to move a v1 board to v2.
   never stops being a keyboard*, below). A board set up before core 4 keeps
   its older core, which only a programmer rewrites (*With a programmer*):
   save a backup first, since that erases the EEPROM. Tested on Linux, on
-  Windows 10 in a virtual machine and on Android 10; macOS should work the
-  same way in Chrome or Edge, needing nothing installed, but nobody has
-  tried it yet. The board itself types into anything that takes a USB
-  keyboard, phones included; only setting it up needs the page.
+  Windows 10 in a virtual machine and on Android, setting a board up
+  included; macOS should work the same way in Chrome or Edge, needing
+  nothing installed, but nobody has tried it yet. Android puts its own on-screen keyboard away while the board
+  is plugged in, since the board is a keyboard, so the page brings one: ⌨ at
+  the top, on by default on a touch screen. The board itself types into
+  anything that takes a USB keyboard, phones included; only setting it up
+  needs the page.
 - **To install it,** nothing but the page: the released firmware is committed
   in `web/firmware/`.
 - **To build it,** `make`, `python3` and avr-gcc, on Linux. The Makefile looks
@@ -101,9 +104,11 @@ header is all the pad it needs.*
    ```
    On Windows, Micronucleus needs a driver once, for setting a board up: run
    [Zadig](https://zadig.akeo.ie/) while the board sits in its bootloader, the
-   first few seconds after plugging it in, and install WinUSB for it. The
-   keyboard itself needs nothing anywhere. If the board was set up on
-   Linux, Windows needs nothing installed at all.
+   first few seconds after plugging it in, and install WinUSB for it (the
+   page says so if Windows refuses it). Configuring a board that is already
+   set up needs nothing installed, on Windows or anywhere else: the page
+   talks to it over HID, or over WebUSB on Android, and neither wants a
+   driver. macOS and Android need nothing even for setting a board up.
 2. **Open the app.** Point your browser to:
 
    https://digimacro.postcogito.org/
@@ -772,14 +777,15 @@ Then the app's macro language on its own; the two languages against each
 other; v2's core laid out for Micronucleus, with both jumps decoded and
 followed to where they land; the page's updates against a fake v2 board that
 halts, reads back old pages, is interrupted by another program and is
-unplugged half way; WebUSB standing in for WebHID, against another; the core
-itself, compiled for the host with the firmware's library and asked everything
-a host can ask, twice — with the firmware's region to the end of the chip and
+unplugged half way; WebUSB standing in for WebHID, against another; the page's
+own keyboard, every key held to what the board can type; the core itself,
+compiled for the host with the firmware's library and asked everything a host
+can ask, twice — with the firmware's region to the end of the chip and
 stopping below Micronucleus; the backups, with scrypt checked against node's
 own and a file that opens only for its password; the published page, one file
 with the firmware in it; and last, across the language boundary, a table
-encoded by `web/table.js` played through the firmware. Twelve suites, a few
-seconds. Without `node`, the eight that need it are skipped.
+encoded by `web/table.js` played through the firmware. Thirteen suites, a few
+seconds. Without `node`, the nine that need it are skipped.
 
 ## Layout
 
@@ -791,7 +797,7 @@ seconds. Without `node`, the eight that need it are skipped.
 | `Makefile` | builds all of it |
 | `test/` | host build of the real sketch against stub hardware, and the web side's tests |
 | `tools/hostauth/` | the client that sends the host key, for Linux and Windows |
-| `web/` | `index.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `webusb.js` reaches the board without WebHID, `backup.js` the backups, `60-digimacro.rules` the udev rule |
+| `web/` | `index.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `webusb.js` reaches the board without WebHID, `vkbd.js` the on-screen keyboard, `backup.js` the backups, `60-digimacro.rules` the udev rule |
 | `web/firmware/` | what the page installs: v2's firmware, core and full image |
 | `docs/` | the photos above |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |

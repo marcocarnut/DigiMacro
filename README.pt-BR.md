@@ -75,10 +75,13 @@ v2.
   preparada antes do núcleo 4 fica com o núcleo antigo, que só um gravador
   regrava (*Com um gravador*): salve uma cópia de segurança antes, porque
   isso apaga a EEPROM. Testado no Linux, no Windows 10 numa máquina virtual
-  e no Android 10; o macOS deve funcionar do mesmo jeito no Chrome ou no
-  Edge, sem instalar nada, mas ninguém testou ainda. A placa em si digita em
-  qualquer coisa que aceite um teclado USB, celulares inclusive; só a
-  configuração precisa da página.
+  e no Android, inclusive preparando uma placa; o macOS deve funcionar do
+  mesmo jeito no Chrome ou no Edge, sem instalar nada, mas ninguém testou
+  ainda. O Android guarda o
+  próprio teclado na tela enquanto a placa está conectada, já que a placa é
+  um teclado, então a página traz um: ⌨ no alto, ligado por padrão numa tela
+  de toque. A placa em si digita em qualquer coisa que aceite um teclado
+  USB, celulares inclusive; só a configuração precisa da página.
 - **Para instalar,** nada além da página: o firmware publicado está versionado
   em `web/firmware/`.
 - **Para compilar,** `make`, `python3` e avr-gcc, no Linux. O Makefile procura
@@ -105,8 +108,11 @@ pinos é todo o sensor de que ele precisa.*
    No Windows, o Micronucleus precisa de um driver uma vez, para preparar uma
    placa: rode o [Zadig](https://zadig.akeo.ie/) enquanto a placa está no
    bootloader, nos primeiros segundos depois de conectá-la, e instale o WinUSB
-   para ela. O teclado em si não precisa de nada em lugar nenhum. Se a placa
-   foi preparada no Linux, o Windows não precisa de nada instalado.
+   para ela (a página avisa, se o Windows recusar o acesso). Configurar uma
+   placa já preparada não precisa de nada instalado, no Windows ou em lugar
+   nenhum: a página fala com ela por HID, ou por WebUSB no Android, e nenhum
+   dos dois pede driver. O macOS e o Android não precisam de nada nem para
+   preparar uma placa.
 2. **Abra o aplicativo.** Aponte o navegador para:
 
    https://digimacro.postcogito.org/
@@ -811,15 +817,16 @@ aplicativo sozinha; as duas linguagens uma contra a outra; o núcleo da v2
 montado para o Micronucleus, com os dois saltos decodificados e seguidos até
 onde vão parar; as atualizações da página contra uma placa v2 simulada que
 trava, devolve páginas antigas, é interrompida por outro programa e é
-desconectada no meio; o WebUSB no lugar do WebHID, contra outra; o próprio
-núcleo, compilado para o computador com a biblioteca do firmware e submetido a
-tudo o que um computador pode perguntar, duas vezes — com a região do firmware
-indo até o fim do chip e parando abaixo do Micronucleus; as cópias de
-segurança, com o scrypt conferido contra o do próprio node e um arquivo que só
-abre com a sua senha; a página publicada, um arquivo só com o firmware dentro;
-e, por último, atravessando a fronteira entre as linguagens, uma tabela
-codificada pelo `web/table.js` executada no firmware. Doze suítes, poucos
-segundos. Sem `node`, as oito que precisam dele são puladas.
+desconectada no meio; o WebUSB no lugar do WebHID, contra outra; o teclado da
+própria página, cada tecla conferida contra o que a placa consegue digitar; o
+próprio núcleo, compilado para o computador com a biblioteca do firmware e
+submetido a tudo o que um computador pode perguntar, duas vezes — com a região
+do firmware indo até o fim do chip e parando abaixo do Micronucleus; as cópias
+de segurança, com o scrypt conferido contra o do próprio node e um arquivo que
+só abre com a sua senha; a página publicada, um arquivo só com o firmware
+dentro; e, por último, atravessando a fronteira entre as linguagens, uma
+tabela codificada pelo `web/table.js` executada no firmware. Treze suítes,
+poucos segundos. Sem `node`, as nove que precisam dele são puladas.
 
 ## Organização
 
@@ -831,7 +838,7 @@ segundos. Sem `node`, as oito que precisam dele são puladas.
 | `Makefile` | compila tudo isso |
 | `test/` | o build no computador do sketch de verdade contra hardware simulado, e os testes do lado web |
 | `tools/hostauth/` | o cliente que manda a chave de computador, para Linux e Windows |
-| `web/` | `index.html` é o aplicativo, `hid.html` uma página de protocolo cru para desenvolvedores, `table.js` e `i18n.js` o que eles compartilham, `coreupdate.js` atualiza placas v2, `micronucleus.js` acessa o Micronucleus, `webusb.js` acessa a placa sem WebHID, `backup.js` as cópias de segurança, `60-digimacro.rules` a regra do udev |
+| `web/` | `index.html` é o aplicativo, `hid.html` uma página de protocolo cru para desenvolvedores, `table.js` e `i18n.js` o que eles compartilham, `coreupdate.js` atualiza placas v2, `micronucleus.js` acessa o Micronucleus, `webusb.js` acessa a placa sem WebHID, `vkbd.js` o teclado na tela, `backup.js` as cópias de segurança, `60-digimacro.rules` a regra do udev |
 | `web/firmware/` | o que a página instala: o firmware, o núcleo e a imagem completa da v2 |
 | `docs/` | as fotos lá de cima |
 | `HARDENED_MODE.md` | como deixar uma placa apta a guardar segredos, e o que isso ainda não protege |

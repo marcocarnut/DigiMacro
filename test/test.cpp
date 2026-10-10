@@ -1000,6 +1000,31 @@ int main(void)
             CHECK(!typedn, "a blip is not a bit: \"%s\"", typed);
         }
 
+        /* An LG TV's remote, power, as the IR spike saw it: from one falling
+           edge to the next, in us. Its first is 11.1 ms, not 13.5 -- in the
+           second frame the burst even broke up, and the edges still fell
+           in the same places. */
+        {
+            static const uint16_t lg[2][33] = {
+                { 11170, 1116, 1116, 2171, 1178, 1054, 1054, 1054, 1054, 2171, 2295,
+                  1116, 2171, 2233, 2295, 2233, 2233, 1116, 1116, 1054, 2171, 1116,
+                  1054, 1054, 1054, 2171, 2233, 2295, 1116, 2171, 2295, 2233, 2233 },
+                { 11108, 1178, 1116, 2171, 1116, 1054, 1054, 1054, 1054, 2171, 2295,
+                  1116, 2171, 2233, 2295, 2233, 2233, 1116, 1116, 1054, 2171, 1116,
+                  1054, 1054, 1054, 2171, 2233, 2295, 1116, 2171, 2295, 2233, 2233 },
+            };
+            table_reset();
+            add(".", { IRTAG(0x04, 0x08), K('l'), K('g') });
+            for (int k = 0; k < 2; k++) {
+                typedn = 0; typed[0] = 0;
+                edge(0, true);
+                for (int i = 0; i < 33; i++) edge(IR_T(lg[k][i]), false);
+                app_loop();
+                CHECK(!strcmp(typed, "<00/0F><00/0A>"),
+                      "an LG remote's frame %d is {IR 04 08}: \"%s\"", k + 1, typed);
+            }
+        }
+
         /* A {pause 12.8} is 0x01 0x80, and what follows it can look like
            an {IR}'s bytes; the walk knows it is a pause. */
         table_reset();

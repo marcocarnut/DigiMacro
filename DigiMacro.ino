@@ -1175,7 +1175,11 @@ void autoexec_run(void)
  *
  * and, while the button stays down, a repeat every 108 ms that carries no
  * code. Only the falling edges matter: from one to the next is 13.5 ms
- * before the first bit, and 1.125 or 2.25 ms for a bit. Timer0 runs free at
+ * before the first bit, and 1.125 or 2.25 ms for a bit. The first is taken
+ * from 10 ms: an LG TV's remote arrives at 11.1, the receiver's gain control
+ * having cut 2 ms off its 9 ms burst (its bursts all come out short, and
+ * the gaps after them long by as much). A repeat, 11.25, gets in as well,
+ * and no further: no bits follow it. Timer0 runs free at
  * CK/1024, 62 us a tick, and the interrupt reads and clears it, so each
  * interval arrives as one byte; a gap of more than 16 ms wraps it, and the
  * wrap's flag says so.
@@ -1215,7 +1219,7 @@ ISR(INT0_vect, ISR_NOBLOCK)
         TIFR = 1 << TOV0;
         t = 0xFF;
     }
-    if (t >= IR_T(12500) && t <= IR_T(14500)) {
+    if (t >= IR_T(10000) && t <= IR_T(14500)) {
         ir_left = 32;           /* the start of a frame */
     } else if (ir_left && t >= IR_T(800) && t <= IR_T(2800)) {
         ir_bits >>= 1;

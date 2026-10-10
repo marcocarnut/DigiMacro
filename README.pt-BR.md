@@ -249,6 +249,11 @@ verificação `{host}` vale onde quer que o controle comece. Segurar um botão
 executa a macro dele uma vez. O receptor é opcional, e `HAVE_IR 0` em
 `DigiMacro.ino` compila sem ele.
 
+Um controle que o **botão do controle** nunca ouve é um que o decodificador
+não consegue ler: `make irspike` (*Compilando*) mostra o que o receptor recebe
+dele. Foi assim que o controle de uma TV LG se revelou NEC, afinal, com um
+início que o receptor encurtava; o firmware 15 o aceita.
+
 ### Inicialização
 
 Uma macro pode se digitar sozinha quando a placa é conectada. Ela é guardada
@@ -801,6 +806,13 @@ uma `=1`:
 page` geram o que provou a v2 antes de o DigiMacro passar para ela — um
 núcleo que fica abaixo do Micronucleus, três aplicativos pequenos e uma
 página que alterna entre eles — em `build/v2-spike/`.
+
+`make irspike` gera o spike do infravermelho, `app/irspike.c`: um
+aplicativo no lugar do DigiMacro que digita cada quadro que o receptor vê,
+em microssegundos de portadora e de silêncio, onde estiver o foco. O
+`irspike.hex` entra pelo seletor de arquivo daquela página do spike (a
+placa mantém a tabela), ou o `irspike-full.hex` por um gravador; ele deixa
+a janela aberta, então a página põe o DigiMacro de volta sem toque longo.
 
 ## Testes
 

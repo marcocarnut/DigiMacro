@@ -243,6 +243,11 @@ the remote, as it ignores taps, and a `{host}` check holds wherever the
 remote starts. Holding a button plays its macro once. The receiver is
 optional, and `HAVE_IR 0` in `DigiMacro.ino` builds without it.
 
+A remote that **remote button** never hears is one the decoder cannot read:
+`make irspike` (*Building*) shows what the receiver gets from it. That is how an
+LG TV's remote turned out to be NEC after all, with a leader the receiver
+had cut short; firmware 15 takes it.
+
 ### Startup
 
 One macro can type itself when the board is plugged in. It is stored as the
@@ -762,6 +767,13 @@ each `=1`:
 page` build what proved v2 before DigiMacro moved onto it — a core that keeps
 below Micronucleus, three small apps, and a page that swaps them — into
 `build/v2-spike/`.
+
+`make irspike` builds the IR spike, `app/irspike.c`: an app in place of
+DigiMacro that types every frame the receiver sees, as microseconds of
+carrier and silence, into whatever has the focus. `irspike.hex` goes on
+through that spike page's file picker (the board keeps its table), or
+`irspike-full.hex` through a programmer; it leaves the window open, so the
+page puts DigiMacro back with no hold.
 
 ## Testing
 

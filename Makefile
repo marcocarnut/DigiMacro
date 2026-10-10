@@ -15,6 +15,9 @@
 #                   all below Micronucleus, in build/v2-spike/
 #   make page       spike-page.html: the spike page with A, B and C inside --
 #                   one file to open in Chrome anywhere, no server needed
+#   make irspike    the IR spike: irspike.hex, an app that types what a
+#                   remote sends, edge by edge (app/irspike.c), and
+#                   irspike-full.hex, core and all, for a programmer
 #   make test       the core's request handling, built for the host
 #   make size       what each part takes
 #
@@ -184,6 +187,23 @@ $(O)/app%.hex: $(O)/app%.elf app/apphex.py
 $(O)/spike%.hex: $(O)/core.hex $(O)/app%.hex
 	python3 app/apphex.py join $@ $^
 
+# ---- the IR spike ------------------------------------------------------
+
+APPVER_IR = 1
+
+irspike: $(O)/irspike.hex $(O)/irspike-full.hex
+$(O)/irspike.o: app/irspike.c app/hidusb.h core/core.h core/layout.h | $(O)
+	$(CC) $(CFLAGS) -c -o $@ $<
+$(O)/irspike.elf: $(O)/apphdrIR.o $(O)/irspike.o $(O)/hidusb.o $(O)/coreapi.o
+	$(CC) $(CFLAGS) $(APPLINK) -o $@ $^
+	@printf 'irspike: %d bytes, RAM to 0x%03X of 0x25F\n' \
+	    $$(( 0x$$($(NM) $@ | awk '$$3=="__data_load_end"{print $$1}') - $(APP_START) )) \
+	    $$(( 0x$$($(NM) $@ | awk '$$3=="_end"{print $$1}') - 0x800000 ))
+$(O)/irspike.hex: $(O)/irspike.elf app/apphex.py
+	$(apphex)
+$(O)/irspike-full.hex: $(O)/core.hex $(O)/irspike.hex
+	python3 app/apphex.py join $@ $^
+
 # A script, not something to build: without this, make's built-in rules
 # would happily make apphex.py from apphex.py.o.
 app/apphex.py: ;
@@ -207,5 +227,5 @@ clean:
 	rm -rf $(O)
 	$(MAKE) -C core/test clean
 
-.PHONY: all release site hosts spike page size test clean
+.PHONY: all release site hosts spike page irspike size test clean
 .SECONDARY:

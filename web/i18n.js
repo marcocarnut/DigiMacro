@@ -17,6 +17,9 @@ en: {
   'lang-name':      'English',
   tagline:          'Tap a code, type a macro.',
   'whats-this':     "what's this?",
+  'vk-toggle':      'On-screen keyboard: a phone with the board plugged in has '
+                  + 'no other',
+  'vk-space':       'space',
   'readme-url':     'https://github.com/marcocarnut/DigiMacro#readme',
   keyboard:         'keyboard',
   language:         'language',
@@ -138,6 +141,7 @@ en: {
                   + 'file is no use to anyone, you included.',
   'bk-save':        'Save a backup',
   'bk-restore':     'Restore',
+  'bk-restore-head': 'Restore',
   'ph-bk-pass':     'the password it was saved with',
   'bk-short':       'The password is shorter than eight characters. A copied file '
                   + 'can be guessed at offline, far faster than the board allows, '
@@ -252,6 +256,10 @@ en: {
   'fw-udev':        'On Linux the bootloader needs the Micronucleus line from '
                   + 'web/60-digimacro.rules (github.com/marcocarnut/DigiMacro) '
                   + 'in /etc/udev/rules.d.',
+  'fw-zadig':       'On Windows the bootloader needs a driver, once: run Zadig '
+                  + '(zadig.akeo.ie) while the board is in its bootloader, pick '
+                  + 'it — USB ID 16D0 0753 — and install WinUSB. Then unplug '
+                  + 'the board and start over.',
   'fw-done':        'Firmware {fw} written. The board is starting it now, and '
                   + 'will ask for the hold again.',
   'mn-too-big':     'the firmware is {n} bytes and this bootloader leaves {max}',
@@ -460,6 +468,9 @@ pt: {
   'lang-name':      'Português',
   tagline:          'Toque um código, digite uma macro.',
   'whats-this':     'o que é isto?',
+  'vk-toggle':      'Teclado na tela: um celular com a placa conectada não tem '
+                  + 'outro',
+  'vk-space':       'espaço',
   'readme-url':     'https://github.com/marcocarnut/DigiMacro/blob/main/README.pt-BR.md',
   keyboard:         'teclado',
   language:         'idioma',
@@ -586,6 +597,7 @@ pt: {
                   + 'você.',
   'bk-save':        'Salvar uma cópia',
   'bk-restore':     'Restaurar',
+  'bk-restore-head': 'Restaurar',
   'ph-bk-pass':     'a senha com que foi salva',
   'bk-short':       'A senha tem menos de oito caracteres. Um arquivo copiado pode '
                   + 'ser atacado fora da placa, muito mais rápido do que a placa '
@@ -707,6 +719,10 @@ pt: {
   'fw-udev':        'No Linux o bootloader precisa da linha do Micronucleus de '
                   + 'web/60-digimacro.rules (github.com/marcocarnut/DigiMacro) '
                   + 'em /etc/udev/rules.d.',
+  'fw-zadig':       'No Windows o bootloader precisa de um driver, uma vez: rode '
+                  + 'o Zadig (zadig.akeo.ie) com a placa no bootloader, '
+                  + 'escolha-a — ID USB 16D0 0753 — e instale o WinUSB. Depois '
+                  + 'desconecte a placa e recomece.',
   'fw-done':        'Firmware {fw} gravado. A placa está iniciando agora, e vai '
                   + 'pedir o toque longo de novo.',
   'mn-too-big':     'o firmware tem {n} bytes e este bootloader deixa {max}',

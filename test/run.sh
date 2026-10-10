@@ -66,6 +66,14 @@ else
 fi
 
 echo
+echo "== WebUSB in place of WebHID, for Android: against a fake board =="
+if command -v node >/dev/null 2>&1; then
+    node webusb.js
+else
+    echo "node not found, skipped"
+fi
+
+echo
 echo "== the v2 core, and the app library over it =="
 make -s -C ../core/test
 

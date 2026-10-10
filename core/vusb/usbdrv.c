@@ -29,7 +29,7 @@ uchar       usbConfiguration;   /* currently selected configuration. Administere
 volatile schar usbRxLen;        /* = 0; number of bytes in usbRxBuf; 0 means free, -1 for flow control */
 uchar       usbCurrentTok;      /* last token received or endpoint number for last OUT token if != 0 */
 uchar       usbRxToken;         /* token for data we received; or endpont number for last OUT */
-volatile uchar usbTxLen = USBPID_NAK;   /* number of bytes to transmit with next IN token or handshake token */
+volatile uchar usbTxLen;  /* USBPID_NAK, from usbInit() */   /* number of bytes to transmit with next IN token or handshake token */
 uchar       usbTxBuf[USB_BUFSIZE];/* data to transmit with next IN, free if usbTxLen contains handshake token */
 #if USB_COUNT_SOF
 volatile uchar  usbSofCount;    /* incremented by assembler module every SOF */
@@ -46,7 +46,7 @@ uchar       usbCurrentDataToken;/* when we check data toggling to ignore duplica
 
 /* USB status registers / not shared with asm code */
 uchar               *usbMsgPtr;     /* data to transmit next -- ROM or RAM address */
-static usbMsgLen_t  usbMsgLen = USB_NO_MSG; /* remaining number of bytes */
+static usbMsgLen_t  usbMsgLen;   /* USB_NO_MSG, from usbInit() */ /* remaining number of bytes */
 uchar        usbMsgFlags;    /* flag values see USB_FLG_* */
 
 #define USB_FLG_USE_USER_RW     (1<<7)
@@ -142,9 +142,9 @@ const PROGMEM char usbDescriptorConfiguration[] = {    /* USB configuration desc
     9,          /* sizeof(usbDescriptorConfiguration): length of descriptor in bytes */
     USBDESCR_CONFIG,    /* descriptor type */
     18 + 7 * USB_CFG_HAVE_INTRIN_ENDPOINT + 7 * USB_CFG_HAVE_INTRIN_ENDPOINT3 +
-                (USB_CFG_DESCR_PROPS_HID & 0xff), 0,
+                (USB_CFG_DESCR_PROPS_HID & 0xff) + 9 * USB_CFG_VENDOR_INTERFACE, 0,
                 /* total length of data returned (including inlined descriptors) */
-    1,          /* number of interfaces in this configuration */
+    1 + USB_CFG_VENDOR_INTERFACE, /* number of interfaces in this configuration */
     1,          /* index of this configuration */
     0,          /* configuration name string index */
 #if USB_CFG_IS_SELF_POWERED
@@ -187,6 +187,17 @@ const PROGMEM char usbDescriptorConfiguration[] = {    /* USB configuration desc
     0x03,       /* attrib: Interrupt endpoint */
     8, 0,       /* maximum packet size */
     USB_CFG_INTR_POLL_INTERVAL, /* in ms */
+#endif
+#if USB_CFG_VENDOR_INTERFACE   /* DigiMacro: an interface WebUSB may claim */
+    9,          /* sizeof(usbDescrInterface): length of descriptor in bytes */
+    USBDESCR_INTERFACE, /* descriptor type */
+    1,          /* index of this interface */
+    0,          /* alternate setting for this interface */
+    0,          /* no endpoints: control transfers only */
+    0xff,       /* vendor specific */
+    0,
+    0,
+    0,          /* string index for interface */
 #endif
 };
 #endif
@@ -620,6 +631,8 @@ USB_PUBLIC void usbInit(void)
 #endif
     USB_INTR_ENABLE |= (1 << USB_INTR_ENABLE_BIT);
     usbResetDataToggling();
+    usbTxLen = USBPID_NAK;
+    usbMsgLen = USB_NO_MSG;
 #if USB_CFG_HAVE_INTRIN_ENDPOINT && !USB_CFG_SUPPRESS_INTR_CODE
     usbTxLen1 = USBPID_NAK;
 #if USB_CFG_HAVE_INTRIN_ENDPOINT3

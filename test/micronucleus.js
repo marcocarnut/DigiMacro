@@ -61,5 +61,20 @@ try { mn.parseIntelHex(good.replace('F2', 'F3'), 16); } catch (e) { threw = true
 check(threw, 'a bad checksum must be refused');
 check(mn.parseIntelHex(good, 16).data[3] === 4, 'and a good line read');
 
-console.log(fails ? '\nSOME CHECKS FAILED' : '\nall checks passed');
-process.exit(fails ? 1 : 0);
+(async () => {
+  console.log('7. a 1.x bootloader past its seconds: listed, deaf, and said so');
+  let closed = false;
+  global.navigator = { usb: { requestDevice: async () => ({
+    deviceVersionMajor: 1, deviceVersionMinor: 0, deviceVersionSubminor: 6,
+    configuration: {}, open: async () => {}, claimInterface: async () => {},
+    close: async () => { closed = true; },
+    controlTransferIn: async () => { throw new Error('A transfer error has occurred.'); },
+  }) } };
+  let msg = '';
+  try { await mn.Micronucleus.request(); } catch (e) { msg = e.message; }
+  check(/^mn-deaf/.test(msg), `a deaf bootloader said "${msg}"`);
+  check(closed, 'a deaf bootloader was left open');
+
+  console.log(fails ? '\nSOME CHECKS FAILED' : '\nall checks passed');
+  process.exit(fails ? 1 : 0);
+})();

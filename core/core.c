@@ -104,11 +104,10 @@ static const char PROGMEM productName[] = "DigiMacro";
 _Static_assert(sizeof vendorName - 1 - SERIAL_PREFIX_AT == DM_SERIAL_PREFIX_LEN - 1,
                "the serial's prefix is the maker's name from SERIAL_PREFIX_AT on");
 
-/* UTF-16 by halves: only the low bytes are ever written, and the high
-   ones stay the zeros .bss started them as. The language, whose high byte
-   is not zero, has a descriptor of its own. */
+/* UTF-16 by halves: the strings write low bytes and zero the high ones.
+   The language descriptor shares the buffer, and its 0x0409 leaves a high
+   byte that is not zero. */
 static uint8_t strBuf[2 + 2 * (sizeof vendorName - 1)];
-static uint8_t langDesc[4] = { 4, 3, 0x09, 0x04 };      /* US English */
 
 usbMsgLen_t usbFunctionDescriptor(usbRequest_t *rq)
 {
@@ -117,13 +116,12 @@ usbMsgLen_t usbFunctionDescriptor(usbRequest_t *rq)
     const char *s = vendorName;
 
     if (which == 0) {
-        usbMsgPtr = (usbMsgPtr_t)langDesc;
-        return sizeof langDesc;
+        *p = 0x09; p[1] = 0x04; p += 2;         /* US English */
     }
-    if (which == 2) s = productName;
+    else if (which == 2) s = productName;
     else if (which == 3) s = vendorName + SERIAL_PREFIX_AT;
     else if (which != 1) return 0;
-    for (char c; (c = pgm_read_byte(s)); s++, p += 2) *p = c;
+    if (which) for (char c; (c = pgm_read_byte(s)); s++, p += 2) { *p = c; p[1] = 0; }
     if (which == 3) {
         /* The four bytes as v1 stored them, a little-endian word, written
            out most significant first. */
@@ -146,7 +144,7 @@ usbMsgLen_t usbFunctionDescriptor(usbRequest_t *rq)
 /* State                                                                 */
 /* ===================================================================== */
 
-static uint8_t kbdIdle[HID_KBD_LEN] = { HID_REPORT_KBD };  /* no keys */
+static uint8_t kbdIdle[HID_KBD_LEN];   /* no keys; its ID set by reconnect() */
 static uint8_t hidIdleRate;
 
 static uint8_t vnd[DM_VND_LEN];
@@ -503,6 +501,7 @@ static void reconnect(void)
     usbDeviceDisconnect();
     for (uint8_t i = 30; i; i--) _delay_ms(10);
     usbDeviceConnect();
+    kbdIdle[0] = HID_REPORT_KBD;
     USB_INTR_PENDING = (1 << USB_INTR_PENDING_BIT);
     usbInit();
 }

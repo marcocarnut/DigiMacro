@@ -1,5 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DigiMacro</title>
 <style>
   :root {
@@ -343,6 +344,7 @@
 <script src="micronucleus.js"></script>
 <script src="coreupdate.js"></script>
 <script src="backup.js"></script>
+<script src="webusb.js"></script>
 <script>
 /* The device never stops being a keyboard. The app reaches it through a second
    top-level collection on a vendor usage page, which is the one kind WebHID
@@ -475,6 +477,10 @@ function renderWho() {
 let idInPayload = null;
 
 let runDev = null;               /* the device a run() started on */
+
+/* WebHID where there is one; where there is not, WebUSB standing in for it
+   (webusb.js), which reaches a board on core 4. */
+const hid = navigator.hid || usbHid();
 
 /* One report each way, as coreupdate.js wants them. */
 const io = {
@@ -755,16 +761,16 @@ async function connect(mayAsk, prefer = null) {
   if (dev || connecting) return;
   if (mayAsk) note('connect-note', '');   /* a board coming back by itself
                                               keeps what the upgrade said */
-  if (!navigator.hid) { note('connect-note', t('no-webhid'), 'bad'); return; }
+  if (!hid) { note('connect-note', t('no-webhid'), 'bad'); return; }
   connecting = true;
   try {
     /* A device this origin already knows comes back without the picker. */
-    const known = (await navigator.hid.getDevices())
+    const known = (await hid.getDevices())
       .filter(d => d.vendorId === 0x16c0 && d.productId === 0x27db
                 && d.collections.some(c => c.usagePage === 0xFF00));
     dev = known.includes(prefer) ? prefer : known[0];
     if (!dev && mayAsk)
-      dev = (await navigator.hid.requestDevice(
+      dev = (await hid.requestDevice(
                { filters: [{ vendorId: 0x16c0, productId: 0x27db, usagePage: 0xFF00 }] }))[0];
     if (!dev) return;
     if (!dev.opened) await dev.open();
@@ -798,7 +804,7 @@ async function connect(mayAsk, prefer = null) {
     /* Only when it is one: "failed to open" on Linux is a file permission
        wearing a browser's error message, but a dismissed picker is not, and
        answering the wrong question is worse than saying nothing. */
-    if (navigator.userAgent.includes('Linux') && /open/i.test(e.message))
+    if (navigator.hid && navigator.userAgent.includes('Linux') && /open/i.test(e.message))
       note('connect-note', t('connect-failed', { msg: e.message }) + ' '
                            + t('udev-hint'), 'bad');
   } finally {
@@ -808,7 +814,7 @@ async function connect(mayAsk, prefer = null) {
 
 $('connect').onclick = () => connect(true);
 
-navigator.hid?.addEventListener('disconnect', ev => {
+hid?.addEventListener('disconnect', ev => {
   if (!dev || ev.device !== dev) return;
   dev = null;
   if (upgrading) return;        /* expected: the upgrade carries on */
@@ -828,7 +834,7 @@ navigator.hid?.addEventListener('disconnect', ev => {
   who('board-left', {}, 'dim');
 });
 
-navigator.hid?.addEventListener('connect', ev => {
+hid?.addEventListener('connect', ev => {
   if (dev || upgrading || ev.device.vendorId !== 0x16c0) return;
   connect(false);               /* no click behind this, so no picker */
 });
@@ -936,7 +942,9 @@ async function readTable() {
   const dangling = auto !== AUTO_NONE
                 && !macros.some(m => { try { return header(m.code) === auto; }
                                        catch (e) { return false; } });
-  saved = snapshot();
+  /* A table the page cannot write back -- damaged on the board -- differs
+     from anything that can be written, so writing over it stays possible. */
+  saved = snapshot() ?? 'unwritable';
   savedAuto = auto;
   savedCodes = codesOf(macros);
   draw();
@@ -1653,25 +1661,20 @@ $('fwupdate').onclick = async () => {
  * A Digispark straight from the bag has only Micronucleus, which shows up
  * for a few seconds after it is plugged in. v2's core goes on through it,
  * and the board then comes back as DigiMacro, asking for its firmware --
- * the recovery view takes it from there. Two clicks: the first says what to
- * do, the second has to come within those seconds, and opens the picker.
+ * the recovery view takes it from there. The picker opens first and the
+ * board is plugged in while it waits, since the picker shows a device the
+ * moment it arrives: those seconds are spent picking, not reading. A 1.x
+ * board left plugged in past them stays on the bus, deaf, until replugged.
  */
-let newArmed = false;
 $('newboard').onclick = async () => {
   if (busy) return;
   if (!navigator.usb) { note('connect-note', t('fw-no-webusb'), 'bad'); return; }
   if (!fwHereV2) { note('connect-note', t('new-no-v2'), 'bad'); return; }
-  if (!newArmed) {
-    newArmed = true;
-    note('connect-note', t('new-plug'), 'dim');
-    return;
-  }
-  newArmed = false;
   setBusy();
   const bar = $('newbar');
   try {
     const app = parseIntelHex(await fetchText('firmware/digimacro-v2-core.hex'), 8192);
-    note('connect-note', t('fw-pick'), 'dim');
+    note('connect-note', t('new-plug'), 'dim');
     const m = await Micronucleus.request();
     if (!m) throw new Error(t('new-none'));
     m.checkChip();

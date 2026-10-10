@@ -12,7 +12,7 @@ execFileSync('python3', [path.join(__dirname, '../tools/site.py'), out]);
 const page = fs.readFileSync(out, 'utf8');
 
 const scripts = [...page.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
-check(scripts.length === 7, `seven scripts, not ${scripts.length}`);
+check(scripts.length === 8, `eight scripts, not ${scripts.length}`);
 for (const [i, code] of scripts.entries())
   try { new vm.Script(code); } catch (e) { check(false, `script ${i}: ${e.message}`); }
 check(!/<script[^>]*\ssrc=/.test(page) && !/<link[^>]*href=/.test(page),

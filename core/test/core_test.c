@@ -319,6 +319,11 @@ int main(void)
         usbRequest_t rq = { 0x80, 6, { .bytes = { 0, 3 } } };
         CHECK(usbFunctionDescriptor(&rq) == 4
               && !memcmp(usbMsgPtr, "\x04\x03\x09\x04", 4));       /* US English */
+        /* it shares the strings' buffer: their high bytes are zeros again */
+        CHECK(strDesc(1, "digimacro.postcogito.org"));
+        CHECK(usbFunctionDescriptor(&rq) == 4
+              && !memcmp(usbMsgPtr, "\x04\x03\x09\x04", 4));
+        CHECK(strDesc(3, "postcogito.org:12345678"));
         rq.wValue.bytes[0] = 4;
         CHECK(usbFunctionDescriptor(&rq) == 0);                     /* none */
     }

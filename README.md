@@ -10,7 +10,7 @@ Web configuration app: https://digimacro.postcogito.org
 Presents itself to the host PC or smartphone as a USB keyboard. By tapping
 on a touch pad in morse code, it types one of 62 possible keystroke sequences
 you pre-program via the accompanying web page (requires Chrome or Edge on a
-computer: not Safari, and not a phone).
+computer, or Chrome on Android: not Safari, and not an iPhone or iPad).
 It can also be triggered by an infrared remote control if you add an infrared
 sensor (TSOP4838 or similar).
 
@@ -64,14 +64,18 @@ v2 is better in every way. The page still offers to move a v1 board to v2.
   its output on P2, lets a remote control that speaks NEC — most cheap ones
   do — start macros. Nothing else is needed, and a board without one is no
   different.
-- **Chrome or Edge**, on a computer: WebHID — and WebUSB, to reach
-  Micronucleus when a board is set up — are not in Firefox or Safari. Nor on
-  a phone or tablet: every browser on an iPhone or iPad is Safari underneath,
-  and Chrome on Android has no WebHID. Tested on Linux, and on Windows 10 in
-  a virtual machine; macOS should work the same way in Chrome or Edge,
-  needing nothing installed, but nobody has tried it yet. The board itself
-  types into anything that takes a USB keyboard, phones included; only
-  setting it up needs the page.
+- **Chrome or Edge on a computer, or Chrome on Android:** WebHID — and
+  WebUSB, to reach Micronucleus when a board is set up — are not in Firefox
+  or Safari, and every browser on an iPhone or iPad is Safari underneath.
+  Chrome on Android has WebUSB but no WebHID, so there the page reaches the
+  board through WebUSB alone, over a USB OTG adapter; that needs core 4 (*It
+  never stops being a keyboard*, below). A board set up before core 4 keeps
+  its older core, which only a programmer rewrites (*With a programmer*):
+  save a backup first, since that erases the EEPROM. Tested on Linux, on
+  Windows 10 in a virtual machine and on Android 10; macOS should work the
+  same way in Chrome or Edge, needing nothing installed, but nobody has
+  tried it yet. The board itself types into anything that takes a USB
+  keyboard, phones included; only setting it up needs the page.
 - **To install it,** nothing but the page: the released firmware is committed
   in `web/firmware/`.
 - **To build it,** `make`, `python3` and avr-gcc, on Linux. The Makefile looks
@@ -113,11 +117,12 @@ header is all the pad it needs.*
 
    Then open `http://localhost:8000/`. Any https host serving
    `web/` works the same way.
-3. **Put v2 on the board.** A Digispark as it comes: press **Set up a new
-   board**, plug the board in, press it again within five seconds and pick
-   *Micronucleus*. After that the board comes back as DigiMacro but with no
-   firmware yet, and the page offers to install it — see *Setting a
-   board up* below. With a programmer instead: see *With a programmer*.
+3. **Put v2 on the board.** A Digispark as it comes, unplugged: press **Set
+   up a new board**, plug the board in while the browser's list is open, and
+   pick it as soon as it shows up, as *Digispark* or *Micronucleus*. After
+   that the board comes back as DigiMacro but with no firmware yet, and the
+   page offers to install it — see *Setting a board up* below. With a
+   programmer instead: see *With a programmer*.
 4. **Connect.** Pick the board, then **hold the pad for four seconds**. The
    page reads everything the board holds by itself; if the board has a
    password, type it and press Unlock.
@@ -463,15 +468,17 @@ the serial number all live in EEPROM, which an update leaves alone.
 ### Setting a board up
 
 **Set up a new board**, beside Connect, puts v2 on a Digispark as it comes.
-Press it, plug the board in, and press it again within five seconds: the
-browser asks you to pick *Micronucleus*, and the page writes v2's core
-through it. The board then comes back as DigiMacro with only its core —
-serial `FFFFFFFF` until the firmware makes one — and **Connect** leads to the
-install. The firmware goes on over Micronucleus itself, and at its first page
-the core takes back the reset vector Micronucleus had pointed at itself, so
-Micronucleus is never run again. A power cut in those few milliseconds needs
-a programmer to put right, the same risk as any upload through Micronucleus;
-it happens once in a board's life.
+Press it with the board unplugged, plug the board in while the browser's list
+is open, and pick it as soon as it shows up: Micronucleus waits only a few
+seconds, and a 1.x board left past them stays on the bus but no longer answers
+until it is plugged in again. The page writes v2's core through it. The board
+then comes back as DigiMacro with only its core — serial `FFFFFFFF` until the
+firmware makes one — and **Connect** leads to the install. The firmware goes
+on over Micronucleus itself, and at its first page the core takes back the
+reset vector Micronucleus had pointed at itself, so Micronucleus is never run
+again. A power cut in those few milliseconds needs a programmer to put right,
+the same risk as any upload through Micronucleus; it happens once in a board's
+life.
 
 **A v1 board** moves the same way: connect it, and **(move to v2…)** in the
 status line opens the firmware dialog. The board restarts into Micronucleus,
@@ -555,6 +562,15 @@ at a time notices. And there is no landing page: Chrome offers one for a
 WebUSB device, not a HID one. An earlier version re-enumerated as a WebUSB
 device after the hold, and back again afterwards; v1's design record tells
 that story (`git show v1.0:PLAN.md`).
+
+Chrome on Android has no WebHID at all, and WebUSB will not claim a HID
+interface, nor take a request addressed to the device in its stead. So
+core 4 adds a second interface, vendor class and no endpoints, which WebUSB
+does claim. The board takes the same feature report sent to it, since the
+core looks at the request and not at the interface it was sent to, and the
+page (`web/webusb.js`) dresses WebUSB up as WebHID where there is no WebHID.
+On Windows, where no driver claims the new interface, Device Manager shows
+the board with a yellow mark; the keyboard and the page carry on regardless.
 
 ### The core and the firmware
 
@@ -756,14 +772,14 @@ Then the app's macro language on its own; the two languages against each
 other; v2's core laid out for Micronucleus, with both jumps decoded and
 followed to where they land; the page's updates against a fake v2 board that
 halts, reads back old pages, is interrupted by another program and is
-unplugged half way; the core itself, compiled for the host with the
-firmware's library and asked everything a host can ask, twice — with the
-firmware's region to the end of the chip and stopping below Micronucleus;
-the backups, with scrypt checked against node's own and a file that opens
-only for its password; the published page, one file with the firmware in
-it; and last, across the language boundary, a table encoded by
-`web/table.js` played through the firmware. Eleven suites, a few seconds.
-Without `node`, the seven that need it are skipped.
+unplugged half way; WebUSB standing in for WebHID, against another; the core
+itself, compiled for the host with the firmware's library and asked everything
+a host can ask, twice — with the firmware's region to the end of the chip and
+stopping below Micronucleus; the backups, with scrypt checked against node's
+own and a file that opens only for its password; the published page, one file
+with the firmware in it; and last, across the language boundary, a table
+encoded by `web/table.js` played through the firmware. Twelve suites, a few
+seconds. Without `node`, the eight that need it are skipped.
 
 ## Layout
 
@@ -775,7 +791,7 @@ Without `node`, the seven that need it are skipped.
 | `Makefile` | builds all of it |
 | `test/` | host build of the real sketch against stub hardware, and the web side's tests |
 | `tools/hostauth/` | the client that sends the host key, for Linux and Windows |
-| `web/` | `index.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `backup.js` the backups, `60-digimacro.rules` the udev rule |
+| `web/` | `index.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `webusb.js` reaches the board without WebHID, `backup.js` the backups, `60-digimacro.rules` the udev rule |
 | `web/firmware/` | what the page installs: v2's firmware, core and full image |
 | `docs/` | the photos above |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |

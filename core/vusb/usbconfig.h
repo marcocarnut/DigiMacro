@@ -235,8 +235,11 @@ section at the end of this file).
  * with libusb: 0x16c0/0x5dc.  Use this VID/PID pair ONLY if you understand
  * the implications!
  */
-#define USB_CFG_DEVICE_VERSION 0x00, 0x02
+#define USB_CFG_DEVICE_VERSION 0x04, 0x02
 /* Version number of the device: Minor number first, then major number.
+ * DigiMacro: v2, and the core's version, so that Windows -- which keeps
+ * what it learned of a device by VID, PID and this -- reads core 4's two
+ * interfaces afresh.
  */
 #define USB_CFG_VENDOR_NAME     'd','i','g','i','m','a','c','r','o','.','p','o','s','t','c','o','g','i','t','o','.','o','r','g'
 #define USB_CFG_VENDOR_NAME_LEN 24
@@ -275,6 +278,11 @@ section at the end of this file).
 #define USB_CFG_INTERFACE_CLASS     3       /* HID */
 #define USB_CFG_INTERFACE_SUBCLASS  0       /* not a boot keyboard: see hidusb.h */
 #define USB_CFG_INTERFACE_PROTOCOL  0
+#define USB_CFG_VENDOR_INTERFACE    1
+/* DigiMacro: a second interface, vendor class and no endpoints, beside the
+   HID one. WebUSB will not claim a HID interface, and Android's Chrome has
+   no WebHID, so it claims this one and sends the same feature reports to
+   it on endpoint 0: usbFunctionSetup() does not look at the interface. */
 /* See USB specification if you want to conform to an existing device class or
  * protocol. The following classes must be set at interface level:
  * HID class is 3, no subclass and protocol required (but may be useful!)

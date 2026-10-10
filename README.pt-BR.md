@@ -10,8 +10,10 @@ Aplicativo web de configuração: https://digimacro.postcogito.org
 Para o PC ou o celular, ele se apresenta como um teclado USB. Tocando um
 sensor em código morse, ele digita uma de 62 sequências de teclas possíveis,
 que você programa antes pela página web que o acompanha (precisa do Chrome ou
-do Edge num computador: não do Safari, e não num celular). Ele também pode ser acionado por um controle remoto infravermelho,
-se você acrescentar um sensor de infravermelho (TSOP4838 ou similar).
+do Edge num computador, ou do Chrome no Android: não do Safari, e não num
+iPhone ou iPad). Ele também pode ser acionado por um controle remoto
+infravermelho, se você acrescentar um sensor de infravermelho (TSOP4838 ou
+similar).
 
 Ele também pode digitar sozinho ao ser ligado (esse foi, aliás, o uso
 original da primeiríssima versão, muitos anos atrás: fazer uma TV LG abrir o
@@ -64,14 +66,19 @@ v2.
   com a saída no P2, permite que um controle remoto que fale NEC — a maioria
   dos baratos fala — dispare macros. Nada mais é necessário, e uma placa sem
   ele não muda em nada.
-- **Chrome ou Edge**, num computador: WebHID — e WebUSB, para chegar ao
-  Micronucleus ao preparar uma placa — não existem no Firefox nem no Safari.
-  Nem no celular ou tablet: todo navegador de iPhone ou iPad é Safari por
-  baixo, e o Chrome do Android não tem WebHID. Testado no Linux, e no
-  Windows 10 numa máquina virtual; o macOS deve funcionar do mesmo jeito no
-  Chrome ou no Edge, sem instalar nada, mas ninguém testou ainda. A placa em
-  si digita em qualquer coisa que aceite um teclado USB, celulares
-  inclusive; só a configuração precisa da página.
+- **Chrome ou Edge num computador, ou Chrome no Android:** WebHID — e
+  WebUSB, para chegar ao Micronucleus ao preparar uma placa — não existem no
+  Firefox nem no Safari, e todo navegador de iPhone ou iPad é Safari por
+  baixo. O Chrome do Android tem WebUSB mas não WebHID, então lá a página
+  chega à placa só por WebUSB, com um adaptador USB OTG; isso precisa do
+  núcleo 4 (*Ele nunca deixa de ser um teclado*, abaixo). Uma placa
+  preparada antes do núcleo 4 fica com o núcleo antigo, que só um gravador
+  regrava (*Com um gravador*): salve uma cópia de segurança antes, porque
+  isso apaga a EEPROM. Testado no Linux, no Windows 10 numa máquina virtual
+  e no Android 10; o macOS deve funcionar do mesmo jeito no Chrome ou no
+  Edge, sem instalar nada, mas ninguém testou ainda. A placa em si digita em
+  qualquer coisa que aceite um teclado USB, celulares inclusive; só a
+  configuração precisa da página.
 - **Para instalar,** nada além da página: o firmware publicado está versionado
   em `web/firmware/`.
 - **Para compilar,** `make`, `python3` e avr-gcc, no Linux. O Makefile procura
@@ -113,11 +120,12 @@ pinos é todo o sensor de que ele precisa.*
 
    Depois abra `http://localhost:8000/`. Qualquer servidor https servindo
    `web/` funciona do mesmo jeito.
-3. **Grave a v2 na placa.** Um Digispark do jeito que vem: clique em
-   **Preparar uma placa nova**, conecte a placa, clique de novo em até cinco
-   segundos e escolha *Micronucleus*. Depois disso a placa volta como
-   DigiMacro, mas ainda sem firmware, e a página oferece instalá-lo — veja
-   *Preparando uma placa* abaixo. Com um gravador: veja *Com um gravador*.
+3. **Grave a v2 na placa.** Um Digispark do jeito que vem, desconectado:
+   clique em **Preparar uma placa nova**, conecte a placa com a lista do
+   navegador aberta e escolha-a assim que aparecer, como *Digispark* ou
+   *Micronucleus*. Depois disso a placa volta como DigiMacro, mas ainda sem
+   firmware, e a página oferece instalá-lo — veja *Preparando uma placa*
+   abaixo. Com um gravador: veja *Com um gravador*.
 4. **Conecte.** Escolha a placa e então **segure o sensor por quatro
    segundos**. A página lê sozinha tudo o que a placa guarda; se a placa tem
    senha, digite-a e clique em Destravar.
@@ -483,16 +491,17 @@ atualização não toca.
 ### Preparando uma placa
 
 **Preparar uma placa nova**, ao lado de Conectar, grava a v2 num Digispark do
-jeito que ele vem. Clique, conecte a placa e clique de novo em até cinco
-segundos: o navegador pede que você escolha *Micronucleus*, e a página grava
-por ele o núcleo da v2. A placa então volta como DigiMacro só com o núcleo —
-número de série `FFFFFFFF` até o firmware criar um — e **Conectar** leva à
-instalação. O firmware é gravado pelo próprio Micronucleus e, na primeira
-página dele, o núcleo retoma o vetor de reset que o Micronucleus tinha
-apontado para si, então o Micronucleus nunca mais roda. Uma queda de energia
-nesses poucos milissegundos precisa de um gravador para consertar, o mesmo
-risco de qualquer gravação pelo Micronucleus; acontece uma vez na vida da
-placa.
+jeito que ele vem. Clique com a placa desconectada, conecte-a com a lista do
+navegador aberta e escolha-a assim que aparecer: o Micronucleus só espera
+alguns segundos, e uma placa 1.x deixada além deles continua no barramento mas
+não responde mais até ser reconectada. A página grava por ele o núcleo da v2.
+A placa então volta como DigiMacro só com o núcleo — número de série
+`FFFFFFFF` até o firmware criar um — e **Conectar** leva à instalação. O
+firmware é gravado pelo próprio Micronucleus e, na primeira página dele, o
+núcleo retoma o vetor de reset que o Micronucleus tinha apontado para si,
+então o Micronucleus nunca mais roda. Uma queda de energia nesses poucos
+milissegundos precisa de um gravador para consertar, o mesmo risco de qualquer
+gravação pelo Micronucleus; acontece uma vez na vida da placa.
 
 **Uma placa v1** muda do mesmo jeito: conecte-a, e **(mudar para a v2…)** na
 linha de status abre a caixa de diálogo do firmware. A placa reinicia no
@@ -581,6 +590,16 @@ Chrome oferece uma para dispositivos WebUSB, não para HID. Uma versão
 anterior se reenumerava como dispositivo WebUSB depois do toque longo, e
 voltava depois; o registro de projeto da v1 conta essa história (`git show
 v1.0:PLAN.md`).
+
+O Chrome do Android não tem WebHID nenhum, e o WebUSB não reivindica uma
+interface HID, nem aceita no lugar dela um pedido endereçado ao dispositivo.
+Então o núcleo 4 acrescenta uma segunda interface, de classe de fabricante e
+sem endpoints, que o WebUSB reivindica. A placa aceita o mesmo feature report
+enviado a ela, já que o núcleo olha o pedido e não a interface a que
+foi enviado, e a página (`web/webusb.js`) veste o WebUSB de WebHID onde não
+há WebHID. No Windows, onde nenhum driver assume a interface nova, o
+Gerenciador de Dispositivos mostra a placa com um sinal amarelo; o teclado e
+a página funcionam do mesmo jeito.
 
 ### O núcleo e o firmware
 
@@ -785,22 +804,22 @@ test/run.sh
 
 compila o `DigiMacro.ino` de verdade para o computador contra um hardware
 simulado e exercita o percurso da tabela, cada escape, os limites que impedem
-uma tabela malformada de chegar aos bytes reservados, a decodificação do
-morse a partir do pino de entrada, a senha, o bloqueio e a verificação do
-computador, e os dois jeitos de ler o sensor. Depois, a linguagem de macros
-do aplicativo sozinha; as duas linguagens uma contra a outra; o núcleo da v2
+uma tabela malformada de chegar aos bytes reservados, a decodificação do morse
+a partir do pino de entrada, a senha, o bloqueio e a verificação do
+computador, e os dois jeitos de ler o sensor. Depois, a linguagem de macros do
+aplicativo sozinha; as duas linguagens uma contra a outra; o núcleo da v2
 montado para o Micronucleus, com os dois saltos decodificados e seguidos até
 onde vão parar; as atualizações da página contra uma placa v2 simulada que
 trava, devolve páginas antigas, é interrompida por outro programa e é
-desconectada no meio; o próprio núcleo, compilado para o computador com a
-biblioteca do firmware e submetido a tudo o que um computador pode perguntar,
-duas vezes — com a região do firmware indo até o fim do chip e parando abaixo
-do Micronucleus; as cópias de segurança, com o scrypt conferido contra o do
-próprio node e um arquivo que só abre com a sua senha; a página publicada, um
-arquivo só com o firmware dentro; e, por último, atravessando a fronteira
-entre as linguagens, uma tabela codificada pelo `web/table.js` executada no
-firmware. Onze suítes, poucos segundos. Sem `node`, as sete que precisam dele
-são puladas.
+desconectada no meio; o WebUSB no lugar do WebHID, contra outra; o próprio
+núcleo, compilado para o computador com a biblioteca do firmware e submetido a
+tudo o que um computador pode perguntar, duas vezes — com a região do firmware
+indo até o fim do chip e parando abaixo do Micronucleus; as cópias de
+segurança, com o scrypt conferido contra o do próprio node e um arquivo que só
+abre com a sua senha; a página publicada, um arquivo só com o firmware dentro;
+e, por último, atravessando a fronteira entre as linguagens, uma tabela
+codificada pelo `web/table.js` executada no firmware. Doze suítes, poucos
+segundos. Sem `node`, as oito que precisam dele são puladas.
 
 ## Organização
 
@@ -812,7 +831,7 @@ são puladas.
 | `Makefile` | compila tudo isso |
 | `test/` | o build no computador do sketch de verdade contra hardware simulado, e os testes do lado web |
 | `tools/hostauth/` | o cliente que manda a chave de computador, para Linux e Windows |
-| `web/` | `index.html` é o aplicativo, `hid.html` uma página de protocolo cru para desenvolvedores, `table.js` e `i18n.js` o que eles compartilham, `coreupdate.js` atualiza placas v2, `micronucleus.js` acessa o Micronucleus, `backup.js` as cópias de segurança, `60-digimacro.rules` a regra do udev |
+| `web/` | `index.html` é o aplicativo, `hid.html` uma página de protocolo cru para desenvolvedores, `table.js` e `i18n.js` o que eles compartilham, `coreupdate.js` atualiza placas v2, `micronucleus.js` acessa o Micronucleus, `webusb.js` acessa a placa sem WebHID, `backup.js` as cópias de segurança, `60-digimacro.rules` a regra do udev |
 | `web/firmware/` | o que a página instala: o firmware, o núcleo e a imagem completa da v2 |
 | `docs/` | as fotos lá de cima |
 | `HARDENED_MODE.md` | como deixar uma placa apta a guardar segredos, e o que isso ainda não protege |

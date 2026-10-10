@@ -132,9 +132,17 @@ class Micronucleus {
       await device.close();
       throw new Error(mnText('mn-unsupported', { version }));
     }
-    const r = await device.controlTransferIn(
-      { requestType: 'vendor', recipient: 'device', request: MN_INFO, value: 0, index: 0 },
-      major >= 2 ? 8 : 4);
+    /* A 1.x bootloader left past its few seconds, with no application to go
+       to, starts over without leaving the bus: listed, and deaf. */
+    let r;
+    try {
+      r = await device.controlTransferIn(
+        { requestType: 'vendor', recipient: 'device', request: MN_INFO, value: 0, index: 0 },
+        major >= 2 ? 8 : 4);
+    } catch (e) {
+      try { await device.close(); } catch (e2) { /* already gone */ }
+      throw new Error(mnText('mn-deaf'));
+    }
     if (r.status !== 'ok' || !r.data || r.data.byteLength < (major >= 2 ? 6 : 4)) {
       await device.close();
       throw new Error(mnText('mn-no-info'));

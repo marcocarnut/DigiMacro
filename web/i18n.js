@@ -259,6 +259,10 @@ en: {
                   + 'laid out for the bootloader',
   'mn-unsupported': 'Micronucleus {version} is not one this page knows',
   'mn-no-info':     'the bootloader did not say how big it is',
+  'mn-deaf':        'the bootloader is there but no longer answering: it waits '
+                  + 'only a few seconds after the board is plugged in. Unplug '
+                  + 'the board, press again, and plug it in while the '
+                  + 'browser\'s list is open',
   'mn-not-t85':     'that bootloader is not on an ATtiny85',
   'ref-summary':    'What can go in a macro',
   'ref-anything':   'typed as itself',
@@ -292,9 +296,10 @@ en: {
                   + 'no way to type one at all, so the editor says so rather '
                   + 'than typing something else.',
 
-  'no-webhid':      'This browser cannot reach the board: WebHID needs Chrome '
-                  + 'or Edge on a computer, over https or localhost — not '
-                  + 'Safari, Firefox, or any browser on a phone or tablet.',
+  'no-webhid':      'This browser cannot reach the board. It needs Chrome or '
+                  + 'Edge on a computer, or Chrome on Android, over https or '
+                  + 'localhost — not Safari, Firefox, or any browser on an '
+                  + 'iPhone or iPad.',
   refused:          'The board said no. Hold the pad for four seconds and try '
                   + 'again — reaching the table needs somebody at the board.',
   'udev-hint':      'On Linux a hidraw device is root-only until a udev rule '
@@ -393,9 +398,10 @@ en: {
                   + 'DigiMacro {fw}: install it below.',
   'core-name':      'v2\'s core',
   'new-board':      'Set up a new board',
-  'new-plug':       'Plug the new board in, and within five seconds press Set up '
-                  + 'a new board again: the browser will ask you to pick '
-                  + '"Micronucleus".',
+  'new-plug':       'Plug the new board in now — unplugged first, if it already '
+                  + 'was — and pick it in the browser\'s list as soon as it '
+                  + 'shows up: as "Digispark" or "Micronucleus". It waits only a '
+                  + 'few seconds.',
   'new-none':       'Micronucleus was not picked, so nothing was written. Plug '
                   + 'the board in again and start over.',
   'new-done':       'v2\'s core is on. Press Connect and pick the board: it is '
@@ -708,6 +714,10 @@ pt: {
                   + 'prepará-lo para o bootloader',
   'mn-unsupported': 'Micronucleus {version} não é um que esta página conheça',
   'mn-no-info':     'o bootloader não disse qual é o seu tamanho',
+  'mn-deaf':        'o bootloader está lá mas não responde mais: ele só espera '
+                  + 'alguns segundos depois que a placa é conectada. Desconecte '
+                  + 'a placa, clique de novo e conecte-a com a lista do '
+                  + 'navegador aberta',
   'mn-not-t85':     'esse bootloader não está num ATtiny85',
   'ref-summary':    'O que pode entrar numa macro',
   'ref-anything':   'digitado como está',
@@ -743,10 +753,10 @@ pt: {
                   + 'Num teclado US puro não há como digitar um acento, então '
                   + 'o editor avisa em vez de digitar outra coisa.',
 
-  'no-webhid':      'Este navegador não consegue falar com a placa: WebHID '
-                  + 'precisa do Chrome ou do Edge num computador, por https ou '
-                  + 'localhost — não do Safari, do Firefox, nem de navegador '
-                  + 'de celular ou tablet.',
+  'no-webhid':      'Este navegador não consegue falar com a placa. Ela '
+                  + 'precisa do Chrome ou do Edge num computador, ou do Chrome '
+                  + 'no Android, por https ou localhost — não do Safari, do '
+                  + 'Firefox, nem de navegador de iPhone ou iPad.',
   refused:          'A placa recusou. Segure o sensor por quatro segundos e '
                   + 'tente de novo — chegar à tabela exige alguém na placa.',
   'udev-hint':      'No Linux um dispositivo hidraw é só do root até que uma '
@@ -844,9 +854,10 @@ pt: {
                   + 'o DigiMacro {fw}: instale-o abaixo.',
   'core-name':      'o núcleo da v2',
   'new-board':      'Preparar uma placa nova',
-  'new-plug':       'Conecte a placa nova e, em até cinco segundos, clique em '
-                  + 'Preparar uma placa nova de novo: o navegador vai pedir que '
-                  + 'você escolha "Micronucleus".',
+  'new-plug':       'Conecte a placa nova agora — desconectando-a antes, se já '
+                  + 'estava — e escolha-a na lista do navegador assim que ela '
+                  + 'aparecer: como "Digispark" ou "Micronucleus". Ela só espera '
+                  + 'alguns segundos.',
   'new-none':       'O Micronucleus não foi escolhido, então nada foi gravado. '
                   + 'Conecte a placa de novo e recomece.',
   'new-done':       'O núcleo da v2 está gravado. Clique em Conectar e escolha a '

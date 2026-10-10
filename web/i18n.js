@@ -285,12 +285,17 @@ en: {
   'ref-paren':      'a parenthesis that is only a parenthesis',
   'ref-accent':     'on a dead-key keyboard: the accent, then the letter',
   'ref-bare-mark':  'the accent key alone, with nothing joined to it',
-  'ref-codes':      'A code is one to five dots and dashes: a press under a '
-                  + 'quarter of a second is a dot, longer is a dash, and '
-                  + '700 ms of silence ends it. Sixty-two codes exist, so a '
-                  + 'table that uses many of them is easier to guess — which '
-                  + 'is what the lockout is for. IR1 to IR30 are codes for '
-                  + 'macros only the remote reaches: no tapping makes them.',
+  'ref-anything-ex': 'anything',
+  'code-summary':   'Codes',
+  'code-help':      'A code is one to five dots and dashes, written here as . '
+                  + 'and -. On the pad a dot is a short touch, under a quarter '
+                  + 'of a second, and a dash a longer one; 700 ms with no touch '
+                  + 'ends the code. The only other codes are IR1 to IR30: they '
+                  + 'work like any other, but no tap makes them, so they are '
+                  + 'for macros that only the remote, or a {goto}, reaches.',
+  'code-guess':     'Sixty-two codes exist, so a table that uses many of them '
+                  + 'is easier to guess — which is what the lockout is for.',
+  'code-morse':     'Morse code, for codes easy to remember:',
   'ref-packed':     'Macros are packed end to end, so the only limit is 480 '
                   + 'bytes in total: two bytes of overhead each, one byte per '
                   + 'keystroke, two per pause or repeat, four per {IR}.',
@@ -748,13 +753,19 @@ pt: {
   'ref-paren':      'um parêntese que é só um parêntese',
   'ref-accent':     'num teclado com acentos mortos: o acento e depois a letra',
   'ref-bare-mark':  'a tecla de acento sozinha, sem nada ligado a ela',
-  'ref-codes':      'Um código são de um a cinco pontos e traços: um toque de '
-                  + 'menos de um quarto de segundo é ponto, mais longo é '
-                  + 'traço, e 700 ms de silêncio encerram o código. Existem '
-                  + 'sessenta e dois códigos, então uma tabela que use muitos '
-                  + 'deles é mais fácil de adivinhar — que é para isso que '
-                  + 'serve o bloqueio. IR1 a IR30 são códigos para macros que '
-                  + 'só o controle remoto alcança: nenhum toque os produz.',
+  'ref-anything-ex': 'qualquer coisa',
+  'code-summary':   'Códigos',
+  'code-help':      'Um código são de um a cinco pontos e traços, escritos aqui '
+                  + 'como . e -. No sensor, um ponto é um toque curto, de menos '
+                  + 'de um quarto de segundo, e um traço um mais longo; 700 ms '
+                  + 'sem toque encerram o código. Os únicos outros códigos são '
+                  + 'IR1 a IR30: funcionam como qualquer outro, mas nenhum toque '
+                  + 'os produz, então servem para macros que só o controle '
+                  + 'remoto, ou um {goto}, alcança.',
+  'code-guess':     'Existem sessenta e dois códigos, então uma tabela que use '
+                  + 'muitos deles é mais fácil de adivinhar — que é para isso '
+                  + 'que serve o bloqueio.',
+  'code-morse':     'Código Morse, para códigos fáceis de lembrar:',
   'ref-packed':     'As macros ficam empacotadas uma após a outra, então o '
                   + 'único limite são 480 bytes no total: dois bytes extras '
                   + 'cada, um byte por tecla, dois por pausa ou '

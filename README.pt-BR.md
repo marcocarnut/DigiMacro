@@ -189,7 +189,10 @@ continua conectada.
 As seções são **Macros**, com a escolha do layout de teclado ao lado do
 título; **Teclas**, uma paleta que insere no cursor qualquer coisa da lista
 abaixo; **Inicialização**; **Computador**; **Senha**; **Bloqueio**; **Cópia
-de segurança**; e uma referência. O aplicativo fala inglês e português do
+de segurança**. Os títulos da tabela são links: **Código** explica os
+códigos e tem uma tabela de Morse para escolher códigos fáceis de lembrar, e
+**Digita** é a referência do que uma macro pode conter. O aplicativo fala
+inglês e português do
 Brasil, escolhido pelo navegador e trocado no canto superior direito.
 
 ### Escrevendo macros

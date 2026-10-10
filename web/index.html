@@ -80,11 +80,18 @@
   .pick select { font: inherit; padding: .2rem .3rem; border-radius: .35rem;
                  border: 1px solid var(--line); background: var(--field);
                  color: var(--fg); }
-  details { margin-top: 2.5rem; }
-  summary { cursor: pointer; color: var(--dim); }
-  details table { margin-top: .8rem; max-width: 40rem; }
-  details td { padding: .15rem .8rem .15rem 0; }
-  details td:first-child { font-family: ui-monospace, monospace; white-space: nowrap; }
+  table.ref { margin: .4rem 0 .8rem; }
+  .ref td { padding: .2rem .8rem .2rem 0; vertical-align: top; }
+  .ref td:first-child { font-family: ui-monospace, monospace; white-space: nowrap; }
+  @media (max-width: 30rem) {         /* a phone: each example over what it does */
+    .ref tr, .ref td { display: block; }
+    .ref td { padding: 0; }
+    .ref td:first-child { padding-top: .5rem; color: var(--accent); }
+  }
+  th button.link { font: inherit; letter-spacing: inherit; text-transform: inherit; }
+  .morse { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+           gap: .2rem .8rem; margin: .4rem 0 1rem; font: 14px ui-monospace, monospace; }
+  .morse b { display: inline-block; width: 1.2em; color: var(--dim); font-weight: 600; }
   [hidden] { display: none !important; }
   .note { font-size: .85rem; margin: .5rem 0 0; max-width: 44rem; }
   .note:empty, .prose:empty { display: none; }
@@ -201,8 +208,9 @@
   </label>
 </div>
 <table>
-  <thead><tr><th style="width:6rem" data-t="th-code">Code</th>
-             <th data-t="th-types">Types</th>
+  <thead><tr><th style="width:6rem"><button id="codehelp" class="link"
+                 data-t="th-code">Code</button></th>
+             <th><button id="typeshelp" class="link" data-t="th-types">Types</button></th>
              <th style="width:4rem"></th><th style="width:2rem"></th></tr></thead>
   <tbody id="list"></tbody>
 </table>
@@ -313,10 +321,14 @@
 </div>
 <p class="note" id="bk-note"></p>
 
-<details>
-  <summary data-t="ref-summary">What can go in a macro</summary>
-  <table>
-    <tr><td>anything</td><td data-t="ref-anything"></td></tr>
+</section>
+</main>
+
+<!-- Opened from the table's Types heading. -->
+<dialog id="refdialog">
+  <h2 data-t="ref-summary">What can go in a macro</h2>
+  <table class="ref">
+    <tr><td data-t="ref-anything-ex">anything</td><td data-t="ref-anything"></td></tr>
     <tr><td>\n \t \\</td><td data-t="ref-escapes"></td></tr>
     <tr><td>{{</td><td data-t="ref-brace"></td></tr>
     <tr><td>{Enter} {Left} {F5}</td><td data-t="ref-named"></td></tr>
@@ -334,11 +346,25 @@
     <tr><td>{'}</td><td data-t="ref-bare-mark"></td></tr>
   </table>
   <p class="dim prose" data-t="ref-layout"></p>
-  <p class="dim prose" data-t="ref-codes"></p>
   <p class="dim prose" data-t="ref-packed"></p>
-</details>
-</section>
-</main>
+  <div class="bar">
+    <span class="spacer"></span>
+    <button data-close data-t="close">Close</button>
+  </div>
+</dialog>
+
+<!-- Opened from the table's Code heading. -->
+<dialog id="codedialog">
+  <h2 data-t="code-summary">Codes</h2>
+  <p class="prose" data-t="code-help"></p>
+  <p class="dim prose" data-t="code-guess"></p>
+  <p class="prose" data-t="code-morse"></p>
+  <div id="morse" class="morse"></div>
+  <div class="bar">
+    <span class="spacer"></span>
+    <button data-close data-t="close">Close</button>
+  </div>
+</dialog>
 
 <!-- Opened from the status line, on a hardened board that is not quite. -->
 <dialog id="hddialog">
@@ -1588,6 +1614,19 @@ function openHardening() {
   $('hddialog').showModal();
 }
 $('hdclose').onclick = () => $('hddialog').close();
+
+/* The table's headings explain themselves. */
+const MORSE = { A: '.-', B: '-...', C: '-.-.', D: '-..', E: '.', F: '..-.', G: '--.',
+  H: '....', I: '..', J: '.---', K: '-.-', L: '.-..', M: '--', N: '-.', O: '---',
+  P: '.--.', Q: '--.-', R: '.-.', S: '...', T: '-', U: '..-', V: '...-', W: '.--',
+  X: '-..-', Y: '-.--', Z: '--..', 1: '.----', 2: '..---', 3: '...--', 4: '....-',
+  5: '.....', 6: '-....', 7: '--...', 8: '---..', 9: '----.', 0: '-----' };
+$('morse').innerHTML = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890']
+  .map(c => `<span><b>${c}</b>${MORSE[c]}</span>`).join('');
+$('codehelp').onclick = () => $('codedialog').showModal();
+$('typeshelp').onclick = () => $('refdialog').showModal();
+for (const b of document.querySelectorAll('dialog [data-close]'))
+  b.onclick = () => b.closest('dialog').close();
 
 function openFirmware() {
   note('fw-note', '');

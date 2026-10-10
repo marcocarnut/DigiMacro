@@ -183,8 +183,10 @@ stays plugged in.
 
 The sections are **Macros**, with the keyboard layout picker beside the
 heading; **Keys**, a palette that inserts anything below at the cursor;
-**Startup**; **Host**; **Password**; **Lockout**; **Backup**; and a
-reference. The app
+**Startup**; **Host**; **Password**; **Lockout**; and **Backup**. The
+table's headings are links: **Code** explains codes and has a Morse table to
+pick memorable ones from, and **Types** is the reference for what a macro
+can hold. The app
 speaks English and Brazilian Portuguese, picked from the browser and changed
 at the top right.
 

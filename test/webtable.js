@@ -34,6 +34,36 @@ const ROWS = [
    type it -- and saying so here keeps --emit deterministic. */
 t.setLayout('us-intl');
 
+/* Secrets, for the firmware to open (run.sh): with the key, each must type
+   exactly what the same macro typed in the clear does. */
+const SECRET_EMIT = [
+  { code: '.',  text: 'user\\t{secret}hunter2{Enter}' },
+  { code: '-',  text: '{secret!}{Ctrl+a}top (secret){3} {pause 0.5}{goto ..}' },
+  { code: '..', text: 'plain{IR 00 45}x' },
+  { code: '.-', text: '{secret}' + 'The quick brown fox jumps over the lazy dog. '.repeat(5) },
+  { code: '-.', text: 'abc{4}{secret}(xy){3}z{Shift+Left}' },
+];
+const EMIT_KEY = Uint8Array.from({ length: 16 }, (_, i) => 0xA0 + i);
+const hexOf = b => [...b].map(v => v.toString(16).padStart(2, '0')).join(' ');
+if (process.argv.includes('--emit-secret') || process.argv.includes('--emit-clear')) {
+  const clear = process.argv.includes('--emit-clear');
+  let s = 1;
+  const random = n => Uint8Array.from({ length: n }, () => (s = (s * 69069 + 1) >>> 0) >>> 24);
+  const rows = clear ? SECRET_EMIT.map(r => ({ ...r, text: r.text.replace(/\{secret!?\}/, '') }))
+                     : SECRET_EMIT;
+  const table = t.encodeTable(rows, clear ? {} : { key: EMIT_KEY });
+  if (!clear) {                       /* sealed with that randomness, so that a
+                                         failure can be reproduced */
+    const seal = plain => t.sealSecret(EMIT_KEY, plain, random);
+    table.set(t.packTable(rows.map(r => [r.code, t.encodeMacro(r.text, seal)])));
+  }
+  const e = new Uint8Array(512).fill(0xFF);
+  e.set(table, 0);
+  if (!clear) e.set(t.keyCheck(EMIT_KEY), t.CHECK_ADDR);
+  process.stdout.write(hexOf(e) + '\n' + (clear ? '' : 'key=' + hexOf(EMIT_KEY).replace(/ /g, '')));
+  process.exit(0);
+}
+
 if (process.argv.includes('--emit')) {
   process.stdout.write([...t.encodeTable(ROWS)]
     .map(v => v.toString(16).padStart(2, '0')).join(' '));
@@ -190,30 +220,19 @@ for (const [rows, want] of [
           (msg === null ? 'nothing' : JSON.stringify(msg)));
 }
 
-console.log('5d. the host check, quiet and loud');
-check(JSON.stringify(t.encodeMacro('{host}pw')) ===
-      JSON.stringify([t.ESC_HOST, t.HOST_SILENT, 0x13, 0x1A]),
-      '{host} is the escape with 1');
-check(JSON.stringify(t.encodeMacro('{HOST!}')) ===
-      JSON.stringify([t.ESC_HOST, t.HOST_LOUD]), '{host!} with 2, any case');
-check(t.decodeMacro(t.encodeMacro('user\\t{host}pw')) === 'user\\t{host}pw',
+console.log('5d. v2\'s host check: gone, but readable');
+/* Firmware 16 refuses every {host}; one read off an older table still shows,
+   so that it can be changed into a {secret} */
+msg = null;
+try { t.encodeMacro('{host}pw'); } catch (e) { msg = e.message; }
+check(msg !== null && /\{secret\}/.test(msg), `{host} is refused, pointing at {secret}: ${msg}`);
+msg = null;
+try { t.encodeMacro('a{HOST!}'); } catch (e) { msg = e.message; }
+check(msg !== null, '{host!} too, any case');
+check(t.decodeMacro([0x13, t.ESC_HOST, t.HOST_SILENT, 0x1A]) === 'p{host}w' &&
+      t.decodeMacro([t.ESC_HOST, t.HOST_LOUD]) === '{host!}',
       'and both read back as themselves');
-msg = null;
-try { t.encodeMacro('{host}{3}'); } catch (e) { msg = e.message; }
-check(msg !== null, 'a check is not a thing a count can count');
-/* A loud check is only as good as what comes before it: nothing. */
-check(t.macroWarnings(t.encodeMacro('{host!}secret')).length === 0,
-      'first is right');
-check(t.macroWarnings(t.encodeMacro('{Ctrl+a}{host!}x')).length === 1,
-      'a keystroke first gives the code away');
-check(t.macroWarnings(t.encodeMacro('name{host}pw')).length === 0,
-      'a quiet one may come anywhere: it says nothing to anyone');
-check(t.hasHostCheck(t.encodeMacro('a{pause 1.0}{host}')), 'a check is found');
-check(!t.hasHostCheck(t.encodeMacro('host')), 'and the word is not one');
-/* A loop that only checks the host still never types or pauses */
-msg = null;
-try { t.encodeTable([{ code: '.', text: '{host}{goto .}' }]); } catch (e) { msg = e.message; }
-check(msg !== null && /never type or pause/.test(msg), 'a check is not an action');
+check(t.encodeMacro('host').length === 4, 'the word is just a word');
 
 /* The two ends define these separately, so read the firmware's own values
    rather than trust that somebody remembered to change both. */
@@ -244,8 +263,9 @@ for (const text of ['{IR 00 45}', 'a{IR ff ff}b', '{IR 80 c5}{IR 01 7f}',
    -- so anything that walks a macro byte by byte rather than escape by
    escape finds things that are not there. */
 check(!t.hasHostCheck(t.encodeMacro('{IR 02 03}')), 'an {IR} is no host check');
-check(t.macroWarnings(t.encodeMacro('{IR 02 02}{host!}x')).length === 0,
-      'and nothing shows: a {host!} after one is still first');
+check(t.macroWarnings(t.encodeMacro('{IR 02 02}{secret!}x',
+                                    p => t.sealSecret(new Uint8Array(16), p))).length === 0,
+      'and nothing shows: a {secret!} after one is still first');
 msg = null;
 try { t.encodeMacro('(a{IR 02 03}){2}'); } catch (e) { msg = e.message; }
 check(msg === null, `nor a mark or a count inside a group: ${msg}`);
@@ -340,6 +360,141 @@ check(['Digit0', 'Numpad7', 'KeyA', 'KeyF', 'Space'].map(t.irKeyChar).join('') =
       'irKeyChar maps digits, a-f and the space');
 check(t.irKeyChar('KeyG') === null && t.irKeyChar('Enter') === null,
       'irKeyChar ignores other keys');
+
+console.log('7. secrets');
+const hex = b => [...b].map(v => v.toString(16).padStart(2, '0')).join('');
+const unhex = h => Uint8Array.from(h.match(/../g).map(x => parseInt(x, 16)));
+/* XTEA against the spike's vectors (build/cipher-spike, from the C reference
+   checked against the published one): the published vector, then two random */
+for (const [k, v, c] of [
+  ['00000000000000000000000000000000', '0000000000000000', 'd8d4e9ded91e13f7'],
+  ['ccc823e037ddb699c51d38fa71d871b8', 'f5de8fe876283f27', '2ca13c8511c9606e'],
+  ['38bbf812743365ccb9a37f8e2f6e037a', 'a2572dc73d7e2a38', '85861e25177007f3']])
+  check(hex(t.xtea(unhex(v), unhex(k))) === c, `xtea(${v}, ${k}) gives ${c}`);
+
+/* Deterministic randomness, so a failure can be reproduced */
+let seed = 85;
+const rnd = n => Uint8Array.from({ length: n }, () =>
+  (seed = (seed * 1103515245 + 12345) >>> 0) >>> 24);
+const KEY = rnd(16), OTHER = rnd(16);
+const sealer = plain => t.sealSecret(KEY, plain, rnd);
+
+check((t.SECRET_QUIET - 1 & 7) >= t.MAX_SYM && (t.SECRET_LOUD - 1 & 7) >= t.MAX_SYM,
+      "a secret's marker is a jump to a code no macro can have");
+check(def('ESC_JUMP') === t.ESC_JUMP, 'the marker is the firmware\'s jump');
+
+/* Sealing: always walkable, never zero, and back to the same keystrokes */
+let sealedOk = 0, opened = 0, tries = 0;
+for (let n = 0; n < 300; n++) {
+  const plain = [...rnd(1 + (n * 7) % t.SECRET_MAX)].map(v => (v & 0x7F) < 4 ? 0x04 : v);
+  const blob = t.sealSecret(KEY, plain, rnd);
+  if (t.walkSafe(blob) && !blob.includes(0) && (blob[0] | blob[1] | blob[2] | blob[3]))
+    sealedOk++;
+  if (JSON.stringify(t.openSecret(KEY, blob)) === JSON.stringify(plain)) opened++;
+  if (JSON.stringify(t.openSecret(OTHER, blob)) === JSON.stringify(plain)) tries++;
+}
+check(t.sealSecret(KEY, new Array(t.SECRET_MAX).fill(4), rnd).length === 4 + t.SECRET_MAX + 1,
+      'the longest secret seals');
+{ let m = null; try { t.sealSecret(KEY, new Array(t.SECRET_MAX + 1).fill(4), rnd); }
+  catch (e) { m = e.message; }
+  check(m !== null && /at most 255/.test(m), `one keystroke more does not: ${m}`); }
+check(sealedOk === 300, `every sealed secret walks safely (${sealedOk} of 300)`);
+check(opened === 300, `every sealed secret opens again (${opened} of 300)`);
+check(tries === 0, `another key opens none (${tries} did)`);
+/* ...though about one in 256 decrypts to something that ends in a zero:
+   which is why a key is checked against the check value, never by trying */
+
+/* The keystream, spelled out from xtea() alone: byte j is byte j&7 of
+   XTEA(nonce, j>>3) -- what the firmware will compute, so a sealer that
+   agreed only with its own opener would fail here */
+{
+  const plain = [...'abcdefghijkl'].map(c => c.charCodeAt(0) - 93);  /* a..l */
+  const blob = t.sealSecret(KEY, plain, rnd);
+  const ks = [...plain, 0].map((v, j) => t.xtea([...blob.slice(0, 4), j, 0, 0, 0], KEY)[0]);
+  check(JSON.stringify(blob.slice(4)) ===
+        JSON.stringify([...plain, 0].map((v, j) => v ^ ks[j])),
+        "the keystream is XTEA(nonce, the byte's place)'s first byte, little-endian");
+  check(JSON.stringify([...t.keyCheck(KEY)]) === JSON.stringify([...t.xtea(new Uint8Array(8), KEY)]),
+        'the check value is XTEA(0, 0)');
+}
+
+/* A nonce of zero would give the check value's block: never used */
+let zeros = 2;
+const zeroFirst = n => zeros-- > 0 ? new Uint8Array(n) : rnd(n);
+check(t.sealSecret(KEY, [0x04], zeroFirst).slice(0, 4).some(v => v),
+      'a nonce of zero is drawn again');
+
+/* The walk refuses what would lose its place */
+check(!t.walkSafe([0x04, 0x00, 0x04]), 'a zero is not safe');
+check(!t.walkSafe([0x04, 0x80, 0x81, 0x81, 0x81]), 'an {IR} is not safe');
+check(!t.walkSafe([0x04, 0x01]), 'an escape whose argument is the terminator is not');
+check(t.walkSafe([0x01, 0x80, 0x04]), "but 0x80 as an escape's argument is");
+
+/* Text, with and without the key */
+const SECRET_ROWS = [
+  { code: '.',  text: 'user\\t{secret}hunter2{Enter}' },
+  { code: '-',  text: '{secret!}{Ctrl+a}top (secret){3} {pause 0.5}{goto .}' },
+  { code: '..', text: 'plain{IR 00 45}' },
+];
+/* The EEPROM as the page writes it: the table, and the key's check value */
+const eeprom = (table, key) => { const e = new Uint8Array(512).fill(0xFF);
+  e.set(table, 0); if (key) e.set(t.keyCheck(key), t.CHECK_ADDR); return e; };
+const hidusb = require('fs').readFileSync(require('path').join(__dirname, '../app/hidusb.h'), 'utf8');
+check(t.CHECK_ADDR === Number(/#define DM_CHECK_ADDR\s+(0x[0-9A-Fa-f]+)/.exec(hidusb)?.[1]),
+      'the check value is where the firmware looks for it');
+const stTable = t.encodeTable(SECRET_ROWS, { key: KEY });
+check(stTable[stTable.length - 1] === 0xFF && stTable.length < t.TABLE_TOP,
+      'a table with secrets ends as any table does');
+const st = eeprom(stTable, KEY);
+check(!hex(st).includes(hex(t.encodeMacro('hunter2'))), 'the secret is not in the table');
+const withKey = t.decodeTable(st, KEY);
+check(JSON.stringify(withKey.map(r => r.text)) === JSON.stringify(
+        ['user\\t{secret}hunter2\\n', '{secret!}{Ctrl+a}top (secret){3} {pause 0.5}{goto .}',
+         'plain{IR 00 45}']),
+      'with the key, secrets read back as text: ' + JSON.stringify(withKey.map(r => r.text)));
+const blind = t.decodeTable(st);
+check(/^user\\t\{secret [0-9a-f]+\}$/.test(blind[0].text) && /^\{secret! [0-9a-f]+\}$/.test(blind[1].text),
+      'without it, as their hex: ' + JSON.stringify(blind.map(r => r.text)));
+/* Without the key, a table can still be rearranged: sealed secrets move */
+const moved = eeprom(t.encodeTable([blind[2], { code: '--', text: 'new' }, blind[1], blind[0]],
+                                   { check: t.keyCheck(KEY) }), KEY);
+const movedBack = t.decodeTable(moved, KEY);
+check(movedBack.find(r => r.code === '.').text === withKey[0].text &&
+      movedBack.find(r => r.code === '-').text === withKey[1].text,
+      'sealed secrets move without the key, and still open');
+/* Old walks: the firmware's, by escapes, and the old page's, by zeros, agree */
+const heads = (b, esc) => { const out = []; let i = 0;
+  while (i < t.TABLE_TOP && (b[i] & 7) < t.MAX_SYM) { out.push(i); i++;
+    if (esc) { while (b[i]) i += b[i] === t.ESC_IR ? 4 : (b[i] & 0x7F) < 4 && b[i] !== t.ESC_MARK ? 2 : 1; }
+    else while (b[i]) i++;
+    i++; } return out.join(); };
+check(heads(moved, true) === heads(moved, false) && heads(st, true) === heads(st, false),
+      'walking by escapes and by zeros finds the same macros');
+
+/* Refusals */
+const throws = (f, re, what) => { let m = null; try { f(); } catch (e) { m = e.message; }
+  check(m !== null && re.test(m), `${what}: ${m}`); };
+throws(() => t.encodeMacro('a{secret}b'), /needs the key/, 'no key');
+throws(() => t.encodeMacro('a{secret}b{secret}c', sealer), /one \{secret\}/, 'two secrets');
+throws(() => t.encodeMacro('(a{secret}b){2}', sealer), /inside a group/, 'in a group');
+throws(() => t.encodeMacro('{secret}x{IR 00 45}', sealer), /remote/, 'an IR after');
+throws(() => t.encodeMacro(blind[0].text + 'x'), /nothing can follow/, 'after a sealed one');
+throws(() => t.encodeMacro(blind[0].text.replace(/[0-9a-f]\}$/, '}')), /changed/, 'a cut blob');
+throws(() => t.encodeTable([{ code: '.', text: blind[0].text }], { key: OTHER, check: t.keyCheck(KEY) }),
+       /not the key/, 'another key, writing');
+throws(() => t.decodeTable(st, OTHER), /not the key/, 'another key, reading');
+check(t.macroWarnings(t.encodeMacro('x{secret!}y', sealer)).includes('secret-late') &&
+      t.macroWarnings(t.encodeMacro('{secret!}y', sealer)).length === 0 &&
+      t.macroWarnings(t.encodeMacro('x{secret}y', sealer)).length === 0,
+      'something before {secret!} is a warning, before {secret} not');
+/* What a secret holds is never walked for jumps: its bytes would read as
+   gotos to codes that are not there */
+let spurious = 0;
+for (let n = 0; n < 300; n++)
+  try { t.encodeTable([{ code: '.', text: '{secret}' + 'abcdefghij'.slice(0, 1 + n % 10) },
+                       { code: '-', text: '{goto .}' }], { key: KEY }); }
+  catch (e) { spurious++; }
+check(spurious === 0, `a secret's bytes never read as jumps (${spurious} of 300 did)`);
 
 console.log(fails ? '\nSOME CHECKS FAILED' : '\nall checks passed');
 process.exit(fails ? 1 : 0);

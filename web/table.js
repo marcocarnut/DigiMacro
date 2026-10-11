@@ -54,6 +54,112 @@ const irHeard = text => {
 const escStep = (b, i) => b[i] === ESC_IR ? 4
                      : (b[i] & 0x7F) < 0x04 && b[i] !== ESC_MARK ? 2 : 1;
 
+/* ==================================================================== */
+/* Secrets                                                              */
+/* ==================================================================== */
+
+/* {secret} keeps the rest of a macro encrypted: the board types it only while
+ * a host's client has given it the key, which it holds in RAM and never
+ * stores. As the table holds it:
+ *
+ *      0x81 hh  n0 n1 n2 n3  c0 ... ck  0x00
+ *
+ * 0x81 hh is a jump to a code no macro can have -- hh-1 is an end header --
+ * so firmware from before secrets ends the macro there and types nothing.
+ * hh = 0xFE is {secret}, which stops quietly without the key; 0xFF is
+ * {secret!}, which stops as if the code were not there.
+ *
+ * n is the nonce, new each time the secret is sealed, and never zero: block 0
+ * of nonce 0 is the check value below. c is the rest of the macro and a zero
+ * of its own, encrypted: XTEA, in counter mode, byte j being the plain byte
+ * XOR the first byte of XTEA_K(nonce, j), both words little-endian -- a
+ * block a byte, which spares the firmware a cache it has no room for. j is
+ * one byte there, so a secret is at most 256 bytes, its zero included.
+ * Decrypted, the zero ends the macro, as in plain text.
+ *
+ * There is no length: the nonce is drawn again until nonce and ciphertext
+ * hold no zero and no {IR} where a walk would look, and a walk with the
+ * escape rules lands exactly on the terminator. So everything that walks a
+ * table -- this file, the firmware, and both as they were before secrets --
+ * keeps its place without knowing anything about them.
+ *
+ * The board tells the right key from a wrong one by the check value,
+ * x = XTEA_K(0, 0), at CHECK_ADDR -- where v2's host key was, {host} having
+ * gone: a {secret} at the start of a macro is all it was, and more.
+ */
+const SECRET_QUIET = 0xFE;  /* the jump's argument: {secret} */
+const SECRET_LOUD  = 0xFF;  /* ...and {secret!} */
+const CHECK_ADDR   = 0x1E4; /* the check value's eight bytes, in EEPROM */
+const SECRET_MAX   = 255;   /* keystrokes in a secret */
+const isSecret = (b, i) => b[i] === ESC_JUMP &&
+                           (b[i + 1] === SECRET_QUIET || b[i + 1] === SECRET_LOUD);
+
+const le32 = (b, i) => (b[i] | b[i + 1] << 8 | b[i + 2] << 16 | b[i + 3] << 24) >>> 0;
+
+/* XTEA, 32 cycles, encrypt only: counter mode never decrypts. Eight bytes and
+   a sixteen-byte key in, eight bytes out, every word little-endian, as the
+   firmware's xtea() takes them. */
+function xtea(v, k) {
+  const key = [le32(k, 0), le32(k, 4), le32(k, 8), le32(k, 12)];
+  let v0 = le32(v, 0), v1 = le32(v, 4), sum = 0;
+  for (let n = 0; n < 32; n++) {
+    v0 = (v0 + ((((v1 << 4) ^ (v1 >>> 5)) + v1) ^ (sum + key[sum & 3]))) >>> 0;
+    sum = (sum + 0x9E3779B9) >>> 0;
+    v1 = (v1 + ((((v0 << 4) ^ (v0 >>> 5)) + v0) ^ (sum + key[(sum >>> 11) & 3]))) >>> 0;
+  }
+  const out = new Uint8Array(8);
+  for (let i = 0; i < 4; i++) { out[i] = v0 >>> (8 * i); out[i + 4] = v1 >>> (8 * i); }
+  return out;
+}
+
+const keyCheck = key => xtea(new Uint8Array(8), key);
+
+/* bytes XOR the keystream of nonce (four bytes), from byte 0 */
+function secretXor(key, nonce, bytes) {
+  const block = new Uint8Array(8);
+  return Uint8Array.from(bytes, (b, j) => {
+    block.set(nonce, 0);
+    block[4] = j; block[5] = block[6] = block[7] = 0;
+    return b ^ xtea(block, key)[0];
+  });
+}
+
+/* Whether a walk with the escape rules, starting at b[0], sees no zero and no
+   {IR} and stops exactly at the end. */
+function walkSafe(b) {
+  if (b.includes(0)) return false;
+  let i = 0;
+  while (i < b.length) {
+    if (b[i] === ESC_IR) return false;
+    i += escStep(b, i);
+  }
+  return i === b.length;
+}
+
+const randomBytes = n => (globalThis.crypto || require('crypto').webcrypto)
+                           .getRandomValues(new Uint8Array(n));
+
+/* The rest of a macro, as keystrokes -> nonce and ciphertext. `random` is
+   for the tests. */
+function sealSecret(key, plain, random = randomBytes) {
+  if (plain.length > SECRET_MAX) fail('secret-too-long', { n: plain.length, max: SECRET_MAX });
+  const p = Uint8Array.from([...plain, 0]);
+  for (let tries = 0; tries < 1 << 16; tries++) {
+    const nonce = random(4);        /* never zero: walkSafe() refuses any
+                                       zero byte, the nonce's included */
+    const blob = Uint8Array.from([...nonce, ...secretXor(key, nonce, p)]);
+    if (walkSafe(blob)) return [...blob];
+  }
+  fail('secret-no-nonce');
+}
+
+/* ...and back: the keystrokes, or null unless exactly the last byte is the
+   zero, which a wrong key almost never gives. */
+function openSecret(key, blob) {
+  const p = secretXor(key, blob.slice(0, 4), blob.slice(4));
+  return p.indexOf(0) === p.length - 1 ? [...p.slice(0, -1)] : null;
+}
+
 const AUTO_ADDR  = 0x1F3;   /* the macro to type when the board is plugged
                                in, as a header byte; anything impossible as
                                one means nothing is set */
@@ -146,6 +252,22 @@ const MSG = {
   'not-a-byte':      p => `"${p.what}" has a byte that is not a byte`,
   'has-a-zero':      p => `"${p.what}" contains a zero, which would end it early`,
   'too-big':         p => `${p.n} bytes of table, and only ${p.fits} fit`,
+  'secret-no-key':   () => '{secret} needs the key, to encrypt what follows it',
+  'secret-twice':    () => 'one {secret} per macro: everything after the first '
+                         + 'is secret already',
+  'secret-in-group': () => 'a {secret} inside a group: it takes the rest of the '
+                         + 'macro, so it cannot be repeated',
+  'secret-ir':       () => 'an {IR} after a {secret}: the remote could not find '
+                         + 'its button in encrypted text',
+  'secret-sealed-last': () => 'nothing can follow a sealed {secret}: it is the '
+                         + 'rest of the macro already',
+  'secret-blob':     () => 'a sealed {secret} that is not one: it was changed '
+                         + 'since it was read',
+  'secret-too-long': p => `a secret of ${p.n} keystrokes: at most ${p.max} fit`,
+  'host-gone':       () => '{host} is gone: put {secret} where it was, and the '
+                         + 'rest of the macro is encrypted as well as guarded',
+  'secret-wrong-key':() => 'this is not the key these secrets were sealed with',
+  'secret-no-nonce': () => 'no nonce would seal this secret -- try again',
 };
 
 let translate = null;
@@ -268,7 +390,10 @@ function closeParen(text, from) {
 }
 const REPEAT_NEXT = /^\{\s*x?\s*\d+\s*\}/;
 
-function encodeMacro(text) {
+/* `seal` turns the keystrokes after a {secret} into what the table holds
+   (sealSecret with the key); without one, a {secret} can only be written
+   already sealed, as {secret <hex>}. */
+function encodeMacro(text, seal = null) {
   const out = [];
   let i = 0;
 
@@ -311,13 +436,15 @@ function encodeMacro(text) {
       if (close >= 0 && REPEAT_NEXT.test(text.slice(close + 1))) {
         const inner = text.slice(i + 1, close);
         if (inner === '') fail('group-empty');
-        const body = encodeMacro(inner);
+        const body = encodeMacro(inner, () => fail('secret-in-group'));
         /* The firmware keeps one mark, so a count inside a group would send
            the group's own repeat back to the wrong place. Refusing says so;
            emitting it would type something nobody asked for. */
-        for (let j = 0; j < body.length; j += escStep(body, j))
+        for (let j = 0; j < body.length; j += escStep(body, j)) {
+          if (isSecret(body, j)) fail('secret-in-group');
           if (body[j] === ESC_REPEAT || body[j] === ESC_MARK)
             fail('nested-repeat');
+        }
         unitAt = out.length;
         push(ESC_MARK);             /* explicit groups always get one, so that
                                        what comes back reads the same way */
@@ -362,14 +489,32 @@ function encodeMacro(text) {
         continue;
       }
 
-      /* {host} stops the macro here unless the host has sent its key
-         lately; {host!} stops it as if the code were not in the table. */
-      const host = /^host(!?)$/i.exec(body);
-      if (host) {
-        push(ESC_HOST, host[1] ? HOST_LOUD : HOST_SILENT);
-        unitAt = -1;                            /* a check is not a thing to
-                                                   count */
-        continue;
+      /* v2's {host}: firmware 16 refuses every one, {secret} having taken
+         its place. Read back, it still shows, so that it can be changed. */
+      if (/^host!?$/i.test(body)) fail('host-gone');
+
+      /* {secret}: the rest of the macro, sealed. It takes the rest, so it is
+         the last thing here; and what it holds is never walked in the clear,
+         so no remote's button can be found in it. A secret already sealed --
+         read off a board by a page without the key -- comes back as its hex,
+         and goes back as it came. */
+      const secret = /^secret(!?)(?:\s+([0-9a-f]*))?$/i.exec(body);
+      if (secret) {
+        let blob;
+        if (secret[2] !== undefined) {
+          if (text.slice(i).trim() !== '') fail('secret-sealed-last');
+          const h = secret[2];
+          blob = h.length % 2 ? [] : h.match(/../g)?.map(x => parseInt(x, 16)) ?? [];
+          if (blob.length < 5 || !walkSafe(blob)) fail('secret-blob');
+        } else {
+          if (!seal) fail('secret-no-key');
+          const rest = encodeMacro(text.slice(i), () => fail('secret-twice'));
+          for (let j = 0; j < rest.length; j += escStep(rest, j))
+            if (rest[j] === ESC_IR) fail('secret-ir');
+          blob = seal(rest);
+        }
+        push(ESC_JUMP, secret[1] ? SECRET_LOUD : SECRET_QUIET, ...blob);
+        return out;
       }
 
       /* {IR a c}: the remote's button a c starts typing from here. Played
@@ -470,7 +615,10 @@ function plainChar(b) {
    and that is the whole point of the group. */
 const oneUnit = s => [...s].length === 1 || /^\{[^}]*\}$/.test(s);
 
-function decodeMacro(bytes) {
+/* `open` turns a sealed secret back into keystrokes (openSecret with the
+   key), or gives null; without it, or with null, the secret reads back as
+   {secret <hex>}. */
+function decodeMacro(bytes, open = null) {
   let out = '', mod = 0;
   let groupAt = -1, groupByte = 0;      /* where a marked group began */
 
@@ -506,6 +654,14 @@ function decodeMacro(bytes) {
       out += `{IR ${irHex(a)} ${irHex(c)}}`;
       i += 3;
       continue;
+    }
+
+    if (isSecret(bytes, i)) {                   /* the rest, sealed */
+      const tag = bytes[i + 1] === SECRET_LOUD ? 'secret!' : 'secret';
+      const blob = [...bytes.slice(i + 2)];
+      const plain = open && open(blob);
+      return out + (plain ? `{${tag}}` + decodeMacro(plain)
+                          : `{${tag} ${blob.map(irHex).join('')}}`);
     }
 
     if ((b & 0x7F) < 0x04) {                    /* an escape */
@@ -601,6 +757,8 @@ function entryFate(bytes) {
   let acts = false;
   for (let i = 0; i < bytes.length; i += escStep(bytes, i)) {
     const b = bytes[i];
+    /* what a secret does is not known here: count it as doing something */
+    if (isSecret(bytes, i)) return { acts: true, goes: null };
     if (b === ESC_JUMP)  return { acts, goes: bytes[i + 1] - 1 };
     if (b === ESC_MARK || b === ESC_IR || b === ESC_HOST || b === ESC_MOD)
       continue;                                 /* nothing shows */
@@ -646,6 +804,10 @@ function macroWarnings(bytes) {
   let shown = false;
   for (let i = 0; i < bytes.length; i += escStep(bytes, i)) {
     const b = bytes[i];
+    if (isSecret(bytes, i)) {
+      if (bytes[i + 1] === SECRET_LOUD && shown) warn.push('secret-late');
+      break;
+    }
     if (b === ESC_HOST && bytes[i + 1] === HOST_LOUD && shown)
       warn.push('host-late');
     if (b === ESC_MARK || b === ESC_IR || b === ESC_HOST || b === ESC_MOD ||
@@ -656,8 +818,14 @@ function macroWarnings(bytes) {
 }
 
 const hasHostCheck = bytes => {
-  for (let i = 0; i < bytes.length; i += escStep(bytes, i))
+  for (let i = 0; i < bytes.length && !isSecret(bytes, i); i += escStep(bytes, i))
     if (bytes[i] === ESC_HOST) return true;
+  return false;
+};
+
+const hasSecret = bytes => {
+  for (let i = 0; i < bytes.length; i += escStep(bytes, i))
+    if (isSecret(bytes, i)) return true;
   return false;
 };
 
@@ -710,14 +878,33 @@ function unpackTable(bytes) {
   return entries;
 }
 
-/* What the editor holds: text per code, in table order. */
-function encodeTable(rows) {
-  return packTable(rows.map(r => [r.code, encodeMacro(r.text)]));
+const sameBytes = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+const SEALED = /\{\s*secret!?\s+[0-9a-f]/i;
+
+/* What the editor holds: text per code, in table order. With the key, a
+   {secret} is sealed afresh; without it, only secrets still sealed can be
+   written. `check` is the board's check value: a key that is not the one
+   it checks would leave the sealed ones unreadable, so it is refused. The
+   page writes keyCheck(key) to CHECK_ADDR with the table. */
+function encodeTable(rows, { key = null, check = null } = {}) {
+  if (key && check && rows.some(r => SEALED.test(r.text)) &&
+      !sameBytes(check, keyCheck(key)))
+    fail('secret-wrong-key');
+  const seal = key ? plain => sealSecret(key, plain) : null;
+  return packTable(rows.map(r => [r.code, encodeMacro(r.text, seal)]));
 }
 
-function decodeTable(bytes) {
-  return unpackTable(bytes).map(([code, body]) =>
-    ({ code, text: decodeMacro(body) }));
+/* `bytes` is the EEPROM from 0, through CHECK_ADDR if there are secrets for
+   `key` to open. */
+function decodeTable(bytes, key = null) {
+  const entries = unpackTable(bytes);
+  let open = null;
+  if (key && entries.some(([, body]) => hasSecret(body))) {
+    if (!sameBytes([...bytes.slice(CHECK_ADDR, CHECK_ADDR + 8)], [...keyCheck(key)]))
+      fail('secret-wrong-key');
+    open = blob => openSecret(key, blob);
+  }
+  return entries.map(([code, body]) => ({ code, text: decodeMacro(body, open) }));
 }
 
 /* The sample table both the app and the test use, so what gets tested is
@@ -734,7 +921,8 @@ function sampleRows() {
 if (typeof module !== 'undefined') module.exports = {
   ESC_PAUSE, ESC_MOD, ESC_REPEAT, ESC_JUMP, SHIFT, TABLE_TOP, MAX_SYM,
   ESC_MARK, ESC_HOST, HOST_SILENT, HOST_LOUD, macroWarnings, hasHostCheck,
-  ESC_IR,
+  ESC_IR, SECRET_QUIET, SECRET_LOUD, CHECK_ADDR, SECRET_MAX, xtea, keyCheck,
+  sealSecret, openSecret, walkSafe, hasSecret,
   AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
   usages, header, codeOf, tappable, IR_CODES, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows,

@@ -238,6 +238,9 @@ en: {
                   + '%APPDATA%\\digimacro\\host.key',
   'host-late':      'Something shows before {host!}, so a guesser on the wrong '
                   + 'computer learns this code exists. Put the check first.',
+  'secret-late':    'Something shows before {secret!}, so a guesser on the '
+                  + 'wrong computer learns this code exists. Put the secret '
+                  + 'first.',
   'host-startup':   'The power-on macro checks the host. It runs before any '
                   + 'program on the computer can have sent the key, so it will '
                   + 'stop at the check every time.',
@@ -516,6 +519,22 @@ en: {
   'not-a-byte':     '"{what}" has a byte that is not a byte',
   'has-a-zero':     '"{what}" contains a zero, which would end it early',
   'too-big':        '{n} bytes of table, and only {fits} fit',
+  'secret-no-key':  '{secret} needs the key, to encrypt what follows it',
+  'secret-twice':   'one {secret} per macro: everything after the first is '
+                  + 'secret already',
+  'secret-in-group':'a {secret} inside a group: it takes the rest of the macro, '
+                  + 'so it cannot be repeated',
+  'secret-ir':      'an {IR} after a {secret}: the remote could not find its '
+                  + 'button in encrypted text',
+  'secret-sealed-last': 'nothing can follow a sealed {secret}: it is the rest '
+                  + 'of the macro already',
+  'secret-blob':    'a sealed {secret} that is not one: it was changed since it '
+                  + 'was read',
+  'secret-too-long':'a secret of {n} keystrokes: at most {max} fit',
+  'host-gone':      '{host} is gone: put {secret} where it was, and the rest of '
+                  + 'the macro is encrypted as well as guarded',
+  'secret-wrong-key':'this is not the key these secrets were sealed with',
+  'secret-no-nonce':'no nonce would seal this secret — try again',
 },
 
 pt: {
@@ -754,6 +773,9 @@ pt: {
   'host-late':      'Algo aparece antes de {host!}, então quem tenta adivinhar '
                   + 'num computador errado descobre que este código existe. '
                   + 'Ponha a verificação primeiro.',
+  'secret-late':    'Algo aparece antes de {secret!}, então quem tenta '
+                  + 'adivinhar num computador errado descobre que este código '
+                  + 'existe. Ponha o segredo primeiro.',
   'host-startup':   'A macro de inicialização verifica o computador. Ela roda '
                   + 'antes que qualquer programa no computador possa ter '
                   + 'enviado a chave, então vai parar na verificação toda vez.',
@@ -1036,6 +1058,22 @@ pt: {
   'not-a-byte':     '"{what}" tem um byte que não é um byte',
   'has-a-zero':     '"{what}" contém um zero, que a encerraria antes da hora',
   'too-big':        '{n} bytes de tabela, e só cabem {fits}',
+  'secret-no-key':  '{secret} precisa da chave, para cifrar o que vem depois',
+  'secret-twice':   'um {secret} por macro: tudo depois do primeiro já é '
+                  + 'secreto',
+  'secret-in-group':'um {secret} dentro de um grupo: ele toma o resto da macro, '
+                  + 'então não pode ser repetido',
+  'secret-ir':      'um {IR} depois de um {secret}: o controle remoto não '
+                  + 'acharia seu botão em texto cifrado',
+  'secret-sealed-last': 'nada pode vir depois de um {secret} já cifrado: ele já '
+                  + 'é o resto da macro',
+  'secret-blob':    'um {secret} cifrado que não é um: foi alterado depois de '
+                  + 'lido',
+  'secret-too-long':'um segredo de {n} teclas: cabem no máximo {max}',
+  'host-gone':      '{host} não existe mais: ponha {secret} no lugar dele, e o '
+                  + 'resto da macro fica cifrado além de protegido',
+  'secret-wrong-key':'esta não é a chave com que estes segredos foram cifrados',
+  'secret-no-nonce':'nenhum nonce conseguiu cifrar este segredo — tente de novo',
 },
 
 };

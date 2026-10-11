@@ -230,10 +230,14 @@ again whenever the macros change.
   clears the lock bits and the EEPROM together — and go through the steps
   again from 1. **Without a backup, your macros do not come back.** The erase
   takes the only copy, by design.
-- **Going back to Micronucleus:** erase the chip and write the upstream
-  Micronucleus 2.6 bootloader (`t85_default.hex`, which DigiISP's repository
-  carries in `firmware/bootloader/`) with the programmer, keeping the extended
-  fuse at `0xFE`. The board is then a Digispark as it came.
+- **Going back to Micronucleus:** **Back to a plain Digispark**, at the
+  bottom of the page, does it with no programmer: it erases the EEPROM and
+  puts Micronucleus back. The lock bits stay, which leaves a Digispark a
+  programmer cannot read; to clear them as well, erase the chip and write
+  the upstream Micronucleus 2.6 bootloader (`t85_default.hex`, which
+  DigiISP's repository carries in `firmware/bootloader/`) with the
+  programmer, keeping the extended fuse at `0xFE`. The board is then a
+  Digispark as it came.
 
 ## Checklist
 

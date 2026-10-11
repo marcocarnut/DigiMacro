@@ -183,7 +183,8 @@ stays plugged in.
 
 The sections are **Macros**, with the keyboard layout picker beside the
 heading; **Keys**, a palette that inserts anything below at the cursor;
-**Startup**; **Host**; **Password**; **Lockout**; and **Backup**. The
+**Startup**; **Host**; **Password**; **Lockout**; **Backup**; and **Back to a
+plain Digispark**. The
 table's headings are links: **Code** explains codes and has a Morse table to
 pick memorable ones from, and **Types** is the reference for what a macro
 can hold. The app
@@ -504,6 +505,24 @@ Micronucleus is reached over WebUSB: Linux needs its line in
 `web/60-digimacro.rules`, and Windows needs [Zadig](https://zadig.akeo.ie/)
 once, run while the board is in Micronucleus, to install WinUSB for it.
 
+### Back to a plain Digispark
+
+**Back to a plain Digispark**, at the bottom of the page, takes DigiMacro off
+and puts Micronucleus 2.6 back, so the Arduino IDE and other tools can
+program the board again. It goes on as an update does — the hold, and the
+password if there is one — as an uninstaller that carries Micronucleus in its
+own image (`app/uninstall.c`). Started by the core, it erases the EEPROM
+first, so no program put on the board afterwards finds the macros, the
+password, the host key or the serial number; then it points the reset vector
+at Micronucleus, which waits for a program with no time limit. Save a backup
+first if you may want any of it back. **Set up a new board** brings DigiMacro
+back.
+
+The fuses and the lock bits stay as they were: only a programmer writes
+them. On a hardened board the page says so afterwards, and points to the way
+back in [HARDENED_MODE.md](HARDENED_MODE.md#changing-things-afterwards); the
+board works as a Digispark meanwhile.
+
 ### With a programmer
 
 `web/firmware/digimacro-v2-full.hex` is the core and the firmware in one
@@ -779,6 +798,11 @@ carrier and silence, into whatever has the focus. `irspike.hex` goes on
 through that spike page's file picker (the board keeps its table), or
 `irspike-full.hex` through a programmer; it leaves the window open, so the
 page puts DigiMacro back with no hold.
+
+`make uninstall` builds the uninstaller the page installs for **Back to a
+plain Digispark**: the app at 0x1000, a blank gap, and Micronucleus 2.6 as
+released (`app/micronucleus/`) at 0x1A00, with the core's CRC over all of it.
+`make release` copies it to `web/firmware/digimacro-uninstall.hex`.
 
 ## Testing
 

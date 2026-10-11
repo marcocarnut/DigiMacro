@@ -241,9 +241,12 @@ placa travada também: faça de novo sempre que as macros mudarem.
   os bits de trava e a EEPROM juntos — e refaça os passos a partir do 1.
   **Sem uma cópia, as suas macros não voltam.** O apagamento leva a única
   cópia, de propósito.
-- **Voltar ao Micronucleus:** apague o chip e grave com o gravador o
-  bootloader original do Micronucleus 2.6 (`t85_default.hex`, que o
-  repositório do DigiISP traz em `firmware/bootloader/`), mantendo o fuse
+- **Voltar ao Micronucleus:** **De volta a um Digispark comum**, no fim da
+  página, faz isso sem gravador: apaga a EEPROM e põe o Micronucleus de
+  volta. Os bits de trava ficam, o que deixa um Digispark que um gravador
+  não consegue ler; para limpá-los também, apague o chip e grave com o
+  gravador o bootloader original do Micronucleus 2.6 (`t85_default.hex`, que
+  o repositório do DigiISP traz em `firmware/bootloader/`), mantendo o fuse
   estendido em `0xFE`. A placa volta a ser um Digispark como veio de
   fábrica.
 

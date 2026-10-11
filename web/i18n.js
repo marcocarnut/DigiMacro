@@ -142,6 +142,36 @@ en: {
   'bk-save':        'Save a backup',
   'bk-restore':     'Restore',
   'bk-restore-head': 'Restore',
+  'un-summary':     'Back to a plain Digispark',
+  'un-why':         'This takes DigiMacro off the board and puts back '
+                  + 'Micronucleus, the bootloader a Digispark comes with, so the '
+                  + 'Arduino IDE and other tools can program it again. First the '
+                  + 'board erases its EEPROM: the macros, the password, the host '
+                  + 'key and the serial number are gone for good, and no program '
+                  + 'put on it afterwards can read them. Save a backup above if you '
+                  + 'may want them back. Set up a new board brings DigiMacro back '
+                  + 'whenever you like.',
+  'un-sure':        'I understand: the macros, the password and the host key are '
+                  + 'erased for good.',
+  'un-go':          'Erase and go back to Micronucleus',
+  'un-what':        'the uninstaller and Micronucleus',
+  'un-done':        'Done: the board is a plain Digispark again, with Micronucleus '
+                  + 'waiting for a program (16d0:0753).',
+  'un-seen':        'Micronucleus answered.',
+  'un-low':         'low fuse {v}',
+  'un-high':        'high fuse {v}',
+  'un-ext':         'extended fuse {v}',
+  'un-lock':        'lock bits {v}',
+  'un-fuses':       'Its chip is not set as a Digispark comes ({what}). It works as '
+                  + 'one regardless, but only a programmer can put that back — '
+                  + 'which erases the chip, Micronucleus included, so it goes back '
+                  + 'on with the programmer too:',
+  'un-fuses-hv':    'Its chip is not set as a Digispark comes ({what}), and its '
+                  + 'reset pin is off, so a programmer like DigiISP cannot reach it: '
+                  + 'that takes a high-voltage programmer first. It works as a '
+                  + 'Digispark regardless:',
+  'un-howto':       'how',
+  'un-howto-href':  'https://github.com/marcocarnut/DigiMacro/blob/main/HARDENED_MODE.md#changing-things-afterwards',
   'ph-bk-pass':     'the password it was saved with',
   'bk-short':       'The password is shorter than eight characters. A copied file '
                   + 'can be guessed at offline, far faster than the board allows, '
@@ -622,6 +652,36 @@ pt: {
   'bk-save':        'Salvar uma cópia',
   'bk-restore':     'Restaurar',
   'bk-restore-head': 'Restaurar',
+  'un-summary':     'De volta a um Digispark comum',
+  'un-why':         'Isto tira o DigiMacro da placa e põe de volta o Micronucleus, '
+                  + 'o bootloader com que o Digispark vem, para que a IDE do '
+                  + 'Arduino e outras ferramentas possam gravá-la de novo. Antes, a '
+                  + 'placa apaga a EEPROM: as macros, a senha, a chave do '
+                  + 'computador e o número de série se vão de vez, e nenhum '
+                  + 'programa gravado depois consegue lê-los. Salve uma cópia acima '
+                  + 'se puder querê-los de volta. Preparar uma placa nova traz o '
+                  + 'DigiMacro de volta quando você quiser.',
+  'un-sure':        'Entendi: as macros, a senha e a chave do computador são '
+                  + 'apagadas de vez.',
+  'un-go':          'Apagar e voltar ao Micronucleus',
+  'un-what':        'o desinstalador e o Micronucleus',
+  'un-done':        'Pronto: a placa voltou a ser um Digispark comum, com o '
+                  + 'Micronucleus esperando um programa (16d0:0753).',
+  'un-seen':        'O Micronucleus respondeu.',
+  'un-low':         'fuse baixo {v}',
+  'un-high':        'fuse alto {v}',
+  'un-ext':         'fuse estendido {v}',
+  'un-lock':        'bits de trava {v}',
+  'un-fuses':       'O chip dela não está configurado como o Digispark vem ({what}). '
+                  + 'Funciona como um mesmo assim, mas só um gravador desfaz isso — '
+                  + 'o que apaga o chip, Micronucleus inclusive, então ele volta '
+                  + 'pelo gravador também:',
+  'un-fuses-hv':    'O chip dela não está configurado como o Digispark vem ({what}), '
+                  + 'e o pino de reset está desligado, então um gravador como o '
+                  + 'DigiISP não o alcança: antes é preciso um gravador de alta '
+                  + 'tensão. Funciona como um Digispark mesmo assim:',
+  'un-howto':       'como',
+  'un-howto-href':  'https://github.com/marcocarnut/DigiMacro/blob/main/HARDENED_MODE.pt-BR.md#mudando-as-coisas-depois',
   'ph-bk-pass':     'a senha com que foi salva',
   'bk-short':       'A senha tem menos de oito caracteres. Um arquivo copiado pode '
                   + 'ser atacado fora da placa, muito mais rápido do que a placa '

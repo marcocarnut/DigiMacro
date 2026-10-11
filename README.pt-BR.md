@@ -189,7 +189,7 @@ continua conectada.
 As seções são **Macros**, com a escolha do layout de teclado ao lado do
 título; **Teclas**, uma paleta que insere no cursor qualquer coisa da lista
 abaixo; **Inicialização**; **Computador**; **Senha**; **Bloqueio**; **Cópia
-de segurança**. Os títulos da tabela são links: **Código** explica os
+de segurança**; e **De volta a um Digispark comum**. Os títulos da tabela são links: **Código** explica os
 códigos e tem uma tabela de Morse para escolher códigos fáceis de lembrar, e
 **Digita** é a referência do que uma macro pode conter. O aplicativo fala
 inglês e português do
@@ -531,6 +531,24 @@ O Micronucleus é acessado por WebUSB: o Linux precisa da linha dele em
 [Zadig](https://zadig.akeo.ie/) uma vez, rodado enquanto a placa está no
 Micronucleus, para instalar o WinUSB para ela.
 
+### De volta a um Digispark comum
+
+**De volta a um Digispark comum**, no fim da página, tira o DigiMacro e põe o
+Micronucleus 2.6 de volta, para que a IDE do Arduino e outras ferramentas
+possam gravar a placa de novo. Ele entra como uma atualização — o toque longo,
+e a senha se houver uma — na forma de um desinstalador que traz o Micronucleus
+na própria imagem (`app/uninstall.c`). Iniciado pelo núcleo, ele apaga
+primeiro a EEPROM, para que nenhum programa gravado depois encontre as macros,
+a senha, a chave do computador ou o número de série; depois aponta o vetor de
+reset para o Micronucleus, que espera um programa sem limite de tempo. Salve
+uma cópia antes se puder querer algo disso de volta. **Preparar uma placa
+nova** traz o DigiMacro de volta.
+
+Os fuses e os bits de trava ficam como estavam: só um gravador os escreve.
+Numa placa protegida a página avisa depois e aponta o caminho de volta em
+[HARDENED_MODE.pt-BR.md](HARDENED_MODE.pt-BR.md#mudando-as-coisas-depois); a
+placa funciona como Digispark enquanto isso.
+
 ### Com um gravador
 
 `web/firmware/digimacro-v2-full.hex` é o núcleo e o firmware numa imagem só,
@@ -819,6 +837,12 @@ em microssegundos de portadora e de silêncio, onde estiver o foco. O
 `irspike.hex` entra pelo seletor de arquivo daquela página do spike (a
 placa mantém a tabela), ou o `irspike-full.hex` por um gravador; ele deixa
 a janela aberta, então a página põe o DigiMacro de volta sem toque longo.
+
+`make uninstall` gera o desinstalador que a página grava em **De volta a um
+Digispark comum**: o aplicativo em 0x1000, um intervalo em branco e o
+Micronucleus 2.6 como foi lançado (`app/micronucleus/`) em 0x1A00, com o CRC
+do núcleo cobrindo tudo. O `make release` o copia para
+`web/firmware/digimacro-uninstall.hex`.
 
 ## Testes
 

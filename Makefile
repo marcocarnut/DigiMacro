@@ -152,8 +152,9 @@ $(O)/digimacro-full.hex: $(O)/core.hex $(O)/digimacro.hex
 CORE_VER := $(shell sed -n 's/^\#define DM_CORE_VERSION *\([0-9]*\).*/\1/p' core/core.h)
 CORE_API := $(call val,CORE_API)
 
-release: $(O)/digimacro.hex $(O)/digimacro-full.hex
+release: $(O)/digimacro.hex $(O)/digimacro-full.hex $(O)/uninstall.hex
 	@[ -z "$(strip $(DMDEFS))" ] || { echo "release is the stock firmware: no options"; exit 1; }
+	cp $(O)/uninstall.hex web/firmware/digimacro-uninstall.hex
 	cp $(O)/digimacro.hex web/firmware/digimacro-v2.hex
 	cp $(O)/digimacro-full.hex web/firmware/digimacro-v2-full.hex
 	cp $(O)/core.hex web/firmware/digimacro-v2-core.hex

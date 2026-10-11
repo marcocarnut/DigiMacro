@@ -28,6 +28,10 @@ for (const [name, text] of Object.entries(ctx.E))
 check((page.match(/\bfetch\(/g) || []).length === 1, 'one fetch(), in fetchText');
 for (const m of page.matchAll(/fetchText\('([^']+)'\)/g))
   check(m[1] in ctx.E, `${m[1]} is in the page`);
+/* ...and every call names its file, or the check above cannot see it. */
+const calls = (page.match(/\bfetchText\(/g) || []).length - 1;   /* less its definition */
+const named = [...page.matchAll(/\bfetchText\('[^']+'\)/g)].length;
+check(calls === named, `${calls - named} fetchText() calls without a file name the test can read`);
 
 console.log(fails ? `${fails} failed` : 'all checks passed');
 process.exit(fails ? 1 : 0);

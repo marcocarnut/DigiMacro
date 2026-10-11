@@ -221,6 +221,11 @@
 </div>
 <progress id="newbar" max="1" value="0" hidden></progress>
 <p class="note" id="connect-note"></p>
+<!-- After going back to Micronucleus, on a chip that is not as a Digispark
+     comes: what only a programmer can undo. -->
+<p class="prose" id="un-after" hidden><span id="un-fuses"></span>
+  <a href="https://digiisp.postcogito.org" target="_blank" rel="noopener">DigiISP</a> ·
+  <a id="un-howto" target="_blank" rel="noopener" data-t="un-howto">how</a></p>
 <p class="note" id="write-note"></p>
 <!-- How to plug it in, while nothing is. -->
 <div id="artplug" class="artbox">
@@ -453,6 +458,16 @@
   <button id="bkrestore" data-t="bk-restore" disabled>Restore</button>
 </div>
 <p class="note" id="bk-note"></p>
+
+<h2 data-t="un-summary">Back to a plain Digispark</h2>
+<p class="dim prose" data-t="un-why"></p>
+<label class="prose"><input id="unsure" type="checkbox">
+  <span data-t="un-sure">I understand: the macros, the password and the host key are erased for good.</span></label>
+<div class="bar">
+  <button id="ungo" data-t="un-go" disabled>Erase and go back to Micronucleus</button>
+  <progress id="unbar" max="1" value="0" hidden></progress>
+</div>
+<p class="note" id="un-note"></p>
 
 </section>
 </main>
@@ -964,6 +979,7 @@ function show(s) {
   $('recovery').hidden = s !== 'recovery';
   $('board').hidden = s !== 'board';
   $('write').hidden = s !== 'board';
+  if (s !== 'none') $('un-after').hidden = true;
   renderWho();
 }
 
@@ -1227,7 +1243,7 @@ async function access(noteId) {
 const ACTION_BUTTONS = ['write', 'sample', 'setpass', 'clearpass', 'locksave',
                         'fwupdate', 'fwclose', 'hostnew', 'hostdel', 'hostsave',
                         'bksave', 'bkrestore', 'bkfile', 'recinstall',
-                        'autosave', 'newboard'];
+                        'autosave', 'newboard', 'ungo'];
 
 function setBusy() {
   busy = true;
@@ -1241,6 +1257,7 @@ function idle() {
   for (const id of ['sample', 'clearpass', 'fwupdate', 'fwclose', 'hostnew',
                     'hostdel', 'bksave', 'bkfile', 'newboard']) $(id).disabled = false;
   $('bkrestore').disabled = bkText === null;
+  $('ungo').disabled = !$('unsure').checked;
   if (stage === 'recovery') drawRecovery();
   draw();                       /* Write and the Save buttons: each enables
                                    itself only when it has something to save */
@@ -1940,6 +1957,62 @@ $('newboard').onclick = async () => {
   }
 };
 
+/* ---- back to a plain Digispark ---------------------------------------
+ *
+ * The uninstaller goes on as any update does -- the hold, the password --
+ * and carries Micronucleus in its own image (app/uninstall.c). Once the
+ * core has started it, it wipes the EEPROM and hands the chip to
+ * Micronucleus: the board leaves as a keyboard and comes back as
+ * 16d0:0753, waiting for a program.
+ *
+ * What it cannot undo are the fuses and the lock bits, which only a
+ * programmer writes: the page says so afterwards, if they are not as a
+ * Digispark comes.
+ */
+$('unsure').onchange = () => { $('ungo').disabled = busy || !$('unsure').checked; };
+$('ungo').onclick = () => updateV2('un-note', $('unbar'), false, true);
+
+/* The fuses and lock bits that differ from a stock Digispark's, as text,
+   or '' -- low 0xE1 (0xF1 runs the same), high 0xDD (some ship 0x5D, reset
+   off), extended 0xFE, lock 0xFF. */
+function notStock(f) {
+  if (!f) return '';
+  const [low, high, ext, lock] = f;
+  const hx = v => '0x' + v.toString(16).toUpperCase().padStart(2, '0');
+  const out = [];
+  if (low !== 0xE1 && low !== 0xF1) out.push(t('un-low', { v: hx(low) }));
+  if (high !== 0xDD) out.push(t('un-high', { v: hx(high) }));
+  if (ext !== 0xFE) out.push(t('un-ext', { v: hx(ext) }));
+  if (lock !== 0xFF) out.push(t('un-lock', { v: hx(lock) }));
+  return out.join(', ');
+}
+
+function unAfter(stock) {
+  $('un-after').hidden = !stock;
+  if (!stock) return;
+  /* High-fuse bit 7 programmed is reset off: DigiISP cannot reach the chip. */
+  const resetOff = fuses && !(fuses[1] & 0x80);
+  $('un-fuses').textContent = t(resetOff ? 'un-fuses-hv' : 'un-fuses', { what: stock });
+  $('un-howto').href = t('un-howto-href');
+}
+
+/* Micronucleus answering, where this origin may already see it: a board set
+   up from this page was. Elsewhere the page says what to expect, and that
+   is all. */
+async function unSeen() {
+  if (!navigator.usb) return;
+  for (let i = 0; i < 16; i++) {
+    await sleep(500);
+    try {
+      const d = await navigator.usb.getDevices();
+      if (d.some(x => x.vendorId === 0x16d0 && x.productId === 0x0753)) {
+        note('connect-note', t('un-done') + ' ' + t('un-seen'), 'ok');
+        return;
+      }
+    } catch (e) { return; }
+  }
+}
+
 /* ---- updating a v2 board ---------------------------------------------
  *
  * No bootloader and no second picker: the board takes the new firmware over
@@ -1948,14 +2021,16 @@ $('newboard').onclick = async () => {
  * the password -- and opens six seconds for the first page; with none, as
  * after an update cut off, the core alone asks for the password.
  */
-async function updateV2(noteId, bar, recovering) {
-  if (busy || !dev || fwLatest() === null) return;
+async function updateV2(noteId, bar, recovering, uninstall = false) {
+  if (busy || !dev || (!uninstall && fwLatest() === null)) return;
   setBusy();
   runDev = dev;
-  const fw = fwHereV2.app;
+  const fw = uninstall ? null : fwHereV2.app;
+  const stock = uninstall ? notStock(fuses) : null;   /* read while it is here */
   let done = false;
   try {
-    const img = parseIntelHex(await fetchText('firmware/digimacro-v2.hex'), 8192);
+    const img = parseIntelHex(uninstall ? await fetchText('firmware/digimacro-uninstall.hex')
+                                        : await fetchText('firmware/digimacro-v2.hex'), 8192);
     appPages(img, core);                /* refused here, before the board is
                                            asked for anything */
     if (!recovering) {
@@ -1971,7 +2046,7 @@ async function updateV2(noteId, bar, recovering) {
     upgrading = true;
     who('fw-who', {}, 'dim');
     bar.hidden = false; bar.value = 0;
-    note(noteId, t('fw-writing', { what: `DigiMacro ${fw}` }), 'dim');
+    note(noteId, t('fw-writing', { what: uninstall ? t('un-what') : `DigiMacro ${fw}` }), 'dim');
     await writeApp(io, img, core, { onPage: (n, all) => { bar.value = n / all; } });
     done = true;
   } catch (e) {
@@ -1994,6 +2069,15 @@ async function updateV2(noteId, bar, recovering) {
       show('none');
       who('board-left', {}, 'dim');
       if ($('fwdialog').open) $('fwdialog').close();
+      if (done && uninstall) {
+        /* Nothing to reconnect to: the board is Micronucleus's now. */
+        note('connect-note', t('un-done'), 'ok');
+        note(noteId, '');
+        $('unsure').checked = false;
+        unAfter(stock);
+        unSeen();
+        return;
+      }
       if (done) note('connect-note', t('fw-done', { fw }), 'ok');
       else note('connect-note', $(noteId).textContent, 'bad');
       reconnectAfter(done ? 1500 : 300, was);

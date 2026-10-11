@@ -6,10 +6,12 @@
   :root {
     --bg: #fbfbfd; --fg: #16161a; --dim: #6b6b76; --line: #0002;
     --field: #fff; --ok: #0a7d32; --bad: #c02a2a; --accent: #2c5fd8;
+    --teal: #0e8a8c;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #16161a; --fg: #e8e8ea; --dim: #9a9aa4; --line: #fff3;
-            --field: #202027; --ok: #58d68d; --bad: #ff7b72; --accent: #7aa2f7; }
+            --field: #202027; --ok: #58d68d; --bad: #ff7b72; --accent: #7aa2f7;
+            --teal: #3cc6c4; }
   }
   * { box-sizing: border-box; }
   body { font: 15px/1.55 system-ui, sans-serif; color: var(--fg);
@@ -102,6 +104,53 @@
   @keyframes hold-pulse { 50% { opacity: .35; } }
   @media (prefers-reduced-motion: reduce) { .hold { animation: none; } }
   .prose { max-width: 40rem; }
+  .artbox { margin: 1rem 0 1.4rem; }
+  svg.art { width: 100%; max-width: 24rem; height: auto; display: block; }
+  .art * { fill: none; stroke: var(--teal); stroke-width: 1.4;
+           stroke-linecap: round; stroke-linejoin: round; }
+  .art .solid { fill: var(--bg); }
+  .art .thin { stroke-width: .9; }
+  .art .inside { stroke-dasharray: 2.5 2.5; stroke-width: .9; }
+  .art .lit { fill: var(--teal); stroke: none; }
+
+  /* The drawings: line art in teal, a plain fill where one shape hides
+     another, and still where motion is not wanted. Plugging in: the board slides into the port, sits, and its LED comes on
+     for a moment, as the board starts. */
+  .art-plug .board { animation: plug 5s ease-in-out infinite; }
+  @keyframes plug {
+    0%, 8%    { transform: translateX(110px); opacity: 0; }
+    14%       { opacity: 1; }
+    40%, 88%  { transform: translateX(0); opacity: 1; }
+    100%      { transform: translateX(0); opacity: 0; }
+  }
+  .art-plug .led { animation: plugled 5s steps(1) infinite; }
+  @keyframes plugled { 0% { opacity: 0 } 46% { opacity: 1 } 56% { opacity: 0 } }
+
+  /* Holding: a finger comes to the pad, stays four seconds while the ring
+     fills, and the window opens -- the LED's slow blink -- as it lifts. */
+  .art-hold .finger { animation: finger 8s ease-in-out infinite; }
+  @keyframes finger {
+    0%        { transform: translate(120px, 40px); opacity: 0; }
+    6%        { opacity: 1; }
+    14%, 66%  { transform: translate(0, 0); opacity: 1; }
+    80%, 100% { transform: translate(120px, 40px); opacity: 0; }
+  }
+  .art-hold .ring { stroke-dasharray: 126; animation: ring 8s linear infinite; }
+  @keyframes ring {
+    0%, 14%   { stroke-dashoffset: 126; opacity: 1; }
+    64%       { stroke-dashoffset: 0; opacity: 1; }
+    72%, 100% { stroke-dashoffset: 0; opacity: 0; }
+  }
+  .art-hold .led { animation: holdled 8s steps(1) infinite; }
+  @keyframes holdled {
+    0% { opacity: 0 } 64% { opacity: 1 } 70% { opacity: 0 } 76% { opacity: 1 }
+    82% { opacity: 0 } 88% { opacity: 1 } 94% { opacity: 0 }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .art * { animation: none !important; }
+    .art-plug .led, .art-hold .led { opacity: 0; }
+  }
   #gate { margin-top: 1.4rem; }
   .form { display: grid; grid-template-columns: minmax(0, max-content) 6rem;
           gap: .55rem 1rem; align-items: center; margin: .9rem 0; }
@@ -173,11 +222,94 @@
 <progress id="newbar" max="1" value="0" hidden></progress>
 <p class="note" id="connect-note"></p>
 <p class="note" id="write-note"></p>
+<!-- How to plug it in, while nothing is. -->
+<div id="artplug" class="artbox">
+<svg class="art art-plug" viewBox="0 0 300 150" aria-hidden="true">
+  <g transform="translate(124 90)">
+    <g class="board">
+    <!-- The board, from above, its USB tongue's tip at 0,0. -->
+    <g>
+      <path class="solid" d="M26 -12 H2 Q0 -12 0 -10 V10 Q0 12 2 12 H26 V26 H68 Q70 26 70 24 V-24 Q70 -26 68 -26 H26 Z"/>
+      <g class="thin">
+        <rect x="4" y="-9.5" width="17" height="3"/>
+        <rect x="6" y="-4" width="15" height="3"/>
+        <rect x="6" y="1" width="15" height="3"/>
+        <rect x="4" y="6.5" width="17" height="3"/>
+        <rect x="30" y="-21" width="12" height="10" rx="1"/>
+        <rect x="43" y="-2" width="13" height="13" rx="1"/>
+        <path d="M45 -2 v-3 M49 -2 v-3 M53 -2 v-3 M45 11 v3 M49 11 v3 M53 11 v3"/>
+        <circle cx="63" cy="-20" r="2.4"/><circle cx="63" cy="-12" r="2.4"/>
+        <circle cx="63" cy="-4" r="2.4"/><circle cx="63" cy="4" r="2.4"/>
+        <circle cx="63" cy="12" r="2.4"/><circle cx="63" cy="20" r="2.4"/>
+        <rect x="31" y="15" width="5" height="3"/>
+      </g>
+      <!-- the pad: a wire from P0, bent round the far edge -->
+      <path d="M63 -20 H71.5 Q74 -20 74 -17 V14"/>
+    </g>
+      <circle class="lit led" cx="33.5" cy="16.5" r="2.8"/></g>
+  </g>
+  <!-- The laptop's right-hand corner, from above, with its side port. -->
+    <g>
+      <path class="solid" d="M-10 8 H134 Q148 8 148 22 V142 H-10 Z"/>
+      <g class="thin">
+        <path d="M8 20h12v11h-12z M23 20h12v11h-12z M38 20h12v11h-12z M53 20h12v11h-12z M68 20h12v11h-12z M83 20h12v11h-12z M98 20h12v11h-12z M113 20h12v11h-12z M8 34h12v11h-12z M23 34h12v11h-12z M38 34h12v11h-12z M53 34h12v11h-12z M68 34h12v11h-12z M83 34h12v11h-12z M98 34h12v11h-12z M113 34h12v11h-12z M8 48h12v11h-12z M23 48h12v11h-12z M38 48h12v11h-12z M53 48h12v11h-12z M68 48h12v11h-12z M83 48h12v11h-12z M98 48h12v11h-12z M113 48h12v11h-12z M8 62h12v11h-12z M23 62h12v11h-12z M38 62h57v11h-57z M98 62h12v11h-12z M113 62h12v11h-12z"/>
+        <rect x="34" y="84" width="64" height="44" rx="4"/>
+      </g>
+      <rect class="inside" x="124" y="75" width="24" height="30"/>
+    </g>
+</svg>
+</div>
 
 <!-- Connected, and not in yet: the hold, and the password if there is one. -->
 <section id="gate" hidden>
   <p id="gate-lock" class="bad"></p>
   <p id="gate-msg"></p>
+  <!-- How to hold the pad: moved under whichever message asks for it. -->
+  <div id="arthold" class="artbox" hidden>
+<svg class="art art-hold" viewBox="0 0 300 150" aria-hidden="true">
+  <g transform="translate(124 90)">
+    
+    <!-- The board, from above, its USB tongue's tip at 0,0. -->
+    <g>
+      <path class="solid" d="M26 -12 H2 Q0 -12 0 -10 V10 Q0 12 2 12 H26 V26 H68 Q70 26 70 24 V-24 Q70 -26 68 -26 H26 Z"/>
+      <g class="thin">
+        <rect x="4" y="-9.5" width="17" height="3"/>
+        <rect x="6" y="-4" width="15" height="3"/>
+        <rect x="6" y="1" width="15" height="3"/>
+        <rect x="4" y="6.5" width="17" height="3"/>
+        <rect x="30" y="-21" width="12" height="10" rx="1"/>
+        <rect x="43" y="-2" width="13" height="13" rx="1"/>
+        <path d="M45 -2 v-3 M49 -2 v-3 M53 -2 v-3 M45 11 v3 M49 11 v3 M53 11 v3"/>
+        <circle cx="63" cy="-20" r="2.4"/><circle cx="63" cy="-12" r="2.4"/>
+        <circle cx="63" cy="-4" r="2.4"/><circle cx="63" cy="4" r="2.4"/>
+        <circle cx="63" cy="12" r="2.4"/><circle cx="63" cy="20" r="2.4"/>
+        <rect x="31" y="15" width="5" height="3"/>
+      </g>
+      <!-- the pad: a wire from P0, bent round the far edge -->
+      <path d="M63 -20 H71.5 Q74 -20 74 -17 V14"/>
+    </g>
+    <circle class="lit led" cx="33.5" cy="16.5" r="2.8"/>
+    <g class="finger">
+      <!-- a fingertip from above, coming from the lower right, its tip on the pad -->
+      <g transform="translate(76 -2) rotate(-18)">
+        <path class="solid" d="M130 -11 H12 Q1 -11 1 0 Q1 11 12 11 H130"/>
+        <path class="thin" d="M7 -6 Q4.5 0 7 6 H19 Q22 0 19 -6 Z"/>
+        <path class="thin" d="M42 -7 Q45 0 42 7 M47 -6 Q50 0 47 6"/>
+      </g>
+    </g>
+    <circle class="ring" cx="75" cy="-2" r="20" transform="rotate(-90 75 -2)"/>
+  </g>
+  <!-- The laptop's right-hand corner, from above, with its side port. -->
+    <g>
+      <path class="solid" d="M-10 8 H134 Q148 8 148 22 V142 H-10 Z"/>
+      <g class="thin">
+        <path d="M8 20h12v11h-12z M23 20h12v11h-12z M38 20h12v11h-12z M53 20h12v11h-12z M68 20h12v11h-12z M83 20h12v11h-12z M98 20h12v11h-12z M113 20h12v11h-12z M8 34h12v11h-12z M23 34h12v11h-12z M38 34h12v11h-12z M53 34h12v11h-12z M68 34h12v11h-12z M83 34h12v11h-12z M98 34h12v11h-12z M113 34h12v11h-12z M8 48h12v11h-12z M23 48h12v11h-12z M38 48h12v11h-12z M53 48h12v11h-12z M68 48h12v11h-12z M83 48h12v11h-12z M98 48h12v11h-12z M113 48h12v11h-12z M8 62h12v11h-12z M23 62h12v11h-12z M38 62h57v11h-57z M98 62h12v11h-12z M113 62h12v11h-12z"/>
+        <rect x="34" y="84" width="64" height="44" rx="4"/>
+      </g>
+      <rect class="inside" x="124" y="75" width="24" height="30"/>
+    </g>
+</svg>
+  </div>
   <div class="bar" id="gate-pass">
     <input id="gatepass" type="password" size="16" spellcheck="false"
            autocomplete="current-password" data-ph="ph-gate-password">
@@ -827,6 +959,7 @@ function show(s) {
   stage = s;
   $('connect').hidden = s !== 'none';
   $('newboard').hidden = s !== 'none';
+  $('artplug').hidden = s !== 'none';
   $('gate').hidden = s !== 'gate';
   $('recovery').hidden = s !== 'recovery';
   $('board').hidden = s !== 'board';
@@ -983,6 +1116,14 @@ async function gate() {
   }
 }
 
+/* The drawing of a finger on the pad goes under the message that asks for the
+   hold, wherever that is, and away once the hold has taken. */
+function holdArt(under) {
+  const a = $('arthold');
+  if (under && a.previousElementSibling !== under) under.after(a);
+  a.hidden = !under;
+}
+
 function drawGate() {
   const has = !!(state_byte & ST_PASSWORD);
   const open = !!(state_byte & ST_OPEN);
@@ -993,6 +1134,7 @@ function drawGate() {
                             : password === null && has ? t('gate-type-password')
                             : t('gate-reading');
   $('gate-msg').classList.toggle('hold', !open);
+  holdArt(open ? null : $('gate-msg'));
   if (open && password === null && has && document.activeElement !== $('gatepass'))
     $('gatepass').focus();
 }
@@ -1055,11 +1197,16 @@ async function access(noteId) {
   let s = await refreshState();
   if (!(s & ST_OPEN)) {
     note(noteId, t('hold-now'), 'hold');
-    const until = Date.now() + 60000;
-    while (!(s & ST_OPEN)) {
-      if (Date.now() > until) throw new Error(t('hold-timeout'));
-      await sleep(400);
-      s = await refreshState();
+    holdArt($(noteId));
+    try {
+      const until = Date.now() + 60000;
+      while (!(s & ST_OPEN)) {
+        if (Date.now() > until) throw new Error(t('hold-timeout'));
+        await sleep(400);
+        s = await refreshState();
+      }
+    } finally {
+      holdArt(null);
     }
     note(noteId, '');                   /* held: stop asking */
   }

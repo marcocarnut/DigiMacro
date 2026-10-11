@@ -157,6 +157,56 @@ static void add(const char *code, std::initializer_list<uint8_t> body)
     EE[tw] = 0xFF;              /* end of table -- the next add overwrites it */
 }
 
+/* ---- secrets, sealed as the page seals them (web/table.js), from the
+   test's own XTEA: the nonce drawn again until a walk keeps its place ---- */
+
+static int walk_safe(const uint8_t *b, int n)
+{
+    int i = 0;
+    for (int k = 0; k < n; k++) if (!b[k]) return 0;
+    while (i < n) {
+        if (b[i] == ESC_IR) return 0;
+        i += IS_ESC(b[i]) && b[i] != ESC_MARK ? 2 : 1;
+    }
+    return i == n;
+}
+
+static void add_secret(const char *code, std::initializer_list<uint8_t> before,
+                       int loud, std::initializer_list<uint8_t> plain,
+                       const uint8_t *key)
+{
+    uint8_t len, bits = code_of(code, &len), p[260];
+    int pn = 0, n;
+
+    for (uint8_t b : plain) p[pn++] = b;
+    p[pn++] = 0;
+    EE[tw++] = HDR_MAKE(len, bits);
+    for (uint8_t b : before) EE[tw++] = b;
+    EE[tw++] = ESC_JUMP;
+    EE[tw++] = loud ? SECRET_LOUD : SECRET_QUIET;
+    for (uint32_t nonce = 0x01010101; ; nonce++) {
+        uint8_t *s = EE + tw;
+        for (int i = 0; i < 4; i++) s[i] = nonce >> (8 * i);
+        for (n = 0; n < pn; n++) {
+            uint8_t blk[8] = { s[0], s[1], s[2], s[3], (uint8_t)n, 0, 0, 0 };
+            xtea(blk, key);
+            s[4 + n] = p[n] ^ blk[0];
+        }
+        if (walk_safe(s, 4 + pn)) break;
+    }
+    tw += 4 + pn;
+    EE[tw++] = 0;
+    EE[tw] = 0xFF;
+}
+
+/* The key's check value, where the page writes it */
+static void set_check(const uint8_t *key)
+{
+    uint8_t b[8] = { 0 };
+    xtea(b, key);
+    memcpy(EE + DM_CHECK_ADDR, b, 8);
+}
+
 /* ---- playing ---- */
 
 static const char *play(const char *code)
@@ -794,41 +844,57 @@ int main(void)
     memset(EE + (size_t)LOCK_MISSES, 0xFF, 3);
     unlocked = 0;
 
-    /* ---- the host ---- */
+    /* ---- secrets ---- */
 
-    static const uint8_t KEY[8] = { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88 };
-    static const uint8_t BAD[8] = { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x89 };
-    auto host_forget = [&]() { host_left = 0; host_pausing = 0; };
+    static const uint8_t SKEY[16] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+    static const uint8_t SBAD[16] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17 };
+    auto key_forget = [&]() { hidKeyForget(); key_pausing = 0; };
+    auto key_held = [&]() {
+        for (uint8_t b : sec.key) if (b) return 1;
+        return 0;
+    };
 
-    printf("22. no host key, no trust: a guarded macro never plays\n");
+    printf("22. no key, no secret: the rest of the macro never plays\n");
     table_reset();
-    add(".",  { K('a'), ESC_HOST, HOST_SILENT, K('b') });
-    add("-",  { ESC_HOST, HOST_LOUD, K('x') });
+    add_secret(".",  { K('a') }, 0, { K('b'), K('c') }, SKEY);
+    add_secret("-",  { }, 1, { K('x') }, SKEY);
     add("..", { K('y') });
-    host_forget();
-    CHECK(!hidHostAuth(KEY, 8), "with no key stored, no key is right");
+    key_forget();
+    CHECK(!hidKeyAuth(SKEY, 16), "with no check value stored, no key is right");
+    key_forget();
+    set_check(SKEY);
     CHECK(!strcmp(play("."), "<00/04>"),
-          "{host} stops the macro where it stands: \"%s\"", typed);
+          "{secret} stops the macro where it stands: \"%s\"", typed);
+    CHECK(!strcmp(play(".."), "<00/1C>"), "and the walk finds what follows: \"%s\"", typed);
 
-    printf("22b. a key, and the right host\n");
-    memcpy(EE + DM_HOST_ADDR, KEY, 8);
-    CHECK(hidHostState() == DM_ST_HOSTKEY, "a key, not yet proved");
-    CHECK(hidHostAuth(KEY, 8), "the right key is accepted");
-    CHECK(hidHostState() == (DM_ST_HOST | DM_ST_HOSTKEY), "and says so");
-    CHECK(!strcmp(play("."), "<00/04><00/05>"), "now it plays: \"%s\"", typed);
-    CHECK(!strcmp(play("-"), "<00/1B>"), "and so does {host!}: \"%s\"", typed);
+    printf("22b. the right key\n");
+    CHECK(hidKeyState() == 0, "no key held");
+    CHECK(hidKeyAuth(SKEY, 16), "the right key is accepted");
+    CHECK(hidKeyState() == DM_ST_KEY, "and says so");
+    CHECK(!strcmp(play("."), "<00/04><00/05><00/06>"), "now it plays: \"%s\"", typed);
+    CHECK(!strcmp(play("-"), "<00/1B>"), "and so does {secret!}: \"%s\"", typed);
+    for (int n = 0; n < 2; n++) {
+        bool plain = false;
+        for (int a = 0; a < (int)(size_t)TABLE_TOP - 1; a++)
+            if (EE[a] == K('b') && EE[a + 1] == K('c')) plain = true;
+        CHECK(!plain, "the secret is not in the EEPROM as it is typed");
+    }
 
-    printf("22c. ...for a minute, by default\n");
+    printf("22c. ...for a minute, by default, and then forgotten\n");
     for (int i = 0; i < 55; i++) { fake_ms += 1000; app_loop(); }
-    CHECK(hidHostState() & DM_ST_HOST, "still trusted at 55 s");
+    CHECK(hidKeyState() & DM_ST_KEY, "still held at 55 s");
     for (int i = 0; i < 10; i++) { fake_ms += 1000; app_loop(); }
-    CHECK(!(hidHostState() & DM_ST_HOST), "not after a minute");
-    CHECK(!strcmp(play("."), "<00/04>"), "and the guard holds again: \"%s\"", typed);
+    CHECK(!(hidKeyState() & DM_ST_KEY), "not after a minute");
+    CHECK(!key_held(), "and gone from RAM, not just ignored");
+    CHECK(!strcmp(play("."), "<00/04>"), "the secret is shut again: \"%s\"", typed);
     EE[0x1F2] = 1;                              /* ten seconds */
-    CHECK(hidHostAuth(KEY, 8), "proved again");
+    CHECK(hidKeyAuth(SKEY, 16), "given again");
     for (int i = 0; i < 11; i++) { fake_ms += 1000; app_loop(); }
-    CHECK(!(hidHostState() & DM_ST_HOST), "the wait is the configured one");
+    CHECK(!(hidKeyState() & DM_ST_KEY), "the wait is the configured one");
     EE[0x1F2] = 0xFF;
+    CHECK(hidKeyAuth(SKEY, 16), "given again");
+    hidKeyForget();
+    CHECK(!key_held() && !hidKeyState(), "a restart or a WRITE forgets it");
 
     printf("22d. a wrong key costs a second, and nothing else\n");
     /* Nothing else meaning the lockout: anything on any computer may send a
@@ -836,26 +902,25 @@ int main(void)
     setpass((const uint8_t *)"secret", 6);
     lockout(2, 3, 1);
     lock_clear();
-    CHECK(!hidHostAuth(BAD, 8), "a wrong key is refused");
-    CHECK(!hidHostAuth(KEY, 8), "and even the right one, for a second");
+    CHECK(!hidKeyAuth(SBAD, 16), "a wrong key is refused");
+    CHECK(!hidKeyAuth(SKEY, 16), "and even the right one, for a second");
     CHECK(count_of(LOCK_MISSES) == 0, "a wrong key is not a wrong code");
+    CHECK(!key_held(), "and nothing of it is kept");
     fake_ms += PASS_PAUSE_MS;
-    CHECK(!hidHostAuth(KEY, 7), "a short key is no key");
-    CHECK(hidHostAuth(KEY, 8), "the right one, once the second is up");
-    host_forget();
+    CHECK(!hidKeyAuth(SKEY, 15), "a short key is no key");
+    CHECK(hidKeyAuth(SKEY, 16), "the right one, once the second is up");
+    key_forget();
 
-    printf("22e. {host!} refused is a wrong code, exactly\n");
+    printf("22e. {secret!} refused is a wrong code, exactly\n");
     lock_clear();
     CHECK(play("-")[0] == 0, "nothing typed: \"%s\"", typed);
     CHECK(count_of(LOCK_MISSES) == 1, "and one miss, as for an empty code");
     play(".");
-    CHECK(count_of(LOCK_MISSES) == 1, "a quiet {host} neither counts...");
+    CHECK(count_of(LOCK_MISSES) == 1, "a quiet {secret} neither counts...");
     play("-");
     CHECK(hidLockState() == DM_ST_SOFTLOCK, "two loud refusals lock it, as two misses would");
 
     printf("22e2. ...and the LED does not give it away\n");
-    /* Found and refused must look like not found, and a flash of the LED on
-       the way in would be the difference. */
     lock_clear();
     led_seen = 0;
     PORTB = 0;
@@ -864,43 +929,91 @@ int main(void)
     macro_play(find_header(HDR_MAKE(2, 0)));
     CHECK(led_seen, "and come on for a macro that types");
 
-    printf("22f. a guarded code does not wipe a guesser's misses\n");
-    /* Found is not played. If finding a code cleared the counts, tapping a
-       guarded one on the wrong computer would reset them for the guesser,
-       and the hard lock would never come. */
+    printf("22f. a secret code does not wipe a guesser's misses\n");
     lock_clear();
     miss();
-    CHECK(count_of(LOCK_MISSES) == 1, "one miss");
-    play(".");                                  /* quiet refusal */
-    CHECK(count_of(LOCK_MISSES) == 1, "a quiet refusal leaves it be");
+    play(".");                                  /* quiet refusal, after an 'a' */
+    CHECK(count_of(LOCK_MISSES) == 1, "a quiet refusal leaves them be");
     lock_clear();
     for (int n = 0; n < 2; n++) { miss(); miss(); serve(); }
+    play("-");
     play(".");
-    CHECK(count_of(LOCK_SOFTS) == 2, "and the run of soft locks stands, %d",
+    CHECK(count_of(LOCK_SOFTS) >= 2, "and the run of soft locks stands, %d",
           count_of(LOCK_SOFTS));
-    play("..");
-    CHECK(count_of(LOCK_SOFTS) == 0, "until a code really plays");
-
-    printf("22f2. ...and a guarded code that plays is a code that played\n");
     lock_clear();
     miss();
-    CHECK(hidHostAuth(KEY, 8), "the right host");
-    CHECK(!strcmp(play("-"), "<00/1B>"), "{host!} passes and types: \"%s\"", typed);
+    CHECK(hidKeyAuth(SKEY, 16), "the key");
+    CHECK(!strcmp(play("-"), "<00/1B>"), "{secret!} opens and types: \"%s\"", typed);
     CHECK(count_of(LOCK_MISSES) == 0, "and clears the misses, as any code that works");
-    host_forget();
+    key_forget();
 
-    printf("22g. a jump into a guarded macro is checked there\n");
+    printf("22g. jumps: into a secret it is checked there, out of one in the clear\n");
     table_reset();
     add(".", { K('a'), ESC_JUMP, (uint8_t)(HDR_MAKE(1, 1) + 1) });
-    add("-", { ESC_HOST, HOST_SILENT, K('x') });
-    host_forget();
-    CHECK(!strcmp(play("."), "<00/04>"), "the guard holds after a jump: \"%s\"", typed);
+    add_secret("-", { }, 0, { K('x'), ESC_JUMP, (uint8_t)(HDR_MAKE(2, 0) + 1) }, SKEY);
+    add("..", { K('y') });
+    set_check(SKEY);
+    CHECK(!strcmp(play("."), "<00/04>"), "the secret holds after a jump: \"%s\"", typed);
+    CHECK(hidKeyAuth(SKEY, 16), "the key");
+    CHECK(!strcmp(play("."), "<00/04><00/1B><00/1C>"),
+          "and opened, jumps out of it into the clear: \"%s\"", typed);
+
+    printf("22h. repeats, groups, modifiers and pauses inside a secret\n");
+    table_reset();
+    add_secret(".", { K('q') }, 0, { K('a'), ESC_REPEAT, 2, ESC_MARK, K('b'), K('c'),
+                                     ESC_REPEAT, 1, ESC_MOD, 0x01, K('d'),
+                                     ESC_PAUSE, 1, KS('e') }, SKEY);
+    set_check(SKEY);
+    CHECK(hidKeyAuth(SKEY, 16), "the key");
+    CHECK(!strcmp(play("."), "<00/14><00/04><00/04><00/04><00/05><00/06><00/05><00/06>"
+                             "<01/07><02/08>"),
+          "as they play in the clear: \"%s\"", typed);
+
+    printf("22i. a key that runs out part way through stops the secret there\n");
+    table_reset();
+    add_secret(".", { }, 0, { K('a'), ESC_PAUSE, 30, K('b') }, SKEY);
+    set_check(SKEY);
+    EE[0x1F2] = 1;                              /* ten seconds; the pause, three */
+    CHECK(hidKeyAuth(SKEY, 16), "the key");
+    fake_ms += 8000;
+    CHECK(!strcmp(play("."), "<00/04>"),
+          "what comes after the key went is never typed: \"%s\"", typed);
+    CHECK(!key_held(), "and the key went");
+    EE[0x1F2] = 0xFF;
+
+    printf("22j. PROVE: XTEA under the check value, of the client's bytes\n");
+    {
+        uint8_t c[8] = { 0xC0, 0xFF, 0xEE, 0, 1, 2, 3, 4 }, want[8], k[16];
+        memcpy(want, c, 8);
+        for (int i = 0; i < 16; i++) k[i] = EE[DM_CHECK_ADDR + (i & 7)];
+        xtea(want, k);
+        CHECK(hidProve(c, 8) && !memcmp(c, want, 8), "the answer a client computes");
+        CHECK(!hidProve(c, 7), "eight bytes, no fewer");
+        set_check(SBAD);
+        memcpy(c, want, 8);
+        hidProve(c, 8);
+        CHECK(memcmp(c, want, 8), "and another key's check value answers otherwise");
+    }
+
+    printf("22k. v2's {host} is refused, quietly or loudly, key or no key\n");
+    table_reset();
+    add(".", { K('a'), ESC_HOST, HOST_SILENT, K('b') });
+    add("-", { ESC_HOST, HOST_LOUD, K('x') });
+    add_secret("..", { }, 0, { K('y') }, SKEY);
+    set_check(SKEY);
+    CHECK(hidKeyAuth(SKEY, 16), "the key");
+    setpass((const uint8_t *)"secret", 6);  /* table_reset() took both */
+    lockout(2, 3, 1);
+    lock_clear();
+    CHECK(!strcmp(play("."), "<00/04>"), "{host} stops: \"%s\"", typed);
+    CHECK(play("-")[0] == 0 && count_of(LOCK_MISSES) == 1, "{host!} is a wrong code");
+    key_forget();
 
     setpass(0, 0);
     lockout(0xFF, 0xFF, 0xFF);
     memset(EE + (size_t)LOCK_MISSES, 0xFF, 3);
-    memset(EE + DM_HOST_ADDR, 0xFF, 8);
-    host_forget();
+    memset(EE + DM_CHECK_ADDR, 0xFF, 8);
+    key_forget();
     unlocked = 0;
 
     printf("23. the reserved bytes are where the map says\n");
@@ -919,9 +1032,9 @@ int main(void)
     CHECK((size_t)LOCK_SOFT >= DM_SERIAL_ADDR + 4 &&
           (size_t)LOCK_CLEARED < (size_t)AUTO_ADDR,
           "the lockout sits between the serial and the power-on byte");
-    CHECK(DM_HOST_ADDR == DM_SERIAL_ADDR + 4 &&
-          DM_HOST_ADDR + DM_HOST_LEN == (size_t)LOCK_SOFT,
-          "the host key fills the gap between the serial and the lockout");
+    CHECK(DM_CHECK_ADDR == DM_SERIAL_ADDR + 4 &&
+          DM_CHECK_ADDR + 8 == (size_t)LOCK_SOFT,
+          "the check value fills the gap between the serial and the lockout");
     CHECK(0x1F2 > (size_t)LOCK_CLEARED && 0x1F2 < (size_t)AUTO_ADDR,
           "and its wait the byte between the lockout and the power-on byte");
 

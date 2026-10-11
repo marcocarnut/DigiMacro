@@ -114,6 +114,24 @@ if command -v node >/dev/null 2>&1; then
         echo "the app encodes something the firmware plays differently"
         exit 1
     fi
+    # Secrets: sealed by the page, opened by the firmware. Without the key
+    # each stops where its secret starts; with it, it types what the same
+    # macro in the clear does.
+    CODES=". - .. .- -. ir0045"
+    node webtable.js --emit-clear | "$OUT"_hexplay key=00000000000000000000000000000000 $CODES \
+      2>/dev/null | sed 1d > "$OUT"_clear
+    node webtable.js --emit-secret > "$OUT"_sealed
+    KEY=$(tail -1 "$OUT"_sealed)
+    head -1 "$OUT"_sealed | "$OUT"_hexplay $CODES $KEY $CODES 2>/dev/null > "$OUT"_opened
+    if [ "$(sed -n 7p "$OUT"_opened)" = "key held" ] &&
+       diff -u "$OUT"_clear <(sed 1,7d "$OUT"_opened) &&
+       [ "$(head -6 "$OUT"_opened | tr '\n' '|')" = ". <00/18><00/16><00/08><00/15><00/2B>|- |.. <00/13><00/0F><00/04><00/0C><00/11><00/1B>|.- |-. <00/04><00/05><00/06><00/06><00/06><00/06>|ir0045 <00/1B>|" ]; then
+        echo "secrets sealed by web/table.js open in DigiMacro.ino"
+    else
+        echo "a secret the page sealed does not play as it should"
+        sed -n 1,7p "$OUT"_opened
+        exit 1
+    fi
 else
     echo "node not found, skipped"
 fi

@@ -53,6 +53,13 @@ int main(int argc, char **argv)
 
     for (int i = 1; i < argc; i++) {
         unsigned ia, ic;
+        if (!strncmp(argv[i], "key=", 4)) {
+            /* key=32 hex digits: KEYAUTH, as a client sends it */
+            uint8_t k[16];
+            for (int j = 0; j < 16; j++) { sscanf(argv[i] + 4 + 2 * j, "%2x", &ia); k[j] = ia; }
+            printf("key %s\n", hidKeyAuth(k, 16) ? "held" : "refused");
+            continue;
+        }
         if (sscanf(argv[i], "ir%2x%2x", &ia, &ic) == 2) {
             /* irAACC: the remote's button, as the interrupt leaves it */
             typedn = 0; typed[0] = 0;

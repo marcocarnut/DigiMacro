@@ -132,8 +132,11 @@ endef
 # The sketch, as C++ -- it was an Arduino sketch, and still is one in v1.0
 DMDEFS  = $(if $(BUTTON),-DHAVE_TOUCH=0) $(if $(RC),-DTOUCH_PULLUP=0) \
           $(if $(LEDECHO),-DLED_ECHO=1) $(if $(TOUCHDEBUG),-DTOUCH_DEBUG=1)
+# Shared prologues and epilogues: 34 bytes the secrets needed. The firmware
+# only -- the core is built as it was, and stays byte for byte the same.
+DMOPT   = -mcall-prologues
 CXXFLAGS = $(filter-out -std=gnu11,$(CFLAGS)) -x c++ -std=gnu++11 \
-          -fno-exceptions -fno-rtti -fno-threadsafe-statics $(DMDEFS)
+          -fno-exceptions -fno-rtti -fno-threadsafe-statics $(DMOPT) $(DMDEFS)
 APPVER_DM := $(shell sed -n 's/^\#define DM_FW_VERSION *\([0-9]*\).*/\1/p' app/hidusb.h)
 
 # Its header carries DM_FW_VERSION, which lives in hidusb.h
@@ -141,8 +144,11 @@ $(O)/apphdrDM.o: app/hidusb.h
 
 $(O)/digimacro.o: DigiMacro.ino app/hidusb.h core/core.h core/layout.h | $(O)
 	$(CC) $(CXXFLAGS) -c -o $@ $<
-$(O)/digimacro.elf: $(O)/apphdrDM.o $(O)/digimacro.o $(O)/hidusb.o $(O)/coreapi.o
-	$(CC) $(CFLAGS) $(APPLINK) -o $@ $^
+$(O)/xtea.o: app/xtea.S | $(O)
+	$(CC) $(ASFLAGS) -c -o $@ $<
+$(O)/digimacro.o: app/xtea.h
+$(O)/digimacro.elf: $(O)/apphdrDM.o $(O)/digimacro.o $(O)/hidusb.o $(O)/coreapi.o $(O)/xtea.o
+	$(CC) $(CFLAGS) $(DMOPT) $(APPLINK) -o $@ $^
 	@printf 'app: %d bytes of %d\n' $$(( 0x$$($(NM) $@ | awk '$$3=="__data_load_end"{print $$1}') - $(APP_START) )) $$(( $(APP_END) - $(APP_START) ))
 $(O)/digimacro.hex: $(O)/digimacro.elf app/apphex.py
 	$(apphex)

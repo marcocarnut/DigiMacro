@@ -100,8 +100,8 @@ void usbDeviceConnect(void) { }
 void usbDeviceDisconnect(void) { }
 
 /* ---- the firmware's hooks, as hidusb.c calls them ---- */
-static uint8_t lockState, hostState, hostAuthOk;
-static int hostForgot, passWrongs, passRights, passChanges, learns;
+static uint8_t lockState, keyState, keyAuthOk, proveOk;
+static int keyForgot, passWrongs, passRights, passChanges, learns;
 static void    tVoid(void) { }
 static int setupSawWatchdog;            /* was it armed when setup ran? */
 static void    tSetup(void) { setupSawWatchdog = wdtEnabled; }
@@ -110,9 +110,16 @@ void    hidPassRight(void) { passRights++; }
 void    hidPassChanged(void) { passChanges++; }
 void    hidLearn(void) { learns++; }
 uint8_t hidLockState(void) { return lockState; }
-uint8_t hidHostState(void) { return hostState; }
-void    hidHostForget(void) { hostForgot++; }
-uint8_t hidHostAuth(const uint8_t *p, uint8_t n) { (void)p; (void)n; return hostAuthOk; }
+uint8_t hidKeyState(void) { return keyState; }
+void    hidKeyForget(void) { keyForgot++; }
+uint8_t hidKeyAuth(const uint8_t *p, uint8_t n) { (void)p; (void)n; return keyAuthOk; }
+/* answers with the challenge's bytes turned round, when it answers at all */
+uint8_t hidProve(uint8_t *p, uint8_t n)
+{
+    if (!proveOk || n != 8) return 0;
+    for (int i = 0; i < 4; i++) { uint8_t t = p[i]; p[i] = p[7 - i]; p[7 - i] = t; }
+    return 1;
+}
 
 /* ---- harness ---- */
 static int fails, checks;
@@ -242,7 +249,7 @@ static void setup(void)
     memset(EE, 0xFF, sizeof EE);
     EE[DM_SERIAL_ADDR] = 0x78; EE[DM_SERIAL_ADDR + 1] = 0x56;
     EE[DM_SERIAL_ADDR + 2] = 0x34; EE[DM_SERIAL_ADDR + 3] = 0x12;
-    lockState = hostState = hostAuthOk = 0;
+    lockState = keyState = keyAuthOk = proveOk = 0;
     passWrongs = passRights = passChanges = 0;
     GPIOR0 = 0;
     erases = writes = softResets = belowBoundary = 0;
@@ -305,9 +312,9 @@ int main(void)
     CHECK((r[DM_INFO_START] | r[DM_INFO_START + 1] << 8) == APP_START);
     CHECK((r[DM_INFO_END] | r[DM_INFO_END + 1] << 8) == APP_END);
     CHECK(r[DM_INFO_PAGE] == PAGE);
-    storePass("test"); lockState = DM_ST_SOFTLOCK; hostState = DM_ST_HOSTKEY;
+    storePass("test"); lockState = DM_ST_SOFTLOCK; keyState = DM_ST_KEY;
     r = ask(DM_FUNC_INFO, 0, 0, NULL);
-    CHECK(r[7] == (DM_ST_PASSWORD | DM_ST_SOFTLOCK | DM_ST_HOSTKEY));
+    CHECK(r[7] == (DM_ST_PASSWORD | DM_ST_SOFTLOCK | DM_ST_KEY));
     hidAllow(1000);
     r = ask(DM_FUNC_INFO, 0, 0, NULL);
     CHECK(r[7] & DM_ST_OPEN);
@@ -606,13 +613,19 @@ int main(void)
     CHECK(sendImage(1, -1) > 0 && page0Writes == 0);
 #endif
 
-    printf("the host check needs no gate, and does nothing else\n");
+    printf("the secrets' key and PROVE need no gate, and do nothing else\n");
     setup();
-    CHECK(ask(DM_FUNC_HOSTAUTH, 0, 8, data)[0] == DM_REFUSED);
-    hostAuthOk = 1;
-    r = ask(DM_FUNC_HOSTAUTH, 0, 8, (const uint8_t *)"secretXY");
-    CHECK(r[0] == DM_FUNC_HOSTAUTH && r[4] == 0 && r[11] == 0);  /* wiped */
+    CHECK(ask(DM_FUNC_KEYAUTH, 0, 16, data)[0] == DM_REFUSED);
+    keyAuthOk = 1;
+    r = ask(DM_FUNC_KEYAUTH, 0, 16, (const uint8_t *)"0123456789abcdef");
+    CHECK(r[0] == DM_FUNC_KEYAUTH && r[4] == 0 && r[19] == 0);  /* wiped */
     CHECK(!allowOpen);
+    CHECK(ask(DM_FUNC_PROVE, 0, 8, data)[0] == DM_REFUSED);
+    proveOk = 1;
+    r = ask(DM_FUNC_PROVE, 0, 8, (const uint8_t *)"abcdefgh");
+    CHECK(r[0] == DM_FUNC_PROVE && !memcmp(r + 4, "hgfedcba", 8));  /* kept */
+    CHECK(!allowOpen);
+    CHECK(ask(0x64, 0, 8, data)[0] == DM_REFUSED);      /* v2's HOSTAUTH: gone */
 
     printf("READ and WRITE clamp, and secrets are wiped\n");
     setup(); hidAllow(1000);
@@ -627,15 +640,11 @@ int main(void)
     CHECK(hidPassSet() && !hidUnlocked());
     CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_REFUSED);
     storePass(NULL);
-    hostForgot = 0;
-    ask(DM_FUNC_WRITE, DM_HOST_ADDR + 7, 1, data);
-    CHECK(hostForgot == 1);
-    ask(DM_FUNC_WRITE, DM_HOST_ADDR + 8, 1, data);
-    CHECK(hostForgot == 1);
-    ask(DM_FUNC_WRITE, DM_HOST_ADDR - 1, 1, data);
-    CHECK(hostForgot == 1);
-    ask(DM_FUNC_WRITE, DM_HOST_ADDR - 1, 2, data);
-    CHECK(hostForgot == 2);
+    keyForgot = 0;                                      /* any WRITE forgets */
+    ask(DM_FUNC_WRITE, 0, 1, data);
+    CHECK(keyForgot == 1);
+    ask(DM_FUNC_WRITE, DM_CHECK_ADDR, 8, data);
+    CHECK(keyForgot == 2);
     r = ask(DM_FUNC_READ, 0, 4, NULL);
     ms += 2000;                                          /* the window closes */
     CHECK(!hidAllowed() && getReport()[4] == 0);
@@ -683,7 +692,7 @@ int main(void)
     r = ask(DM_FUNC_INFO, 0, 0, NULL);
     CHECK(r[DM_INFO_CORE] == DM_CORE_UPDATE && r[DM_INFO_APPVER] == 0);
     CHECK(ask(DM_FUNC_READ, 0, 4, NULL)[0] == DM_REFUSED);   /* no app, no gates */
-    CHECK(ask(DM_FUNC_HOSTAUTH, 0, 8, data)[0] == DM_REFUSED);
+    CHECK(ask(DM_FUNC_KEYAUTH, 0, 16, data)[0] == DM_REFUSED);
     CHECK(ask(DM_FUNC_COMMIT, 0, 0, NULL)[0] == DM_FUNC_COMMIT);
     spin();
     CHECK(softResets > 0);      /* the stub returns, so it counts again */
@@ -760,10 +769,10 @@ int main(void)
 
     printf("RESTART\n");
     setup(); hidAllow(1000);
-    hostForgot = 0;
+    keyForgot = 0;
     CHECK(ask(DM_FUNC_RESTART, 0, 0, NULL)[0] == DM_FUNC_RESTART);
     for (int i = 0; i < 60; i++) hidPoll();
-    CHECK(!restartWanted && !allowOpen && hostForgot == 1);
+    CHECK(!restartWanted && !allowOpen && keyForgot == 1);
     CHECK(getReport()[0] == DM_FUNC_INFO);
 
     printf("%d checks, %d failed\n", checks, fails);

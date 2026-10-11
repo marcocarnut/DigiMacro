@@ -16,17 +16,20 @@
 
 /* DigiMacro's own version, in INFO's [13] as the app's. v1 counted to 9
    in [4]; v2 goes on from there, and [4] is the core's now. */
-#define DM_FW_VERSION       15
+#define DM_FW_VERSION       16
 
 #define DM_FUNC_RESTART     0x42    /* off the bus and back, as if replugged */
 #define DM_FUNC_READ        0x60    /* address, count -> EEPROM */
 #define DM_FUNC_WRITE       0x61    /* address, count, data */
 /* UNLOCK 0x62 is in layout.h: with no app, the core answers it */
 #define DM_FUNC_SETPASS     0x63    /* count, password; count 0 clears it */
-#define DM_FUNC_HOSTAUTH    0x64    /* count, host key; needs no gate */
+/* HOSTAUTH 0x64 was v2's host key: gone with {host}, and refused */
 #define DM_FUNC_UPDATE      0x68    /* open the update window: six seconds
                                        for the first page (layout.h) */
 #define DM_FUNC_LEARN       0x69    /* type the remote's next button */
+#define DM_FUNC_KEYAUTH     0x6A    /* count, the secrets' key; needs no gate */
+#define DM_FUNC_PROVE       0x6B    /* count, 8 bytes -> them encrypted under
+                                       the check value; needs no gate */
 
 #define DM_INFO_EESIZE      5       /* [5..6] EEPROM size */
 #define DM_INFO_STATE       7       /* [7] the state byte */
@@ -35,11 +38,11 @@
 /* PASSWORD 0x02 and UNLOCKED 0x04 are the core's: core.h */
 #define DM_ST_SOFTLOCK      0x08
 #define DM_ST_HARDLOCK      0x10
-#define DM_ST_HOST          0x20
-#define DM_ST_HOSTKEY       0x40
+/* 0x20 and 0x40 were v2's host trust and host key */
+#define DM_ST_KEY           0x80    /* the secrets' key is held */
 
-#define DM_HOST_ADDR        0x1E4
-#define DM_HOST_LEN         8
+#define DM_CHECK_ADDR       0x1E4   /* the secrets' check value, 8 bytes */
+#define DM_KEY_LEN          16
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,9 +66,10 @@ void    hidPassRight(void);     /* the right one: the lockout clears */
 void    hidPassChanged(void);   /* a new one, or none: a clean slate */
 void    hidLearn(void);         /* LEARN: the firmware's, if it has a remote */
 uint8_t hidLockState(void);
-uint8_t hidHostState(void);
-void    hidHostForget(void);
-uint8_t hidHostAuth(const uint8_t *p, uint8_t n);
+uint8_t hidKeyState(void);
+uint8_t hidKeyAuth(const uint8_t *p, uint8_t n);
+uint8_t hidProve(uint8_t *p, uint8_t n);
+void    hidKeyForget(void);
 
 #ifdef __cplusplus
 }

@@ -75,6 +75,7 @@ void    hidPassRight(void)                       { }
 void    hidPassChanged(void)                     { }
 void    hidLearn(void)                           { }
 uint8_t hidLockState(void)                       { return 0; }
-uint8_t hidHostState(void)                       { return 0; }
-void    hidHostForget(void)                      { }
-uint8_t hidHostAuth(const uint8_t *p, uint8_t n) { (void)p; (void)n; return 0; }
+uint8_t hidKeyState(void)                        { return 0; }
+uint8_t hidKeyAuth(const uint8_t *p, uint8_t n)  { (void)p; (void)n; return 0; }
+uint8_t hidProve(uint8_t *p, uint8_t n)          { (void)p; (void)n; return 0; }
+void    hidKeyForget(void)                       { }

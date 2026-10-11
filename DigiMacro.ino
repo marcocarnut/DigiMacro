@@ -55,6 +55,8 @@
  */
 
 #include <hidusb.h>
+#include <xtea.h>
+#include <string.h>
 #include <avr/eeprom.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
@@ -80,13 +82,10 @@
 #define HAVE_AUTOEXEC 1     /* 0 = never type anything unasked */
 #endif
 
-#ifndef HAVE_HOST
-#define HAVE_HOST 1         /* 0 = no {host} checks, and no host key */
-#endif
-
 #ifndef HAVE_IR
 #define HAVE_IR 1           /* 0 = no IR remote on P2 */
 #endif
+
 
 #ifndef TOUCH_DEBUG
 #define TOUCH_DEBUG 0       /* 1 = type the pad readings twice a second, into
@@ -170,6 +169,9 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *                not in the table at all -- see "the host" below
  *      0x80 a c x   where the remote's button a/c starts this macro -- see
  *                "the remote" below. Playing past it does nothing
+ *      0x81 FE   the rest of the macro is secret: a nonce, and the rest
+ *      0x81 FF   encrypted -- see "secrets" below. FE stops quietly without
+ *                the key, FF as if the code were not in the table
  *
  * The jump's argument is the header plus one, because a zero byte ends a
  * macro and the header of "." is zero. No valid header is 0xFC or above, so
@@ -229,6 +231,9 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define ESC_IR          0x80        /* the last escape there is: see below */
 #define HOST_SILENT     1           /* its argument, and what macro_play() */
 #define HOST_LOUD       2           /* ...returns when the check refuses */
+#define SECRET_QUIET    0xFE        /* the jump's argument for {secret}: a  */
+#define SECRET_LOUD     0xFF        /* code no macro has, plus one; {secret!} */
+
 
 /* Touching the pad stops a macro, so a loop that types or pauses can always
    be got out of. What cannot is a loop that does neither -- macros that only
@@ -247,15 +252,15 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *   0x1E0   the board's serial number, four random bytes made once
  *           (DM_SERIAL_ADDR -- the core reads it as the serial number,
  *           and hidBegin() makes it on a blank chip)
- *   0x1E4   the host key, eight random bytes (DM_HOST_ADDR); all 0xFF
- *           for none
+ *   0x1E4   the secrets' check value, eight bytes (DM_CHECK_ADDR): v2's
+ *           host key was here
  *   0x1EC   lockout: wrong codes before a soft lock, 0 or 0xFF for none
  *   0x1ED   ...soft locks in a row before a hard one, 0 or 0xFF for never
  *   0x1EE   ...how long a soft lock lasts, in tens of seconds
  *   0x1EF   ...wrong codes so far              (these three counters are
  *   0x1F0   ...soft locks in a row so far       stored inverted, so that
  *   0x1F1   ...hard locks lifted, ever          an erased byte is a zero)
- *   0x1F2   how long the host stays trusted, in tens of seconds
+ *   0x1F2   how long the secrets' key is held, in tens of seconds
  *   0x1F3   the code to type at power-on, if any
  *   0x1F4   password, twelve bytes zero-padded (DM_PASS_ADDR)
  */
@@ -453,7 +458,7 @@ static void lock_poll(void)
     }
 }
 
-#define PASS_PAUSE_MS   1000    /* a wrong host key costs a second */
+#define PASS_PAUSE_MS   1000    /* a wrong key costs a second */
 
 /* What a password means for the lockout. Checking it -- comparing in full,
    pausing a second after a wrong one -- is the core's; these are what the
@@ -480,97 +485,140 @@ void hidPassChanged(void)
     lock_clear();
 }
 
-/* ---- the host ---------------------------------------------------------
+/* ---- secrets ----------------------------------------------------------
  *
  * A USB device has no idea which computer it is plugged into, so a board
- * that types a password types it for whoever holds it. This is the answer
- * for a host whose software you control: a small client there sends a key,
- * and for a while afterwards -- a minute by default -- macros guarded by
- * {host} play. Plugged into any other computer they do not.
+ * that types a password types it for whoever holds it -- and the password
+ * sits in the EEPROM for anybody who can read it, with a programmer, past
+ * the lock bits, or with the chip open. {secret} answers both: the rest of
+ * the macro is stored encrypted, and the key is nowhere on the board. A
+ * small client on the host sends it (KEYAUTH); it is held in RAM for the
+ * configured wait (0x1F2, a minute by default) and then forgotten -- and at
+ * any restart, and any WRITE. Plugged into any other computer, the secret
+ * stays shut:
  *
- *      {host}    stops the macro quietly
- *      {host!}   stops it exactly as if the code were not in the table:
- *                three blinks, and a wrong code for the lockout. A guesser
- *                on the wrong computer cannot tell a guarded code from an
- *                empty one -- provided nothing is typed before the check.
+ *      {secret}    stops the macro quietly
+ *      {secret!}   stops it exactly as if the code were not in the table:
+ *                  three blinks, and a wrong code for the lockout. A guesser
+ *                  on the wrong computer cannot tell it from an empty code
+ *                  -- provided nothing is typed before it.
  *
- * The key is eight random bytes rather than a password, since nobody types
- * it: the app makes it, and it is what fitted in the space that was left.
+ * As the table holds it:
  *
- * It is the one request, beside INFO, that needs neither the hold nor the
- * password, because the whole point is a client that runs with nobody at the
- * board. So it must not be able to do anything else -- it opens no window,
- * unlocks nothing, and reads nothing -- and a wrong key does NOT count against
- * the lockout. If it did, any program on any computer could hard-lock the
- * board without anybody touching it. A wrong key costs a second instead, on a
- * clock of its own so that it cannot hold up the password either.
+ *      0x81 hh  n0 n1 n2 n3  c0 ... ck  0x00
+ *
+ * hh is FE or FF: a jump to a code no macro has, so firmware from before
+ * secrets types nothing. The page seals it (web/table.js, which says
+ * more): n is a nonce, c the rest of the macro and a zero of its own, at
+ * most 256 bytes, each the plain byte XOR the first byte of XTEA_K(n, j) --
+ * j the byte's place, the nonce and the counter as two little-endian words.
+ * Both are free of anything that would make a walk lose its place, so
+ * find_header() reads past a secret as it reads past anything else. Playing
+ * one, every byte read goes through secret_byte(), and the player is
+ * otherwise the same: repeats and pauses work inside a secret, a {goto}
+ * leaves it.
+ *
+ * Which key is the right one the board learns from the check value, x =
+ * XTEA_K(0, 0), where v2's host key was (DM_CHECK_ADDR). A wrong key costs
+ * a second and never counts towards the lockout: if it did, any program on
+ * any computer could lock the board out without anybody touching it. KEYAUTH
+ * needs no gate, being the whole point -- so it does nothing else. PROVE
+ * gives a client XTEA under x|x of eight bytes of its choosing, so that it
+ * can tell this board from one that merely copied its serial number before
+ * it sends the key.
+ *
+ * v2's {host} is gone: a {secret} at the start of a macro is all it was,
+ * and more. One left in a table is refused, quietly or loudly as it asked
+ * -- a guarded macro never typed by firmware that cannot check it.
  */
-#if HAVE_HOST
-#define HOST_KEY        ((uint8_t *)DM_HOST_ADDR)
-#define HOST_WAIT       ((uint8_t *)0x1F2)
+#define CHECK_AT        ((uint8_t *)DM_CHECK_ADDR)
+#define KEY_WAIT        ((uint8_t *)0x1F2)
 
-static uint8_t  host_left;      /* tens of seconds the host stays trusted */
-static uint16_t host_tick;
-static uint16_t host_failed;    /* when the last wrong key came... */
-static uint8_t  host_pausing;   /* ...and whether that still holds */
+static struct {
+    uint8_t key[DM_KEY_LEN];
+    uint8_t nonce[4];           /* the playing secret's */
+    uint8_t ks[8];              /* nonce and counter, then keystream */
+} sec;
+static uint8_t  key_left;       /* tens of seconds the key is held for */
+static uint16_t key_tick;
+static uint16_t key_failed;     /* when the last wrong key came... */
+static uint8_t  key_pausing;    /* ...and whether that still holds */
+static uint8_t *sec_at;         /* where the playing secret's c0 is, or 0 */
 
-static uint8_t host_keyset(void)
+void hidKeyForget(void)
 {
-    for (uint8_t i = 0; i < DM_HOST_LEN; i++)
-        if (eeprom_read_byte(HOST_KEY + i) != 0xFF) return 1;
-    return 0;
+    key_left = 0;
+    memset(&sec, 0, sizeof sec);
 }
 
-/* Runs the trust's clock, catching up however long it was left. */
-static void host_poll(void)
+/* Runs the key's clock, catching up however long it was left, and lets the
+   key go the moment its time is up. */
+static uint8_t key_ok(void)
 {
-    while (host_left && (uint16_t)(ticks() - host_tick) >= LOCK_TICK_MS) {
-        host_tick += LOCK_TICK_MS;
-        host_left--;
+    while (key_left && (uint16_t)(ticks() - key_tick) >= LOCK_TICK_MS) {
+        key_tick += LOCK_TICK_MS;
+        if (!--key_left) hidKeyForget();
     }
+    return key_left;
 }
 
-static uint8_t host_ok(void)
+uint8_t hidKeyState(void)
 {
-    host_poll();
-    return host_left && host_keyset();
+    return key_ok() ? DM_ST_KEY : 0;
 }
 
-/* The host key was rewritten or removed, or the board restarted: whatever
-   trust the old key earned goes with it. */
-void hidHostForget(void)
+/* Its check value compared in full, as the password is. */
+uint8_t hidKeyAuth(const uint8_t *p, uint8_t n)
 {
-    host_left = 0;
-}
+    uint8_t b[8], diff = 0, w;
 
-uint8_t hidHostState(void)
-{
-    return (host_ok() ? DM_ST_HOST : 0) | (host_keyset() ? DM_ST_HOSTKEY : 0);
-}
-
-/* Compared in full, as the password is. */
-uint8_t hidHostAuth(const uint8_t *p, uint8_t n)
-{
-    uint8_t diff = 0, w;
-
-    if (n != DM_HOST_LEN || !host_keyset()) return 0;
-    if (host_pausing && (uint16_t)(ticks() - host_failed) < PASS_PAUSE_MS)
+    if (n != DM_KEY_LEN) return 0;
+    if (key_pausing && (uint16_t)(ticks() - key_failed) < PASS_PAUSE_MS)
         return 0;
-    host_pausing = 0;
+    key_pausing = 0;
 
-    for (uint8_t i = 0; i < DM_HOST_LEN; i++)
-        diff |= eeprom_read_byte(HOST_KEY + i) ^ p[i];
+    memset(b, 0, sizeof b);
+    xtea(b, p);
+    for (uint8_t i = 0; i < 8; i++)
+        diff |= eeprom_read_byte(CHECK_AT + i) ^ b[i];
     if (diff) {
-        host_failed = ticks();
-        host_pausing = 1;
+        key_failed = ticks();
+        key_pausing = 1;
         return 0;
     }
-    w = eeprom_read_byte(HOST_WAIT);
-    host_left = (uint8_t)(w - 1) < LOCK_WAIT_MAX ? w : LOCK_WAIT_DEF;
-    host_tick = ticks();
+    memcpy(sec.key, p, DM_KEY_LEN);
+    w = eeprom_read_byte(KEY_WAIT);
+    key_left = (uint8_t)(w - 1) < LOCK_WAIT_MAX ? w : LOCK_WAIT_DEF;
+    key_tick = ticks();
     return 1;
 }
-#endif
+
+uint8_t hidProve(uint8_t *p, uint8_t n)
+{
+    uint8_t k[DM_KEY_LEN];
+
+    if (n != 8) return 0;
+    for (uint8_t i = 0; i < DM_KEY_LEN; i++)
+        k[i] = eeprom_read_byte(CHECK_AT + (i & 7));
+    xtea(p, k);
+    return 1;
+}
+
+/* A byte of the macro being played: as stored, or inside a secret,
+   decrypted -- or a zero, which ends the macro, if the key has gone since
+   it started. */
+static uint8_t secret_byte(uint8_t *a)
+{
+    uint8_t c = eeprom_read_byte(a);
+
+    if (!sec_at) return c;
+    if (!key_left) return 0;    /* clocks_poll() runs its clock between bytes */
+    memcpy(sec.ks, sec.nonce, 4);
+    sec.ks[4] = a - sec_at;
+    sec.ks[5] = sec.ks[6] = sec.ks[7] = 0;
+    xtea(sec.ks, sec.key);
+    return c ^ sec.ks[0];
+}
 
 /* The clocks that must keep running while a macro plays, since loop() does
    not: they count in sixteen bits of milliseconds, which wrap in a minute,
@@ -582,11 +630,9 @@ static void clocks_poll(void)
     lock_poll();
     hidAllowed();               /* the session ends with the window: asking
                                    is what closes it (hidusb.c) */
-#if HAVE_HOST
-    host_poll();
-    if (host_pausing && (uint16_t)(ticks() - host_failed) >= PASS_PAUSE_MS)
-        host_pausing = 0;
-#endif
+    key_ok();                   /* forgets the key the moment its time is up */
+    if (key_pausing && (uint16_t)(ticks() - key_failed) >= PASS_PAUSE_MS)
+        key_pausing = 0;
 }
 
 /* The macro to type when the board is plugged in, as a header byte rather
@@ -1002,6 +1048,8 @@ uint8_t macro_play(uint8_t *a)
     uint8_t *mark = 0;          /* ...and where a marked group began */
     uint8_t  reps = 0;          /* times round that group still to go */
 
+    sec_at = 0;
+
     while (a < TABLE_TOP) {
         uint8_t c;
 
@@ -1012,7 +1060,7 @@ uint8_t macro_play(uint8_t *a)
 #endif
         if (INPUT_ACTIVE()) { stop_for_touch(); break; }
 
-        c = eeprom_read_byte(a++);
+        c = secret_byte(a++);
         if (!c) break;
 
         if (IS_ESC(c)) {
@@ -1029,7 +1077,7 @@ uint8_t macro_play(uint8_t *a)
                                            table to stop in, not to skip
                                            through: past its end, perhaps */
                 uint8_t i = 3;
-                while (i && (eeprom_read_byte(a) & 0x80)) { a++; i--; }
+                while (i && (secret_byte(a) & 0x80)) { a++; i--; }
                 if (i) break;
                 continue;
             }
@@ -1038,7 +1086,7 @@ uint8_t macro_play(uint8_t *a)
                                            serial number above it, and a
                                            repeat count read from there
                                            would say what it was */
-            uint8_t arg = eeprom_read_byte(a++);
+            uint8_t arg = secret_byte(a++);
             if (!arg) break;            /* no argument may be zero; a table
                                            that says otherwise is corrupt */
             if (c == ESC_PAUSE) {
@@ -1075,25 +1123,30 @@ uint8_t macro_play(uint8_t *a)
                 } else {
                     mark = 0;           /* done; carry on past the repeat */
                 }
+            } else if (c == ESC_JUMP && arg >= SECRET_QUIET) {
+                /* {secret}: refused without the key, quietly or as if the
+                   code were not there */
+                if (!key_ok()) {
+                    refused = arg == SECRET_LOUD ? HOST_LOUD : HOST_SILENT;
+                    break;
+                }
+                for (uint8_t i = 0; i < 4; i++)
+                    sec.nonce[i] = eeprom_read_byte(a++);
+                sec_at = a;
 #if HAVE_JUMP
             } else if (c == ESC_JUMP) {
                 uint8_t *nx = find_header(arg - 1);
                 if (!nx || ++jumps > JUMP_MAX) break;
                 a = nx;                 /* carry on there, and never come back */
+                sec_at = 0;             /* ...in the clear, until it says not */
                 mod = 0;
                 mark = 0;
                 reps = 0;
 #endif
             } else if (c == ESC_HOST) {
-                /* A build without host checks refuses every one: a guarded
-                   macro is never typed by firmware that cannot check. */
-#if HAVE_HOST
-                if (!host_ok())
-#endif
-                {
-                    refused = arg == HOST_LOUD ? HOST_LOUD : HOST_SILENT;
-                    break;
-                }
+                /* v2's {host}, which no key satisfies now: see "secrets" */
+                refused = arg == HOST_LOUD ? HOST_LOUD : HOST_SILENT;
+                break;
             } else {
                 break;                  /* an escape this build does not have:
                                            stop rather than guess */

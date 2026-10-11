@@ -147,7 +147,7 @@ void hidPoll(void)
     if (restartWanted && (uint16_t)(ticks() - restartAsked) > 50) {
         restartWanted = 0;
         allowOpen = 0;
-        hidHostForget();        /* as if replugged: trust starts again */
+        hidKeyForget();         /* as if replugged: the key goes */
         wipe();
         hidRestart();
     }
@@ -223,14 +223,20 @@ uint8_t app_request(uint8_t *v)
         v[DM_INFO_EESIZE + 1] = (uint8_t)((E2END + 1) >> 8);
         v[DM_INFO_STATE] |= (hidAllowed() ? DM_ST_OPEN : 0)
                           | hidLockState()
-                          | hidHostState();
+                          | hidKeyState();
         return 1;
 
-    case DM_FUNC_HOSTAUTH:
+    case DM_FUNC_KEYAUTH:
         /* No gate: the point is a program on the host doing it with nobody
            at the board. It can do nothing else. */
-        if (!hidHostAuth(d, n)) v[0] = DM_REFUSED;
+        if (!hidKeyAuth(d, n)) v[0] = DM_REFUSED;
         wipe();                 /* the key, whether it was right or not */
+        return 1;
+
+    case DM_FUNC_PROVE:
+        /* No gate either: its answer is all it gives, and that is what a
+           client checks before it sends the key above. */
+        if (!hidProve(d, n)) v[0] = DM_REFUSED;
         return 1;
 
 
@@ -309,9 +315,8 @@ uint8_t app_request(uint8_t *v)
             if ((addr + i) > E2END) break;
             eeprom_update_byte((uint8_t *)(addr + i), d[i]);
         }
-        /* A new host key, or none: whatever trust the old one earned goes. */
-        if (addr < DM_HOST_ADDR + DM_HOST_LEN && addr + n > DM_HOST_ADDR)
-            hidHostForget();
+        hidKeyForget();         /* the secrets, or their check value, may
+                                   not be what the key was for any more */
         wipe();                 /* it might have been the password */
         break;
     }

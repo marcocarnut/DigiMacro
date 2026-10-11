@@ -8,6 +8,11 @@
  * MN_START and nothing where it looks for a program to run. The code: the
  * EEPROM wiped before page 0 is touched, interrupts off for all of it, and
  * page 0 left jumping to Micronucleus and nothing else changed.
+ *
+ * The fake EEPROM is busy after a write until something waits for it, as the
+ * chip's is for 3.4 ms, and the fake flash ignores an erase or a write while
+ * it is: the ATtiny85 does, and a board with a password -- its last bytes at
+ * the top of the EEPROM, the wipe's last write -- once kept its core that way.
  */
 #include <setjmp.h>
 #include <stdint.h>
@@ -19,7 +24,7 @@
 uint8_t FL[8192], EE[512];
 int ints;
 
-static int fails, page0, ee_after, spm_ints, wdrs;
+static int fails, page0, ee_after, spm_ints, wdrs, ee_busy, spm_lost;
 static uint16_t temp[32];
 static jmp_buf reset;
 
@@ -28,12 +33,16 @@ static jmp_buf reset;
 
 void eeprom_update_byte(uint8_t *a, uint8_t v)
 {
+    ee_busy = 0;                        /* avr-libc's waits before it reads */
     if (page0) ee_after++;
+    if (EE[(size_t)a] != v) ee_busy = 1;
     EE[(size_t)a] = v;
 }
+void eeprom_busy_wait(void) { ee_busy = 0; }
 void boot_page_erase(uint16_t a)
 {
     if (ints) spm_ints++;
+    if (ee_busy) { spm_lost++; return; }
     page0 = 1;
     memset(FL + (a & ~63), 0xFF, 64);
 }
@@ -41,6 +50,7 @@ void boot_page_fill(uint16_t a, uint16_t w) { temp[(a & 63) / 2] &= w; }
 void boot_page_write(uint16_t a)
 {
     if (ints) spm_ints++;
+    if (ee_busy) { spm_lost++; memset(temp, 0xFF, sizeof temp); return; }
     for (int i = 0; i < 32; i++) {     /* flash only ever clears bits */
         FL[(a & ~63) + 2 * i]     &= temp[i];
         FL[(a & ~63) + 2 * i + 1] &= temp[i] >> 8;
@@ -82,14 +92,16 @@ static uint16_t crc16(const uint8_t *p, unsigned n)
 /* A board as DigiMacro leaves it: a core below, a table and a password in
    the EEPROM, and this image written over the app region. */
 static uint8_t image[8192], core[0x1000];
-static void board(void)
+static void board(int password)
 {
     memset(FL, 0xFF, sizeof FL);
     for (int i = 0; i < 0x1000; i++) FL[i] = core[i] = (uint8_t)(i * 7 + 1);
     memcpy(FL + APP_START, image + APP_START, sizeof FL - APP_START);
-    for (int i = 0; i < 512; i++) EE[i] = (uint8_t)(i ^ 0x5A);
+    /* the table, and the reserved top; a password fills its last bytes */
+    for (int i = 0; i < 512; i++) EE[i] = i < 0x1E4 ? (uint8_t)(i ^ 0x5A) : 0xFF;
+    if (password) for (int i = 0x1F4; i < 512; i++) EE[i] = 0x30 + (i & 0x0F);
     memset(temp, 0xFF, sizeof temp);
-    ints = 1; page0 = ee_after = spm_ints = wdrs = 0;
+    ints = 1; page0 = ee_after = spm_ints = wdrs = ee_busy = spm_lost = 0;
 }
 
 int main(int argc, char **argv)
@@ -116,9 +128,12 @@ int main(int argc, char **argv)
     for (unsigned a = MN_START - 6; a < MN_START; a++) if (image[a] != 0xFF) blank = 0;
     check(blank, "the bytes below Micronucleus, where it looks for a program, are not blank");
 
-    printf("the uninstaller: the EEPROM, then page 0, then a reset\n");
-    board();
+    for (int password = 0; password < 2; password++) {
+    printf("the uninstaller, %s: the EEPROM, then page 0, then a reset\n",
+           password ? "with a password" : "with no password");
+    board(password);
     if (!setjmp(reset)) { app_setup(); check(0, "app_setup returned instead of resetting"); }
+    check(!spm_lost, "%d flash operations lost to an EEPROM write still going", spm_lost);
     int wiped = 1;
     for (int i = 0; i < 512; i++) if (EE[i] != 0xFF) wiped = 0;
     check(wiped, "the EEPROM is not all blank");
@@ -136,13 +151,14 @@ int main(int argc, char **argv)
     for (unsigned a = APP_START; a < sizeof FL; a++) if (FL[a] != image[a]) others = 0;
     check(rest, "the rest of page 0 is not blank");
     check(others, "flash outside page 0 changed");
+    }
 
     printf("no Micronucleus in the image: nothing touched\n");
-    board();
+    board(1);
     FL[MN_START] = FL[MN_START + 1] = 0xFF;
     if (!setjmp(reset)) app_setup(); else check(0, "it reset with no Micronucleus to go to");
     int untouched = !page0;
-    for (int i = 0; i < 512; i++) if (EE[i] != (uint8_t)(i ^ 0x5A)) untouched = 0;
+    for (int i = 0; i < 0x1E4; i++) if (EE[i] != (uint8_t)(i ^ 0x5A)) untouched = 0;
     for (int a = 0; a < 0x1000; a++) if (FL[a] != core[a]) untouched = 0;
     check(untouched, "the board was changed anyway");
 

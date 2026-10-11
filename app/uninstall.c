@@ -49,6 +49,11 @@ void app_setup(void)
         eeprom_update_byte((uint8_t *)a, 0xFF);
     }
 
+    /* The last byte may still be being written, for 3.4 ms, and the chip
+       ignores an erase or a write of flash meanwhile: a password, at the
+       top of the EEPROM, made the last write, and page 0 stayed the core's. */
+    eeprom_busy_wait();
+
     /* rjmp to MN_START: relative, from word 1, and wrapping round the 4K
        words of flash -- the way the upload tool writes it for 2.x */
     boot_page_erase(0);

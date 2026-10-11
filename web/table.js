@@ -35,6 +35,19 @@ const irButton = (b, i) => [(b[i] & 0x7F) | ((b[i + 2] & 1) << 7),
                             (b[i + 1] & 0x7F) | ((b[i + 2] & 2) << 6)];
 const irHex = v => v.toString(16).padStart(2, '0');
 
+/* LEARN: the board types the button as "a c" in hex, straight from usages,
+   so a keyboard layout that puts other characters on the digits would type
+   something else. Read by key position instead, as KeyboardEvent.code has it,
+   and turned into what goes in a macro once both bytes are there. */
+const irKeyChar = code => {
+  const m = /^(?:Digit|Numpad)([0-9])$|^Key([A-F])$/.exec(code);
+  return m ? (m[1] || m[2].toLowerCase()) : code === 'Space' ? ' ' : null;
+};
+const irHeard = text => {
+  const m = /^\s*([0-9a-f]{2})\s*([0-9a-f]{2})\s*$/i.exec(text);
+  return m ? `{IR ${m[1].toLowerCase()} ${m[2].toLowerCase()}}` : null;
+};
+
 /* How many bytes the thing at b[i] takes: a keystroke or a mark one, an
    {IR} four, any other escape two. Everything that walks a macro walks it
    with this, since an argument can be any byte at all. */
@@ -724,4 +737,5 @@ if (typeof module !== 'undefined') module.exports = {
   ESC_IR,
   AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
   usages, header, codeOf, tappable, IR_CODES, packTable, unpackTable,
-  encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows };
+  encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows,
+  irKeyChar, irHeard };

@@ -216,8 +216,27 @@ en: {
   'ref-ir':         'where the IR remote\'s button 00 45 starts typing, on to '
                   + 'the end of the macro; typed from the code, it is nothing',
   'ir-learn':       'remote button',
-  'ir-learning':    'Press a button on the remote, pointed at the board: it '
-                  + 'types the button\'s two bytes here.',
+  'ir-title':       'A remote\'s button',
+  'ir-how':         'Point the remote at the board and press the button within '
+                  + 'ten seconds: the board types its two bytes in the box below, '
+                  + 'so leave the focus there. The remote has to speak the NEC '
+                  + 'protocol, as many LED strip and TV remotes do.',
+  'ir-receiver':    'Only a board with an IR receiver, on P2, hears anything.',
+  'ir-heard':       'the board types here',
+  'ir-listening':   'listening… {s} s',
+  'ir-silent':      'Nothing heard. The board may have no receiver, the remote '
+                  + 'may not speak NEC, or the box lost the focus. Listen again '
+                  + 'to retry.',
+  'ir-paste':       'Copy this and paste it into the macro the button should '
+                  + 'type, where the typing should start: usually at the very '
+                  + 'beginning. A macro only the remote should reach can have a '
+                  + 'code from IR1 to IR30 instead of dots and dashes.',
+  'ir-copy':        'Copy',
+  'ir-copied':      '{ir} is on the clipboard.',
+  'ir-copy-failed': 'The browser did not allow copying: it is selected, so copy '
+                  + 'it yourself.',
+  'ir-again':       'Listen again',
+  'ir-noboard':     'Connect the board first.',
   'ir-refused':     'The board did not take it: its firmware has no remote. '
                   + 'Update it.',
   'fw-summary':     'Firmware',
@@ -684,8 +703,28 @@ pt: {
   'ref-ir':         'onde o botão 00 45 do controle remoto começa a digitar, até '
                   + 'o fim da macro; digitada pelo código, não faz nada',
   'ir-learn':       'botão do controle',
-  'ir-learning':    'Aperte um botão do controle, apontado para a placa: ela '
-                  + 'digita aqui os dois bytes do botão.',
+  'ir-title':       'Um botão do controle',
+  'ir-how':         'Aponte o controle para a placa e aperte o botão em até dez '
+                  + 'segundos: a placa digita os dois bytes dele na caixa abaixo, '
+                  + 'então deixe o foco nela. O controle precisa falar o '
+                  + 'protocolo NEC, como muitos controles de fita de LED e de TV.',
+  'ir-receiver':    'Só uma placa com receptor infravermelho, no P2, ouve alguma '
+                  + 'coisa.',
+  'ir-heard':       'a placa digita aqui',
+  'ir-listening':   'ouvindo… {s} s',
+  'ir-silent':      'Nada foi ouvido. Talvez a placa não tenha receptor, o '
+                  + 'controle não fale NEC, ou a caixa tenha perdido o foco. '
+                  + 'Ouça de novo para tentar outra vez.',
+  'ir-paste':       'Copie isto e cole na macro que o botão deve digitar, onde a '
+                  + 'digitação deve começar: em geral, bem no início. Uma macro '
+                  + 'que só o controle deve alcançar pode ter um código de IR1 a '
+                  + 'IR30 em vez de pontos e traços.',
+  'ir-copy':        'Copiar',
+  'ir-copied':      '{ir} está na área de transferência.',
+  'ir-copy-failed': 'O navegador não deixou copiar: o texto está selecionado, '
+                  + 'então copie você mesmo.',
+  'ir-again':       'Ouvir de novo',
+  'ir-noboard':     'Conecte a placa primeiro.',
   'ir-refused':     'A placa não aceitou: o firmware dela não tem controle '
                   + 'remoto. Atualize-o.',
   'fw-summary':     'Firmware',

@@ -329,5 +329,17 @@ for (const text of ['coração', 'Olá, você!', 'não{Enter}', '{Ctrl+c}á',
         `${JSON.stringify(text)} drifts: ${JSON.stringify(t.decodeMacro(bytes))}`);
 }
 
+/* LEARN's two bytes, read by key position so the layout cannot change them */
+check(t.irHeard('04 08') === '{IR 04 08}', 'irHeard reads "04 08"');
+check(t.irHeard(' 8E c5 ') === '{IR 8e c5}', 'irHeard: any case, spaces around');
+check(t.irHeard('04') === null && t.irHeard('04 0') === null,
+      'irHeard waits for both bytes');
+check(t.irHeard('04 08 1') === null && t.irHeard('0g 08') === null,
+      'irHeard refuses anything else');
+check(['Digit0', 'Numpad7', 'KeyA', 'KeyF', 'Space'].map(t.irKeyChar).join('') === '07af ',
+      'irKeyChar maps digits, a-f and the space');
+check(t.irKeyChar('KeyG') === null && t.irKeyChar('Enter') === null,
+      'irKeyChar ignores other keys');
+
 console.log(fails ? '\nSOME CHECKS FAILED' : '\nall checks passed');
 process.exit(fails ? 1 : 0);

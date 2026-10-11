@@ -239,11 +239,14 @@ Uma macro que só o controle remoto deve alcançar recebe um código de `IR1` a
 `IR30` em vez de pontos e traços. Nenhum toque produz esses códigos, então
 nenhum toque e nenhum chute jamais a digita; um `{goto IR1}` ainda pode.
 
-Para descobrir os dois bytes de um botão, ponha o cursor numa macro e clique
-em **botão do controle** na paleta de teclas: isso coloca `{IR }` ali, e a
-placa digita entre as chaves o próximo botão que receber — em até dez
-segundos. Não é preciso nem o toque longo nem a senha: tudo o que isso pode
-fazer é digitar um botão em hexa.
+Para descobrir os dois bytes de um botão, clique em **botão do controle**
+na paleta de teclas. Abre-se um diálogo, e a placa digita numa caixa dele o
+próximo botão que receber, em até dez segundos; a página o transforma em
+`{IR 04 08}`, com um botão para copiar, pronto para colar onde a digitação
+daquele botão deve começar. A caixa lê as teclas pela posição, então um layout
+de teclado que ponha outros caracteres nos dígitos não a engana. Não é preciso
+nem o toque longo nem a senha: tudo o que isso pode fazer é digitar um botão
+em hexa.
 
 Botões que não estão na tabela não fazem nada, e nunca contam para o
 bloqueio: as salas estão cheias de controles remotos dos outros. Uma placa

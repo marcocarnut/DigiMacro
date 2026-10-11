@@ -234,10 +234,13 @@ A macro that only the remote should reach gets a code from `IR1` to `IR30`
 instead of dots and dashes. No tapping makes those codes, so no tap and no
 guess ever types it; a `{goto IR1}` still can.
 
-To find a button's two bytes, put the cursor in a macro and press **remote
-button** in the key pad: it puts `{IR }` there, and the board types the next
-button it sees — within ten seconds — into the braces. That needs neither the
-hold nor the password: all it can do is type one button as hex.
+To find a button's two bytes, press **remote button** in the key pad. A
+dialog opens and the board types the next button it sees, within ten seconds,
+into a box there; the page turns it into `{IR 04 08}`, with a button to copy
+it, ready to paste where that button's typing should start. The box reads keys
+by position, so it is not fooled by a keyboard layout that puts other
+characters on the digits. That needs neither the hold nor the password: all it
+can do is type one button as hex.
 
 Buttons that are not in the table do nothing at all, and never count toward
 the lockout: rooms are full of other people's remotes. A locked board ignores

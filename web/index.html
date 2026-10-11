@@ -119,6 +119,8 @@
            color: var(--fg); padding: 1.2rem 1.4rem 1.4rem; }
   dialog::backdrop { background: #0007; }
   dialog h2 { margin-top: 0; }
+  #irheard, #irout { font-family: ui-monospace, monospace; }
+  #irheard { width: 7rem; } #irout { width: 10rem; }
   /* The page's own keyboard, docked at the bottom (vkbd.js) */
   .vktoggle { padding: .15rem .45rem; font-size: 1.1rem; line-height: 1;
               color: var(--dim); }
@@ -244,8 +246,7 @@
             title="( )">( )</button>
     <label style="margin-left:.8rem"><span data-t="goto">goto</span> <select id="gotoval"></select></label>
     <button data-ins="goto" data-t="insert">insert</button>
-    <button data-ins="ir" style="margin-left:.8rem" data-t="ir-learn"
-            title="{IR }">remote button</button>
+    <button data-ins="ir" style="margin-left:.8rem" data-t="ir-learn">remote button</button>
   </div>
 </div>
 <p class="hint" data-t="pad-hint"></p>
@@ -361,6 +362,31 @@
   <p class="prose" data-t="code-morse"></p>
   <div id="morse" class="morse"></div>
   <div class="bar">
+    <span class="spacer"></span>
+    <button data-close data-t="close">Close</button>
+  </div>
+</dialog>
+
+<!-- Opened from the key pad's remote button. -->
+<dialog id="irdialog">
+  <h2 data-t="ir-title">A remote's button</h2>
+  <p class="prose" data-t="ir-how"></p>
+  <p class="dim prose" data-t="ir-receiver"></p>
+  <div class="bar">
+    <label><span data-t="ir-heard">the board types here</span>
+      <input id="irheard" readonly autocomplete="off"></label>
+    <span id="irwait" class="dim"></span>
+  </div>
+  <div id="irgot" hidden>
+    <p class="prose" data-t="ir-paste"></p>
+    <div class="bar">
+      <input id="irout" readonly>
+      <button id="ircopy" class="primary" data-t="ir-copy">Copy</button>
+    </div>
+  </div>
+  <p class="note" id="ir-note"></p>
+  <div class="bar">
+    <button id="iragain" data-t="ir-again">Listen again</button>
     <span class="spacer"></span>
     <button data-close data-t="close">Close</button>
   </div>
@@ -1998,10 +2024,7 @@ $('pad').addEventListener('click', e => {
     return;
   }
 
-  /* The board types the remote's next button itself, as two hex bytes, so
-     the caret is left inside the braces for it: the field keeps the focus,
-     and the keystrokes land there. */
-  if (t.dataset.ins === 'ir') { irLearn(); return; }
+  if (t.dataset.ins === 'ir') { irOpen(); return; }
 
   /* A count counts the thing before it, and that thing is one keystroke
      unless something says otherwise. Parentheses are how you say otherwise:
@@ -2024,22 +2047,81 @@ $('pad').addEventListener('click', e => {
   }
 });
 
-/* No hold and no password: LEARN reads nothing, and the board types the
-   button once. */
-async function irLearn() {
-  if (busy || !dev) return;
-  insert('{IR }');
-  const el = lastField;
-  if (!el) return;
-  const at = el.selectionStart - 1;
-  el.setSelectionRange(at, at);
+/* The remote's button, in a dialog of its own: the board types it as two hex
+   bytes into whatever has the focus, and a box that is there only for that
+   is harder to get wrong than a caret left inside {IR } in a macro.
+
+   No hold and no password: LEARN reads nothing, and the board types one
+   button, within ten seconds of being asked. The box is read-only and its
+   keys are read by position (irKeyChar), so neither the keyboard layout nor
+   a phone's keyboard, the page's own included, gets a say in what lands. */
+let irTimer = null;
+
+function irStop() {
+  clearInterval(irTimer);
+  irTimer = null;
+  $('irwait').textContent = '';
+}
+
+async function irListen() {
+  irStop();
+  $('irheard').value = '';
+  $('irgot').hidden = true;
+  note('ir-note', '');
+  $('irheard').focus();
+  if (!dev) { note('ir-note', t('ir-noboard'), 'bad'); return; }
+  if (busy) return;
   try {
     await ask(F_LEARN);
-    note('table-note', t('ir-learning'), 'dim');
   } catch (e) {
-    note('table-note', e.message === 'REFUSED' ? t('ir-refused') : e.message, 'bad');
+    note('ir-note', e.message === 'REFUSED' ? t('ir-refused') : e.message, 'bad');
+    return;
   }
+  const until = Date.now() + 10000;
+  const tick = () => {
+    const left = Math.ceil((until - Date.now()) / 1000);
+    if (left > 0) { $('irwait').textContent = t('ir-listening', { s: left }); return; }
+    irStop();
+    note('ir-note', t('ir-silent'), 'bad');
+  };
+  tick();
+  irTimer = setInterval(tick, 250);
 }
+
+function irOpen() {
+  $('irdialog').showModal();
+  irListen();
+}
+
+$('irheard').addEventListener('keydown', e => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const c = irKeyChar(e.code)
+         ?? (/^[0-9a-f ]$/i.test(e.key) ? e.key.toLowerCase() : null);
+  if (c === null) return;
+  e.preventDefault();
+  const el = $('irheard');
+  el.value += c;
+  const ir = irHeard(el.value);
+  if (!ir) return;
+  irStop();
+  note('ir-note', '');
+  $('irout').value = ir;
+  $('irgot').hidden = false;
+  $('ircopy').focus();
+});
+
+$('ircopy').onclick = async () => {
+  const text = $('irout').value;
+  try {
+    await navigator.clipboard.writeText(text);
+    note('ir-note', t('ir-copied', { ir: text }), 'ok');
+  } catch (e) {
+    $('irout').select();
+    note('ir-note', t('ir-copy-failed'), 'bad');
+  }
+};
+$('iragain').onclick = irListen;
+$('irdialog').addEventListener('close', irStop);
 
 /* ---- the page's own keyboard ----------------------------------------
 

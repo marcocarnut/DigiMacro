@@ -127,6 +127,21 @@ define apphex
 	    || { echo "$@ runs past APP_END"; exit 1; }
 endef
 
+# ---- the simulated board ----------------------------------------------
+
+# Secrets end to end on a simulated ATtiny85 with a USB host: the real
+# firmware, app/xtea.S included, which the PC tests cannot run. Needs the
+# harness and patched simavr from ../simavr-softusb (its PLAN.md);
+# test/run.sh runs this when they are there.
+SOFTUSB ?= ../simavr-softusb
+SIMLIB   = $(SOFTUSB)/simavr/simavr/obj-$(shell cc -dumpmachine)/libsimavr.a
+$(O)/sim_secret: test/sim/secret.c test/xtea.h $(SIMLIB) | $(O)
+	cc -O2 -g -Wall -I$(SOFTUSB)/simavr/simavr/sim -I$(SOFTUSB)/harness -o $@ $< \
+	    $(addprefix $(SOFTUSB)/harness/,board.c softusb.c dm.c touchpad.c) $(SIMLIB) -lelf -lm
+simtest: $(O)/sim_secret $(O)/core.elf $(O)/digimacro.hex
+	node test/webtable.js --emit-secret > $(O)/sealed.txt
+	$(O)/sim_secret $(O)/core.elf $(O)/digimacro.hex $(O)/sealed.txt
+
 # ---- DigiMacro -------------------------------------------------------
 
 # The sketch, as C++ -- it was an Arduino sketch, and still is one in v1.0
@@ -259,5 +274,5 @@ clean:
 	rm -rf $(O)
 	$(MAKE) -C core/test clean
 
-.PHONY: all release site hosts spike page irspike uninstall size test clean
+.PHONY: all release site hosts spike page irspike uninstall size test simtest clean
 .SECONDARY:

@@ -5,8 +5,8 @@ Branch `v3`, from v2.3 (bf5c596).
 **Status:**
 - Design agreed with Marco on Oct 11 2026, then revised the same day when
   the firmware would not fit (see "What changed, and why").
-- Milestones 1 and 2 are done, and so is most of 3. The firmware is tested
-  on the PC only, not on a board.
+- Milestones 1–3 are done. The firmware is tested on the PC and on the
+  simulated board, not yet on real hardware.
 
 ## What it is
 
@@ -196,21 +196,25 @@ So the client:
     per-byte key check, the pause, loud refused as quiet, a jump that keeps
     decrypting, PROVE's key.
   - All were caught.
-- **Still to do:** end to end on the simulated board
-  (`../simavr-softusb/harness`), running the real `xtea.S`:
-  1. write a table with a secret;
-  2. PROVE;
-  3. KEYAUTH;
-  4. tap, and read the typed text;
-  5. let the timeout lapse, and check that the tap types nothing.
+- **End to end on the simulated board** (`test/sim/secret.c`,
+  `make simtest`, and test/run.sh when `../simavr-softusb` is built). It runs
+  the real `xtea.S`, which the PC tests cannot:
+  1. the page's sealed EEPROM is loaded;
+  2. without the key, a tap stops at the secret;
+  3. PROVE matches a client's computation;
+  4. a wrong key, then the second's pause;
+  5. the right key: INFO bit, wiped report, and the tap types it all;
+  6. a minute later the key is gone, from RAM too, and the tap stops again.
+  - A wrong constant in `xtea.S` fails 4 of its checks; the PC tests pass
+    with it.
 
 ## Milestones
 
 1. **Done.** XTEA and counter mode in table.js; the encoder, decoder and
    nonce tries, with tests.
 2. **Done (PC-tested).** Firmware: the cipher, `secret_byte` and the player.
-3. **Done, apart from the simulated end-to-end test.** Firmware: KEYAUTH,
-   PROVE and the wipe.
+3. **Done.** Firmware: KEYAUTH, PROVE and the wipe, with the simulated
+   end-to-end test.
 4. The page: key setup and file, writing and reading secrets, version gates,
    the `{host}` conversion.
 5. The digimacro-host mode.

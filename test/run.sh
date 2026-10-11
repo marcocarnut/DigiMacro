@@ -135,3 +135,19 @@ if command -v node >/dev/null 2>&1; then
 else
     echo "node not found, skipped"
 fi
+
+echo
+echo "== secrets on a simulated board: the real firmware, xtea.S and all =="
+SIMLIB=$(ls ../../simavr-softusb/simavr/simavr/obj-*/libsimavr.a 2>/dev/null | head -1)
+if [ -n "$SIMLIB" ] && command -v node >/dev/null 2>&1; then
+    if make -s -C .. simtest > "$OUT"_sim 2>&1 && tail -1 "$OUT"_sim | grep -qx PASS; then
+        grep '^  \[' "$OUT"_sim | sed -n '/no key held at first/,$p'
+        echo "all checks passed"
+    else
+        cat "$OUT"_sim
+        echo "the simulated board does not play its secrets"
+        exit 1
+    fi
+else
+    echo "../simavr-softusb not built (see its PLAN.md), skipped"
+fi

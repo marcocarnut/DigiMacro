@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Finish an app image, or join hex files into one.
 
-  apphex.py app  ADDR HDR in.bin out.hex
+  apphex.py app  ADDR HDR in.bin out.hex [tail.hex]
                                        stamp the app's CRC and write its hex;
-                                       HDR is where the magic is (layout.h)
+                                       HDR is where the magic is (layout.h);
+                                       tail.hex, if given, joins the image
+                                       where its addresses say, the gap
+                                       blank, and the length grows to hold it
   apphex.py join out.hex in.hex...     several hex files as one
 
 The app's header says how long the image is (layout.h); the CRC-16 of those
@@ -58,7 +61,7 @@ def write_hex(path, mem):
     open(path, 'w').write('\n'.join(out) + '\n')
 
 
-def app(addr, at, binpath, hexpath):
+def app(addr, at, binpath, hexpath, tailpath=None):
     addr, at = int(addr, 0), int(at, 0)
     data = bytearray(open(binpath, 'rb').read())
     if data[at:at + 2] != b'DM':
@@ -66,6 +69,17 @@ def app(addr, at, binpath, hexpath):
     length = data[at + 2] | data[at + 3] << 8
     if length != len(data):
         sys.exit('apphex: header says %d bytes, image is %d' % (length, len(data)))
+    if tailpath:
+        # The uninstaller's Micronucleus: part of the image, so the CRC
+        # covers it and the core will not run the app without it.
+        tail = read_hex(tailpath)
+        lo, hi = min(tail) - addr, max(tail) + 1 - addr
+        if lo < len(data):
+            sys.exit('apphex: %s starts at 0x%04X, inside the app' % (tailpath, lo + addr))
+        data += b'\xff' * (hi - len(data))
+        for a, b in tail.items():
+            data[a - addr] = b
+        data[at + 2:at + 4] = bytes([len(data) & 0xFF, len(data) >> 8])
     c = crc16(data)
     data += bytes([c & 0xFF, c >> 8])
     write_hex(hexpath, {addr + i: b for i, b in enumerate(data)})
@@ -83,7 +97,7 @@ def join(out, *ins):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) == 6 and sys.argv[1] == 'app':
+    if len(sys.argv) in (6, 7) and sys.argv[1] == 'app':
         app(*sys.argv[2:])
     elif len(sys.argv) >= 4 and sys.argv[1] == 'join':
         join(*sys.argv[2:])

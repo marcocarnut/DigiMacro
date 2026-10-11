@@ -18,6 +18,9 @@
 #   make irspike    the IR spike: irspike.hex, an app that types what a
 #                   remote sends, edge by edge (app/irspike.c), and
 #                   irspike-full.hex, core and all, for a programmer
+#   make uninstall  uninstall.hex: an app that wipes the EEPROM and hands
+#                   the board back to Micronucleus, which it carries
+#                   (app/uninstall.c)
 #   make test       the core's request handling, built for the host
 #   make size       what each part takes
 #
@@ -204,6 +207,25 @@ $(O)/irspike.hex: $(O)/irspike.elf app/apphex.py
 $(O)/irspike-full.hex: $(O)/core.hex $(O)/irspike.hex
 	python3 app/apphex.py join $@ $^
 
+# ---- the uninstaller ---------------------------------------------------
+
+# Micronucleus, back where a Digispark keeps it: the uninstaller's image runs
+# from APP_START to the end of it, and the core checks its CRC over the lot.
+APPVER_UN = 1
+MN_HEX    = app/micronucleus/t85_default.hex
+MN_START  = 0x1A00
+
+uninstall: $(O)/uninstall.hex
+$(O)/uninstall.o: app/uninstall.c core/layout.h | $(O)
+	$(CC) $(CFLAGS) -DMN_START=$(MN_START) -c -o $@ $<
+$(O)/uninstall.elf: $(O)/apphdrUN.o $(O)/uninstall.o
+	$(CC) $(CFLAGS) $(APPLINK) -o $@ $^
+$(O)/uninstall.hex: $(O)/uninstall.elf app/apphex.py $(MN_HEX)
+	$(OBJCOPY) -O binary -R .eeprom $< $(@:.hex=.bin)
+	@printf 'uninstall: %d bytes of app before Micronucleus at %s\n' \
+	    $$(stat -c %s $(@:.hex=.bin)) $(MN_START)
+	python3 app/apphex.py app $(APP_START) $(APP_HDR) $(@:.hex=.bin) $@ $(MN_HEX)
+
 # A script, not something to build: without this, make's built-in rules
 # would happily make apphex.py from apphex.py.o.
 app/apphex.py: ;
@@ -220,12 +242,15 @@ $(O)/spike-page.html: app/spike.html $(O)/appA.hex $(O)/appB.hex $(O)/appC.hex
 size: $(O)/core.elf $(O)/digimacro.elf $(O)/hidusb.o
 	$(SIZE) $^
 
-test:
+test: $(O)/uninstall.hex
 	$(MAKE) -C core/test
+	cc -std=gnu11 -Wall -Wno-int-to-pointer-cast -Itest/uninstall -Icore \
+	    -DMN_START=$(MN_START) -o $(O)/uninstall_test test/uninstall/uninstall_test.c
+	$(O)/uninstall_test $(O)/uninstall.hex $(MN_HEX)
 
 clean:
 	rm -rf $(O)
 	$(MAKE) -C core/test clean
 
-.PHONY: all release site hosts spike page irspike size test clean
+.PHONY: all release site hosts spike page irspike uninstall size test clean
 .SECONDARY:

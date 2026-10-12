@@ -468,6 +468,10 @@ linha da placa no arquivo de chaves de cada computador pela nova. Tanto o
 cliente quanto a página pulam, com um aviso, uma chave de computador da v2,
 que tem dezesseis dígitos em vez de trinta e dois.
 
+O registro de projeto dos segredos — o formato, as medições, e por que o
+`{host}` saiu — foi aposentado quando tudo o que havia nele estava
+construído, e `git show 295ba67:PLAN-v3.md` o mostra.
+
 ### Cópias de segurança
 
 **Salvar uma cópia** salva a EEPROM inteira da placa num arquivo — macros,

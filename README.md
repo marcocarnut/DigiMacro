@@ -450,6 +450,10 @@ and write the table, and replace the board's line in the key file on each
 computer with the new one. Both the client and the page skip a v2 host key,
 which is sixteen digits rather than thirty-two, with a word.
 
+The secrets' design record — the format, the measurements, and why `{host}`
+went — was retired once everything in it was built, and `git show
+295ba67:PLAN-v3.md` has it.
+
 ### Backups
 
 **Backup** saves the board's whole EEPROM to a file — macros, startup,

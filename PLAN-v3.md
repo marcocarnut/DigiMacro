@@ -5,7 +5,7 @@ Branch `v3`, from v2.3 (bf5c596).
 **Status:**
 - Design agreed with Marco on Oct 11 2026, then revised the same day when
   the firmware would not fit (see "What changed, and why").
-- Milestones 1–3 are done. The firmware is tested on the PC and on the
+- Milestones 1–4 are done. The firmware is tested on the PC and on the
   simulated board, not yet on real hardware.
 
 ## What it is
@@ -215,7 +215,13 @@ So the client:
 2. **Done (PC-tested).** Firmware: the cipher, `secret_byte` and the player.
 3. **Done.** Firmware: KEYAUTH, PROVE and the wipe, with the simulated
    end-to-end test.
-4. The page: key setup and file, writing and reading secrets, version gates,
-   the `{host}` conversion.
+4. **Done (tested in headless Chrome against a mock board).** The page:
+   - the Secrets section: make, load, remove, and the wait;
+   - sealed rows shown with a 🔒 badge;
+   - sealing on Write;
+   - the `{host}` conversion;
+   - version gates on writing and restoring;
+   - the power-on warning, the reference table, and the strings that
+     mentioned the host key.
 5. The digimacro-host mode.
 6. Hardware confirmation, then docs in both languages, then a release.

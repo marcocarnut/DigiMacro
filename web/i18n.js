@@ -133,7 +133,7 @@ en: {
   'lock-lifted':    'Hard lock lifted.',
   'bk-summary':     'Backup',
   'bk-why':         'Everything on the board — the macros, the startup macro, '
-                  + 'the lockout, the host key, the password and the serial '
+                  + 'the lockout, the key check, the password and the serial '
                   + 'number — saved to a file, and put back. A board erased with '
                   + 'a programmer — to start over, or to install with one — loses '
                   + 'all of it; restored, it comes back as itself. With a password the file '
@@ -146,12 +146,12 @@ en: {
   'un-why':         'This takes DigiMacro off the board and puts back '
                   + 'Micronucleus, the bootloader a Digispark comes with, so the '
                   + 'Arduino IDE and other tools can program it again. First the '
-                  + 'board erases its EEPROM: the macros, the password, the host '
-                  + 'key and the serial number are gone for good, and no program '
+                  + 'board erases its EEPROM: the macros, the secrets, the password '
+                  + 'and the serial number are gone for good, and no program '
                   + 'put on it afterwards can read them. Save a backup above if you '
                   + 'may want them back. Set up a new board brings DigiMacro back '
                   + 'whenever you like.',
-  'un-sure':        'I understand: the macros, the password and the host key are '
+  'un-sure':        'I understand: the macros, the secrets and the password are '
                   + 'erased for good.',
   'un-go':          'Erase and go back to Micronucleus',
   'un-what':        'the uninstaller and Micronucleus',
@@ -192,7 +192,7 @@ en: {
                   + '{saved}. It is not encrypted.',
   'bk-needs-pass':  'Type the password the backup was saved with.',
   'bk-confirm':     'This replaces everything on this board with board {serial}\'s '
-                  + 'backup: macros, startup, lockout, host key, password and '
+                  + 'backup: macros, startup, lockout, key check, password and '
                   + 'serial number. A restore installs whatever the file holds, '
                   + 'power-on macro included, so only restore backups you made. '
                   + 'Press Restore again to go ahead.',
@@ -206,46 +206,80 @@ en: {
   'backup-other-map': 'That backup was made by a different version of DigiMacro, '
                   + 'and this page cannot read it.',
   'backup-wrong-password': 'That is not the password this backup was saved with.',
-  'host-summary':   'Host',
-  'host-why':       'A macro that types a secret can be told to type it only for '
-                  + 'a computer you trust: {host} in it stops the macro unless a '
-                  + 'small program on that computer has sent this board\'s host '
-                  + 'key lately. Plugged in anywhere else, it stops. {host!} '
-                  + 'stops it as if the code were not there at all — three '
-                  + 'blinks, and a wrong code for the lockout. The key is sent '
-                  + 'by tools/hostauth, given the file this page downloads.',
-  'host-wait':      'trusted for, in seconds, after the key is sent',
-  'host-new':       'Make a key',
-  'host-replace':   'Make a new key',
-  'host-remove':    'Remove the key',
-  'host-none':      'This board has no host key.',
-  'host-none-guarded': 'Some macros check the host, but this board has no host '
-                  + 'key, so they will always stop at the check. Make one.',
-  'host-has':       'This board has a host key. No host has sent it lately.',
-  'host-trusted':   'This board has a host key, and this computer sent it '
-                  + 'lately: guarded macros play here for now.',
-  'host-made':      'A new key is on the board, and saved as {file}. Add its '
-                  + 'line to ~/.config/digimacro/host.key (on Windows, '
-                  + '%APPDATA%\\digimacro\\host.key) on each computer the board '
-                  + 'should trust; any that had the old key need this one.',
-  'host-removed':   'The host key is gone. Macros that check the host will now '
-                  + 'always stop at the check.',
-  'host-wait-saved': 'Saved: the host is trusted for {wait} after sending the key.',
-  'host-wait-bad':  'The time runs from 10 to 2400 seconds, in steps of ten.',
-  'host-mismatch':  'the key read back differently from what was written',
-  'host-file-comment': 'DigiMacro host key for board {serial}: add this line to '
+  'key-summary':    'Secrets',
+  'key-why':        'What follows {secret} in a macro is kept encrypted on the '
+                  + 'board, and the key is not kept there at all: the macro '
+                  + 'plays it only while a small program on this computer has '
+                  + 'sent the key lately — tools/hostauth, given the file this '
+                  + 'page downloads. Plugged in anywhere else, or stolen, the '
+                  + 'board holds only scrambled bytes. {secret!} stops the '
+                  + 'macro as if the code were not there at all — three '
+                  + 'blinks, and a wrong code for the lockout.',
+  'key-wait':       'held for, in seconds, after the key is sent',
+  'key-new':        'Make a key',
+  'key-replace':    'Make a new key',
+  'key-load':       'Load the key file',
+  'key-remove':     'Remove the key',
+  'key-none':       'This board has no key for secrets.',
+  'key-none-secrets': 'Some macros have secrets, but this board has no key for '
+                  + 'them: make one, and the page encrypts them when it writes.',
+  'key-has':        'This board has a key for secrets. No computer has sent it '
+                  + 'lately.',
+  'key-held':       'This board has a key for secrets, and a computer sent it '
+                  + 'lately: secrets play for now.',
+  'key-loaded':     'The key is loaded in this page: secrets show as text, and '
+                  + 'are encrypted again when written.',
+  'key-load-to-open': 'Load the key file to see or change the secrets.',
+  'key-made':       'A new key is in use, and saved as {file}. Add its line to '
+                  + '~/.config/digimacro/host.key (on Windows, '
+                  + '%APPDATA%\\digimacro\\host.key) on each computer the '
+                  + 'secrets should play for; any that had the old key need this '
+                  + 'one. Keep the file: without it, the secrets cannot be read '
+                  + 'or changed again.',
+  'key-removed':    'The key is gone from the board.',
+  'key-opened':     'The key fits: the secrets are open in this page.',
+  'key-not-this':   'That key is not this board\'s: it opens none of its secrets.',
+  'key-not-in-file': 'That file has no key for board {serial}.',
+  'key-v2-host':    'That is a v2 host key, which firmware 16 no longer uses. '
+                  + 'Make a key instead.',
+  'key-sealed-left': 'Some secrets were encrypted with the board\'s key, and '
+                  + 'this page does not have it. Load the key file first, so '
+                  + 'they can be encrypted again with the new one — or remove '
+                  + 'them.',
+  'key-write-first': 'Write the macros first: a new key encrypts the secrets '
+                  + 'again, and writes them with it.',
+  'key-secrets-left': 'Some macros have secrets, which nothing could read again '
+                  + 'without the key. Take them out first.',
+  'key-needed':     'Some macros have secrets to encrypt. Make a key in '
+                  + 'Secrets below, or load the key file.',
+  'key-mismatch':   'the key check read back differently from what was written',
+  'key-wait-saved': 'Saved: the key is held for {wait} after it is sent.',
+  'key-wait-bad':   'The time runs from 10 to 2400 seconds, in steps of ten.',
+  'key-file-comment': 'DigiMacro key for board {serial}: add this line to '
                   + '~/.config/digimacro/host.key, or on Windows to '
                   + '%APPDATA%\\digimacro\\host.key',
+  'sealed':         '🔒 then a secret, {n} keystrokes: load the key file to see '
+                  + 'or change it',
+  'sealed-loud':    '🔒 then a {secret!}, {n} keystrokes: load the key file to '
+                  + 'see or change it',
+  'secret-startup': 'The power-on macro has a secret. It runs before any '
+                  + 'program on the computer can have sent the key, so it will '
+                  + 'stop there every time.',
+  'secret-old-fw':  'Secrets need firmware {fw} or later: update the board\'s '
+                  + 'firmware first.',
+  'host-convert':   'Turn {host} into {secret}',
+  'host-converted': 'Done: each {host} is a {secret} now. Write the macros to '
+                  + 'put them on the board.',
+  'host-converted-key': 'Done: each {host} is a {secret} now. Make a key in '
+                  + 'Secrets below, then write the macros.',
+  'ref-secret':     'the rest of the macro is secret: encrypted on the board, '
+                  + 'and typed only while this computer has sent the key lately',
+  'ref-secret-loud': '...and without it, stop as if the code were not there',
   'host-late':      'Something shows before {host!}, so a guesser on the wrong '
                   + 'computer learns this code exists. Put the check first.',
   'secret-late':    'Something shows before {secret!}, so a guesser on the '
                   + 'wrong computer learns this code exists. Put the secret '
                   + 'first.',
-  'host-startup':   'The power-on macro checks the host. It runs before any '
-                  + 'program on the computer can have sent the key, so it will '
-                  + 'stop at the check every time.',
-  'ref-host':       'stop here unless this computer sent the host key lately',
-  'ref-host-loud':  '...and stop as if the code were not there',
   'ref-ir':         'where the IR remote\'s button 00 45 starts typing, on to '
                   + 'the end of the macro; typed from the code, it is nothing',
   'ir-learn':       'remote button',
@@ -278,7 +312,7 @@ en: {
                   + 'the bootloader is a different kind of USB device. Pick it '
                   + 'within a few seconds or it gives up and goes back to the '
                   + 'old firmware. The macros, the password, the lockout, the '
-                  + 'host key and the serial number all stay as they are. On Windows the bootloader needs a '
+                  + 'key check and the serial number all stay as they are. On Windows the bootloader needs a '
                   + 'driver once: Zadig, installing WinUSB for "Micronucleus".',
   'fw-update':      'Update the firmware',
   'fw-who':         'updating the firmware…',
@@ -396,7 +430,7 @@ en: {
                   + 'picker, no driver. It needs the hold, and the password if '
                   + 'there is one. Cut off half way, the board comes back with no '
                   + 'firmware and asks for it again here. The macros, the '
-                  + 'password, the lockout, the host key and the serial number '
+                  + 'password, the lockout, the key check and the serial number '
                   + 'all stay as they are.',
   'fw-api-other':   'This page\'s firmware is for core API {app}, and the board\'s '
                   + 'core speaks {core}: it cannot go on this board.',
@@ -455,7 +489,7 @@ en: {
                   + 'update. This writes v2\'s core through Micronucleus; the '
                   + 'board then comes back asking for DigiMacro {fw}, which goes '
                   + 'on over Micronucleus, and Micronucleus is gone. The macros, '
-                  + 'the password, the host key and the serial number all stay. '
+                  + 'the password and the serial number all stay. '
                   + 'A power cut in the first moments of that second step needs '
                   + 'a programmer to put right, as with any upload through '
                   + 'Micronucleus.',
@@ -660,7 +694,7 @@ pt: {
   'lock-lifted':    'Bloqueio forte desfeito.',
   'bk-summary':     'Cópia de segurança',
   'bk-why':         'Tudo o que está na placa — as macros, a macro de '
-                  + 'inicialização, o bloqueio, a chave de computador, a senha e '
+                  + 'inicialização, o bloqueio, a verificação da chave, a senha e '
                   + 'o número de série — salvo num arquivo, e restaurado. Uma '
                   + 'placa apagada com um gravador — para recomeçar, ou para '
                   + 'instalar com ele — perde tudo isso; restaurada, ela volta a '
@@ -675,13 +709,13 @@ pt: {
   'un-why':         'Isto tira o DigiMacro da placa e põe de volta o Micronucleus, '
                   + 'o bootloader com que o Digispark vem, para que a IDE do '
                   + 'Arduino e outras ferramentas possam gravá-la de novo. Antes, a '
-                  + 'placa apaga a EEPROM: as macros, a senha, a chave do '
-                  + 'computador e o número de série se vão de vez, e nenhum '
+                  + 'placa apaga a EEPROM: as macros, os segredos, a senha '
+                  + 'e o número de série se vão de vez, e nenhum '
                   + 'programa gravado depois consegue lê-los. Salve uma cópia acima '
                   + 'se puder querê-los de volta. Preparar uma placa nova traz o '
                   + 'DigiMacro de volta quando você quiser.',
-  'un-sure':        'Entendi: as macros, a senha e a chave do computador são '
-                  + 'apagadas de vez.',
+  'un-sure':        'Entendi: as macros, os segredos e a senha são '
+                  + 'apagados de vez.',
   'un-go':          'Apagar e voltar ao Micronucleus',
   'un-what':        'o desinstalador e o Micronucleus',
   'un-done':        'Pronto: a placa voltou a ser um Digispark comum, com o '
@@ -720,8 +754,8 @@ pt: {
                   + '{saved}. Não está cifrada.',
   'bk-needs-pass':  'Digite a senha com que a cópia foi salva.',
   'bk-confirm':     'Isto substitui tudo nesta placa pela cópia da placa '
-                  + '{serial}: macros, inicialização, bloqueio, chave de '
-                  + 'computador, senha e número de série. Clique em Restaurar de '
+                  + '{serial}: macros, inicialização, bloqueio, verificação '
+                  + 'da chave, senha e número de série. Clique em Restaurar de '
                   + 'novo para continuar. Uma restauração instala o que houver no '
                   + 'arquivo, macro de inicialização inclusive, então só restaure '
                   + 'cópias feitas por você.',
@@ -735,53 +769,80 @@ pt: {
   'backup-other-map': 'Essa cópia foi feita por outra versão do DigiMacro, e esta '
                   + 'página não consegue lê-la.',
   'backup-wrong-password': 'Essa não é a senha com que esta cópia foi salva.',
-  'host-summary':   'Computador',
-  'host-why':       'Uma macro que digita um segredo pode digitá-lo só para um '
-                  + 'computador de confiança: {host} nela interrompe a macro a '
-                  + 'menos que um pequeno programa nesse computador tenha '
-                  + 'enviado há pouco a chave de computador desta placa. Ligada '
-                  + 'em qualquer outro, ela para. {host!} a interrompe como se o '
-                  + 'código não existisse — três piscadas, e um código errado '
-                  + 'para o bloqueio. Quem envia a chave é o tools/hostauth, com '
-                  + 'o arquivo que esta página baixa.',
-  'host-wait':      'confiável por, em segundos, depois do envio da chave',
-  'host-new':       'Criar uma chave',
-  'host-replace':   'Criar uma chave nova',
-  'host-remove':    'Remover a chave',
-  'host-none':      'Esta placa não tem chave de computador.',
-  'host-none-guarded': 'Algumas macros verificam o computador, mas esta placa '
-                  + 'não tem chave de computador, então elas sempre param na '
-                  + 'verificação. Crie uma.',
-  'host-has':       'Esta placa tem uma chave de computador. Nenhum computador '
+  'key-summary':    'Segredos',
+  'key-why':        'O que vem depois de {secret} numa macro fica cifrado na '
+                  + 'placa, e a chave não fica nela de jeito nenhum: a macro só '
+                  + 'o digita enquanto um pequeno programa neste computador '
+                  + 'tiver enviado a chave há pouco — o tools/hostauth, com o '
+                  + 'arquivo que esta página baixa. Ligada em qualquer outro, ou '
+                  + 'roubada, a placa só guarda bytes embaralhados. {secret!} '
+                  + 'interrompe a macro como se o código não existisse — três '
+                  + 'piscadas, e um código errado para o bloqueio.',
+  'key-wait':       'guardada por, em segundos, depois do envio da chave',
+  'key-new':        'Criar uma chave',
+  'key-replace':    'Criar uma chave nova',
+  'key-load':       'Carregar o arquivo da chave',
+  'key-remove':     'Remover a chave',
+  'key-none':       'Esta placa não tem chave para segredos.',
+  'key-none-secrets': 'Algumas macros têm segredos, mas esta placa não tem chave '
+                  + 'para eles: crie uma, e a página os cifra ao gravar.',
+  'key-has':        'Esta placa tem uma chave para segredos. Nenhum computador '
                   + 'a enviou há pouco.',
-  'host-trusted':   'Esta placa tem uma chave de computador, e este computador a '
-                  + 'enviou há pouco: as macros protegidas rodam aqui por ora.',
-  'host-made':      'Uma chave nova está na placa, e salva como {file}. '
-                  + 'Acrescente a linha dela a ~/.config/digimacro/host.key (no '
-                  + 'Windows, %APPDATA%\\digimacro\\host.key) em cada '
-                  + 'computador de confiança; os que tinham a chave antiga '
-                  + 'precisam desta.',
-  'host-removed':   'A chave de computador foi removida. As macros que '
-                  + 'verificam o computador agora sempre param na verificação.',
-  'host-wait-saved': 'Salvo: o computador fica confiável por {wait} depois de '
-                  + 'enviar a chave.',
-  'host-wait-bad':  'O tempo vai de 10 a 2400 segundos, de dez em dez.',
-  'host-mismatch':  'a chave lida de volta é diferente da gravada',
-  'host-file-comment': 'chave de computador DigiMacro da placa {serial}: '
-                  + 'acrescente esta linha a ~/.config/digimacro/host.key, ou no '
-                  + 'Windows a %APPDATA%\\digimacro\\host.key',
+  'key-held':       'Esta placa tem uma chave para segredos, e um computador a '
+                  + 'enviou há pouco: os segredos rodam por ora.',
+  'key-loaded':     'A chave está carregada nesta página: os segredos aparecem '
+                  + 'como texto, e são cifrados de novo ao gravar.',
+  'key-load-to-open': 'Carregue o arquivo da chave para ver ou mudar os segredos.',
+  'key-made':       'Uma chave nova está em uso, e salva como {file}. Acrescente '
+                  + 'a linha dela a ~/.config/digimacro/host.key (no Windows, '
+                  + '%APPDATA%\\digimacro\\host.key) em cada computador para o '
+                  + 'qual os segredos devem rodar; os que tinham a chave antiga '
+                  + 'precisam desta. Guarde o arquivo: sem ele, os segredos não '
+                  + 'podem mais ser lidos nem mudados.',
+  'key-removed':    'A chave saiu da placa.',
+  'key-opened':     'A chave serve: os segredos estão abertos nesta página.',
+  'key-not-this':   'Essa chave não é desta placa: não abre nenhum segredo dela.',
+  'key-not-in-file': 'Esse arquivo não tem chave para a placa {serial}.',
+  'key-v2-host':    'Essa é uma chave de computador da v2, que o firmware 16 não '
+                  + 'usa mais. Crie uma chave.',
+  'key-sealed-left': 'Alguns segredos foram cifrados com a chave da placa, e esta '
+                  + 'página não a tem. Carregue o arquivo da chave antes, para '
+                  + 'que sejam cifrados de novo com a nova — ou remova-os.',
+  'key-write-first': 'Grave as macros antes: uma chave nova cifra os segredos de '
+                  + 'novo, e os grava com ela.',
+  'key-secrets-left': 'Algumas macros têm segredos, que nada leria de novo sem a '
+                  + 'chave. Tire-os antes.',
+  'key-needed':     'Algumas macros têm segredos a cifrar. Crie uma chave em '
+                  + 'Segredos, abaixo, ou carregue o arquivo da chave.',
+  'key-mismatch':   'a verificação da chave lida de volta é diferente da gravada',
+  'key-wait-saved': 'Salvo: a chave fica guardada por {wait} depois de enviada.',
+  'key-wait-bad':   'O tempo vai de 10 a 2400 segundos, de dez em dez.',
+  'key-file-comment': 'chave DigiMacro da placa {serial}: acrescente esta linha '
+                  + 'a ~/.config/digimacro/host.key, ou no Windows a '
+                  + '%APPDATA%\\digimacro\\host.key',
+  'sealed':         '🔒 e então um segredo, {n} teclas: carregue o arquivo da '
+                  + 'chave para ver ou mudar',
+  'sealed-loud':    '🔒 e então um {secret!}, {n} teclas: carregue o arquivo da '
+                  + 'chave para ver ou mudar',
+  'secret-startup': 'A macro de inicialização tem um segredo. Ela roda antes que '
+                  + 'qualquer programa no computador possa ter enviado a chave, '
+                  + 'então vai parar ali toda vez.',
+  'secret-old-fw':  'Segredos precisam do firmware {fw} ou mais novo: atualize o '
+                  + 'firmware da placa antes.',
+  'host-convert':   'Trocar {host} por {secret}',
+  'host-converted': 'Pronto: cada {host} agora é um {secret}. Grave as macros '
+                  + 'para levá-los à placa.',
+  'host-converted-key': 'Pronto: cada {host} agora é um {secret}. Crie uma chave '
+                  + 'em Segredos, abaixo, e então grave as macros.',
+  'ref-secret':     'o resto da macro é segredo: cifrado na placa, e digitado só '
+                  + 'enquanto este computador tiver enviado a chave há pouco',
+  'ref-secret-loud': '...e sem ela, parar como se o código não existisse',
   'host-late':      'Algo aparece antes de {host!}, então quem tenta adivinhar '
                   + 'num computador errado descobre que este código existe. '
                   + 'Ponha a verificação primeiro.',
   'secret-late':    'Algo aparece antes de {secret!}, então quem tenta '
                   + 'adivinhar num computador errado descobre que este código '
                   + 'existe. Ponha o segredo primeiro.',
-  'host-startup':   'A macro de inicialização verifica o computador. Ela roda '
-                  + 'antes que qualquer programa no computador possa ter '
-                  + 'enviado a chave, então vai parar na verificação toda vez.',
-  'ref-host':       'parar aqui a menos que este computador tenha enviado a '
-                  + 'chave há pouco',
-  'ref-host-loud':  '...e parar como se o código não existisse',
   'ref-ir':         'onde o botão 00 45 do controle remoto começa a digitar, até '
                   + 'o fim da macro; digitada pelo código, não faz nada',
   'ir-learn':       'botão do controle',
@@ -936,7 +997,7 @@ pt: {
                   + 'seletor, sem driver. É preciso segurar o sensor, e dar a '
                   + 'senha se houver uma. Interrompida no meio, a placa volta sem '
                   + 'firmware e pede de novo aqui. As macros, a senha, o '
-                  + 'bloqueio, a chave de computador e o número de série ficam '
+                  + 'bloqueio, a verificação da chave e o número de série ficam '
                   + 'como estão.',
   'fw-api-other':   'O firmware desta página é para a API de núcleo {app}, e o '
                   + 'núcleo da placa fala {core}: não pode ir nesta placa.',
@@ -993,8 +1054,8 @@ pt: {
                   + 'mesma conexão, e resiste a uma atualização interrompida. '
                   + 'Isto grava o núcleo da v2 pelo Micronucleus; a placa então '
                   + 'volta pedindo o DigiMacro {fw}, que é gravado por cima do '
-                  + 'Micronucleus, e o Micronucleus some. As macros, a senha, a '
-                  + 'chave de computador e o número de série ficam. Uma queda de '
+                  + 'Micronucleus, e o Micronucleus some. As macros, a senha '
+                  + 'e o número de série ficam. Uma queda de '
                   + 'energia nos primeiros instantes desse segundo passo precisa '
                   + 'de um gravador para consertar, como qualquer gravação pelo '
                   + 'Micronucleus.',

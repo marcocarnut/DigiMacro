@@ -46,6 +46,8 @@
          font-size: .8rem; text-align: right; white-space: nowrap;
          padding-top: .75rem; }
   .err { color: var(--bad); font-size: .8rem; padding: .1rem .4rem .4rem; }
+  .sealed { display: block; color: var(--dim); font-size: .8rem; padding: .15rem .2rem 0; }
+  .sealed:empty { display: none; }
   .meter { height: 5px; border-radius: 3px; background: var(--line);
            overflow: hidden; width: 11rem; }
   .meter i { display: block; height: 100%; background: var(--accent);
@@ -357,6 +359,7 @@
 <div class="bar" style="margin-top:1rem">
   <button id="add" data-t="add-macro">+ Add a macro</button>
   <button id="sample"></button>
+  <button id="hostconv" data-t="host-convert" hidden>Turn {host} into {secret}</button>
   <span class="spacer"></span>
   <span id="budget" class="dim"></span>
   <span class="meter" id="meter"><i style="width:0"></i></span>
@@ -400,19 +403,21 @@
 <p class="note dim" id="auto-warn"></p>
 
 
-<h2 data-t="host-summary">Host</h2>
-<p class="dim prose" data-t="host-why"></p>
-<p id="hoststate" class="prose"></p>
+<h2 data-t="key-summary">Secrets</h2>
+<p class="dim prose" data-t="key-why"></p>
+<p id="keystate" class="prose"></p>
 <div class="form">
-  <label for="hostwait" data-t="host-wait"></label>
-  <input id="hostwait" type="number" min="10" max="2400" step="10" value="60">
+  <label for="keywait" data-t="key-wait"></label>
+  <input id="keywait" type="number" min="10" max="2400" step="10" value="60">
 </div>
 <div class="bar">
-  <button id="hostnew" data-t="host-new">Make a new key</button>
-  <button id="hostdel" data-t="host-remove">Remove the key</button>
-  <button id="hostsave" data-t="save">Save</button>
+  <button id="keynew" data-t="key-new">Make a key</button>
+  <button id="keyload" data-t="key-load">Load the key file</button>
+  <input id="keyfile" type="file" hidden>
+  <button id="keydel" data-t="key-remove">Remove the key</button>
+  <button id="keysave" data-t="save">Save</button>
 </div>
-<p class="note" id="host-note"></p>
+<p class="note" id="key-note"></p>
 
 <h2 data-t="sec-summary">Password</h2>
 <p class="dim prose" id="secwhy"></p>
@@ -487,8 +492,8 @@
     <tr><td>(ab){3}</td><td data-t="ref-group"></td></tr>
     <tr><td>\( \)</td><td data-t="ref-paren"></td></tr>
     <tr><td>{goto .-}</td><td data-t="ref-goto"></td></tr>
-    <tr><td>{host}</td><td data-t="ref-host"></td></tr>
-    <tr><td>{host!}</td><td data-t="ref-host-loud"></td></tr>
+    <tr><td>{secret}</td><td data-t="ref-secret"></td></tr>
+    <tr><td>{secret!}</td><td data-t="ref-secret-loud"></td></tr>
     <tr><td>{IR 00 45}</td><td data-t="ref-ir"></td></tr>
     <tr><td>á ç ã</td><td data-t="ref-accent"></td></tr>
     <tr><td>{'}</td><td data-t="ref-bare-mark"></td></tr>
@@ -591,11 +596,14 @@ const F_UPDATE = 0x68;           /* v2: the firmware opens the update window */
 const F_LEARN = 0x69;            /* ...types the remote's next button */
 const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
 const ST_SOFTLOCK = 0x08, ST_HARDLOCK = 0x10;
-const ST_HOST = 0x20, ST_NOBOOT = 0x80;
+const ST_KEY = 0x80;            /* v2: the secrets' key is held */
+const ST_NOBOOT = 0x80;         /* v1: built without a bootloader */
+const F_FIRST_SECRET = 16;      /* the firmware that opens {secret} */
 
-/* The host key and how long it is trusted for, and the board's serial number,
-   which names the key file so a client can tell boards apart. */
-const HOST_ADDR = 0x1E4, HOST_LEN = 8, HOST_WAIT_ADDR = 0x1F2;
+/* The secrets' key: its check value (CHECK_ADDR, table.js) and how long a
+   client's key is held for; and the board's serial number, which names the
+   key file so a client can tell boards apart. */
+const KEY_LEN = 16, KEY_WAIT_ADDR = 0x1F2;
 const SERIAL_ADDR = 0x1E0;
 
 /* The lockout's six bytes, in the firmware's map: three settings, then three
@@ -750,11 +758,30 @@ const eeWrite = (addr, bytes) => ask(F_WRITE, addr, bytes.length, bytes);
 
 /* ---- the editor ---------------------------------------------------- */
 
+/* A row is { code, text, sealed }: sealed, when there is one, is a secret
+   this page could not open -- {secret <hex>}, which goes back as it came --
+   kept apart from the text so that the plain part can still be edited.
+   Without the key, a {secret} still in the clear is measured and compared
+   as if sealed (dry), and sealed for real only when written. */
+const full = r => r.text + (r.sealed || '');
+const dry = plain => {
+  if (plain.length > SECRET_MAX)
+    throw new Error(t('secret-too-long', { n: plain.length, max: SECRET_MAX }));
+  return [1, 1, 1, 1, ...plain, 1];
+};
+const rowsSecret = rows => rows.some(r => r.sealed || /\{\s*secret/i.test(r.text));
+const rowsSealed = rows => rows.some(r => r.sealed);
+/* ...and back into rows, a sealed secret set apart */
+const toRow = ({ code, text }) => {
+  const m = /^([^]*)(\{secret!? [0-9a-f]+\})$/.exec(text);
+  return m ? { code, text: m[1], sealed: m[2] } : { code, text };
+};
+
 /* Encode every row, so that a mistake is reported next to the row that has
    it rather than when the table is written. */
 function state() {
   const each = macros.map(r => {
-    try { return { bytes: encodeMacro(r.text), error: null }; }
+    try { return { bytes: encodeMacro(full(r), dry), error: null }; }
     catch (e) { return { bytes: null, error: e.message }; }
   });
 
@@ -787,12 +814,10 @@ function drawAuto() {
 }
 
 /* The power-on macro runs before any client can have sent its key, so one
-   that checks the host will always stop at the check. */
+   with a secret will always stop at it. */
 function drawAutoWarn() {
   const m = macros.find(r => { try { return header(r.code) === auto; } catch (e) { return false; } });
-  let checks = false;
-  try { checks = !!m && hasHostCheck(encodeMacro(m.text)); } catch (e) {}
-  note('auto-warn', checks ? t('host-startup') : '', 'dim');
+  note('auto-warn', m && rowsSecret([m]) ? t('secret-startup') : '', 'dim');
 }
 
 function draw() {
@@ -807,10 +832,15 @@ function draw() {
            spellcheck="false" data-i="${i}" data-f="code"></td>` +
       `<td><input class="text${st.each[i].error ? ' bad' : ''}" value="${r.text.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"
            spellcheck="false" data-i="${i}" data-f="text"
-           placeholder="${t('ph-types')}"></td>` +
+           placeholder="${r.sealed ? '' : t('ph-types')}"><span class="sealed"></span></td>` +
       `<td class="n">${st.each[i].bytes ? st.each[i].bytes.length + 2 : '—'} B</td>` +
       `<td><button data-del="${i}" title="${t('remove')}">✕</button></td>`;
     tbody.appendChild(tr);
+    if (r.sealed) {                     /* a secret this page cannot open */
+      const n = /([0-9a-f]+)\}$/.exec(r.sealed)[1].length / 2 - 5;  /* nonce, zero */
+      tr.querySelector('.sealed').textContent =
+        t(r.sealed.startsWith('{secret!') ? 'sealed-loud' : 'sealed', { n });
+    }
     /* As text, never as markup: an error quotes what was typed, and a pasted
        macro is not to be trusted with this page, which holds the password. */
     const msgRow = (text, cls) => {
@@ -823,6 +853,7 @@ function draw() {
       tbody.appendChild(row);
     };
     if (st.each[i].error) msgRow(st.each[i].error, 'err');
+    else if (/\{\s*host!?\s*\}/i.test(r.text)) msgRow(t('host-gone'), 'err');
     else if (st.each[i].bytes && macroWarnings(st.each[i].bytes).length)
       msgRow(macroWarnings(st.each[i].bytes).map(k => t(k)).join(' '), 'err dim');
     else if (!tappable(r.code)) msgRow(t('ir-only'), 'dim');
@@ -840,8 +871,17 @@ function draw() {
   drawWrite(st);
   drawSample();
   drawLock();                   /* the odds depend on how many codes are used */
-  drawHost();                   /* ...and this on whether any checks the host */
+  drawKey();                    /* ...and this on whether any has a secret */
+  $('hostconv').hidden = !macros.some(r => /\{\s*host!?\s*\}/i.test(r.text));
 }
+
+/* v2's {host}, which firmware 16 refuses: a {secret} where it was guards the
+   rest of the macro as it did, and encrypts it too. */
+$('hostconv').onclick = () => {
+  for (const r of macros) r.text = r.text.replace(/\{\s*host(!?)\s*\}/gi, '{secret$1}');
+  draw();
+  note('table-note', t(secretKey ? 'host-converted' : 'host-converted-key'), 'dim');
+};
 
 $('list').addEventListener('input', e => {
   const i = +e.target.dataset.i, f = e.target.dataset.f;
@@ -905,6 +945,7 @@ $('autosave').onclick = () => run('auto-note', async () => {
    Compared as bytes rather than text, so retyping a macro the same way is no
    change, and changing the keyboard layout is one when it changes the bytes. */
 let saved = null;               /* table bytes as on the board */
+let savedSecrets = false;       /* ...and whether they hold secrets */
 let savedAuto = null;           /* the power-on byte as on the board */
 let savedCodes = new Set();     /* the headers of the codes the board holds */
 
@@ -916,7 +957,7 @@ function codesOf(rows) {
 }
 
 function snapshot() {
-  try { return encodeTable(macros).join(','); }
+  try { return packTable(macros.map(r => [r.code, encodeMacro(full(r), dry)])).join(','); }
   catch (e) { return null; }
 }
 
@@ -1173,7 +1214,16 @@ $('gatepass').addEventListener('keydown', e => {
 /* The table and the power-on macro, as the board holds them. How many
    macros there were, so a caller can say when there were none. */
 async function readTable() {
-  const got = decodeTable(await eeRead(0, TABLE_TOP));
+  const ee = new Uint8Array(CHECK_ADDR + 8).fill(0xFF);
+  ee.set(await eeRead(0, TABLE_TOP), 0);
+  boardCheck = await eeRead(CHECK_ADDR, 8);
+  ee.set(boardCheck, CHECK_ADDR);
+  /* A key that is not this board's opens nothing: the table reads as if
+     there were none, and the key is dropped. */
+  let got;
+  try { got = decodeTable(ee, secretKey); }
+  catch (e) { secretKey = null; got = decodeTable(ee); }
+  got = got.map(toRow);
   macros = got.length ? got : [{ code: '.', text: '' }];
   auto = (await eeRead(AUTO_ADDR, 1))[0];
   onSample = false;
@@ -1185,6 +1235,7 @@ async function readTable() {
   /* A table the page cannot write back -- damaged on the board -- differs
      from anything that can be written, so writing over it stays possible. */
   saved = snapshot() ?? 'unwritable';
+  savedSecrets = rowsSecret(macros);
   savedAuto = auto;
   savedCodes = codesOf(macros);
   draw();
@@ -1197,12 +1248,12 @@ async function readTable() {
 async function enterBoard() {
   note('gate-note', t('gate-reading'), 'dim');
   for (const id of ['table-note', 'auto-note', 'write-note', 'pass-note',
-                    'lock-note', 'host-note', 'bk-save-note', 'bk-note']) note(id, '');
+                    'lock-note', 'key-note', 'bk-save-note', 'bk-note']) note(id, '');
   disarm();
   show('board');
+  await keyRead();              /* the serial: a key is this board's or not */
   const got = await readTable();
   lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
-  await hostRead();
   drawSecurity();
   if (!got) note('table-note', t('read-none'), 'dim');
 }
@@ -1241,7 +1292,7 @@ async function access(noteId) {
 /* An action: one at a time, its buttons quiet while it runs, and whatever
    happens said beside the button that started it. */
 const ACTION_BUTTONS = ['write', 'sample', 'setpass', 'clearpass', 'locksave',
-                        'fwupdate', 'fwclose', 'hostnew', 'hostdel', 'hostsave',
+                        'fwupdate', 'fwclose', 'keynew', 'keyload', 'keydel', 'keysave',
                         'bksave', 'bkrestore', 'bkfile', 'recinstall',
                         'autosave', 'newboard', 'ungo'];
 
@@ -1254,8 +1305,8 @@ function setBusy() {
 function idle() {
   busy = false;
   runDev = null;
-  for (const id of ['sample', 'clearpass', 'fwupdate', 'fwclose', 'hostnew',
-                    'hostdel', 'bksave', 'bkfile', 'newboard']) $(id).disabled = false;
+  for (const id of ['sample', 'clearpass', 'fwupdate', 'fwclose', 'keynew', 'keyload',
+                    'keydel', 'bksave', 'bkfile', 'newboard']) $(id).disabled = false;
   $('bkrestore').disabled = bkText === null;
   $('ungo').disabled = !$('unsure').checked;
   if (stage === 'recovery') drawRecovery();
@@ -1280,24 +1331,42 @@ async function run(noteId, fn) {
 
 /* ---- writing the table ---------------------------------------------- */
 
+/* The table as it goes to the board: secrets sealed afresh with the key,
+   those it could not open as they came. Throws what to say if it cannot. */
+function tableBytes() {
+  const secrets = rowsSecret(macros);
+  if (secrets && fwOnBoard < F_FIRST_SECRET)
+    throw new Error(t('secret-old-fw', { fw: F_FIRST_SECRET }));
+  if (macros.some(r => /\{\s*secret/i.test(r.text)) && !secretKey)
+    throw new Error(t('key-needed'));
+  return encodeTable(macros.map(r => ({ code: r.code, text: full(r) })),
+                     { key: secretKey, check: boardCheck });
+}
+
+/* Writes the table, and the key's check value with it when the board's is
+   another: what sealed the secrets is what the board checks keys against. */
+async function writeTable(bytes, noteId) {
+  note(noteId, t('writing'), 'dim');
+  for (let i = 0; i < bytes.length; i += CHUNK)
+    await eeWrite(i, bytes.slice(i, i + CHUNK));
+  const back = await eeRead(0, bytes.length);
+  const bad = [...bytes].findIndex((v, i) => back[i] !== v);
+  if (bad >= 0)
+    throw new Error(t('write-mismatch', { at: bad, wrote: hex2(bytes[bad]),
+                                          read: hex2(back[bad]) }));
+  if (secretKey && rowsSecret(macros)) await writeCheck(keyCheck(secretKey));
+}
+
 $('write').onclick = () => {
   let bytes;
-  try { bytes = encodeTable(macros); }
+  try { bytes = tableBytes(); }
   catch (e) { note('write-note', e.message, 'bad'); return; }
 
   run('write-note', async () => {
-    note('write-note', t('writing'), 'dim');
-    for (let i = 0; i < bytes.length; i += CHUNK)
-      await eeWrite(i, bytes.slice(i, i + CHUNK));
-    const back = await eeRead(0, bytes.length);
-    const bad = [...bytes].findIndex((v, i) => back[i] !== v);
-    if (bad >= 0) {
-      note('write-note', t('write-mismatch', { at: bad, wrote: hex2(bytes[bad]),
-                                              read: hex2(back[bad]) }), 'bad');
-      return;
-    }
+    await writeTable(bytes, 'write-note');
     onSample = false;           /* what is on screen is on the board now */
     saved = snapshot();
+    savedSecrets = rowsSecret(macros);
     savedCodes = codesOf(macros);
     /* A power-on macro the table no longer has would wait on the board for
        the next macro given its code: it goes with its macro. */
@@ -1323,7 +1392,7 @@ function drawSecurity() {
   $('clearpass').hidden = !has;
   $('setpass').disabled = busy || !$('passval').value;
   drawLock();
-  drawHost();
+  drawKey();
   drawFirmware();
 }
 
@@ -1456,53 +1525,69 @@ $('locksave').onclick = () => {
   });
 };
 
-/* ---- the host ---------------------------------------------------------
+/* ---- secrets ---------------------------------------------------------
  *
- * Macros that hold secrets can be told to play only for a host that has
- * proved itself: {host} in a macro stops it unless a client on the computer
- * has sent the board's host key lately. The key is eight random bytes made
- * here, where there is a real random source; it is written to the board like
- * the table, and downloaded as a file for the client, one line per board,
- * named by the board's serial number.
+ * {secret} in a macro keeps the rest of it encrypted on the board: it plays
+ * only while a client on the computer has sent the board the key lately
+ * (tools/hostauth). The key is sixteen random bytes made here, where there
+ * is a real random source, and it is never written to the board: only its
+ * check value is (CHECK_ADDR), which is how the board tells it from a wrong
+ * one. It is downloaded as a file for the client, one line per board, named
+ * by the board's serial number -- v2's host-key file, with a longer key --
+ * and this page holds it for as long as it is open, to seal and open
+ * secrets. Loaded again from that file, it opens them in another session.
  */
-let hostKeySet = false;
-let hostWaitSaved = null;       /* the trust time, in tens of seconds, as on
-                                   the board */
+let secretKey = null;           /* this board's, given this session */
+let boardCheck = null;          /* the check value on the board */
+let keyWaitSaved = null;        /* how long a key is held, in tens of seconds */
 let serial = '';
 
 const hexOf = bytes => [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
+const keySet = () => !!boardCheck && boardCheck.some(b => b !== 0xFF);
 
-async function hostRead() {
-  const key = await eeRead(HOST_ADDR, HOST_LEN);
-  hostKeySet = key.some(b => b !== 0xFF);
-  const w = (await eeRead(HOST_WAIT_ADDR, 1))[0];
-  hostWaitSaved = w >= 1 && w <= 240 ? w : 6;
-  $('hostwait').value = hostWaitSaved * 10;
+async function keyRead() {
+  boardCheck = await eeRead(CHECK_ADDR, 8);
+  const w = (await eeRead(KEY_WAIT_ADDR, 1))[0];
+  keyWaitSaved = w >= 1 && w <= 240 ? w : 6;
+  $('keywait').value = keyWaitSaved * 10;
   const sb = await eeRead(SERIAL_ADDR, 4);
+  const was = serial;
   serial = ((sb[0] | sb[1] << 8 | sb[2] << 16 | sb[3] << 24) >>> 0)
            .toString(16).toUpperCase().padStart(8, '0');
-  drawHost();
+  if (serial !== was || (secretKey && hexOf(keyCheck(secretKey)) !== hexOf(boardCheck)))
+    secretKey = null;           /* another board, or another key on it */
+  drawKey();
   renderWho();
 }
 
-function hostWaitWanted() {
-  const secs = parseInt($('hostwait').value, 10);
+async function writeCheck(check) {
+  if (hexOf(check) === hexOf(boardCheck)) return;
+  await eeWrite(CHECK_ADDR, check);
+  const back = await eeRead(CHECK_ADDR, 8);
+  if (hexOf(back) !== hexOf(check)) throw new Error(t('key-mismatch'));
+  boardCheck = back;
+}
+
+function keyWaitWanted() {
+  const secs = parseInt($('keywait').value, 10);
   return secs >= 10 && secs <= 2400 && secs % 10 === 0 ? secs / 10 : null;
 }
 
-function drawHost() {
-  const guarded = macros.some(m => { try { return hasHostCheck(encodeMacro(m.text)); }
-                                     catch (e) { return false; } });
-  $('hoststate').textContent =
-      !hostKeySet ? t(guarded ? 'host-none-guarded' : 'host-none')
-    : t(state_byte & ST_HOST ? 'host-trusted' : 'host-has');
-  $('hoststate').className = 'prose' + (!hostKeySet && guarded ? ' bad' : '');
-  $('hostdel').hidden = !hostKeySet;
-  $('hostnew').textContent = t(hostKeySet ? 'host-replace' : 'host-new');
-  const w = hostWaitWanted();
-  $('hostsave').disabled = busy || w === null || w === hostWaitSaved;
+function drawKey() {
+  const secrets = rowsSecret(macros);
+  const lines = [!keySet() ? t(secrets ? 'key-none-secrets' : 'key-none')
+               : t(state_byte & ST_KEY ? 'key-held' : 'key-has')];
+  if (secretKey) lines.push(t('key-loaded'));
+  else if (rowsSealed(macros)) lines.push(t('key-load-to-open'));
+  $('keystate').textContent = lines.join(' ');
+  $('keystate').className = 'prose' + (!keySet() && secrets ? ' bad' : '');
+  $('keydel').hidden = !keySet();
+  $('keyload').hidden = !keySet() || !!secretKey;
+  $('keynew').textContent = t(keySet() ? 'key-replace' : 'key-new');
+  const w = keyWaitWanted();
+  $('keysave').disabled = busy || w === null || w === keyWaitSaved;
 }
-$('hostwait').addEventListener('input', drawHost);
+$('keywait').addEventListener('input', drawKey);
 
 /* A file the browser saves, for the client: one line, serial and key. */
 function download(name, text) {
@@ -1513,34 +1598,85 @@ function download(name, text) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-$('hostnew').onclick = () => run('host-note', async () => {
-  const key = crypto.getRandomValues(new Uint8Array(HOST_LEN));
-  const w = hostWaitWanted() ?? 6;
-  await eeWrite(HOST_ADDR, key);
-  await eeWrite(HOST_WAIT_ADDR, Uint8Array.from([w]));
-  const back = await eeRead(HOST_ADDR, HOST_LEN);
-  if (hexOf(back) !== hexOf(key)) throw new Error(t('host-mismatch'));
-  const file = `digimacro-${serial}.key`;
-  download(file, `# ${t('host-file-comment', { serial })}\n${serial} ${hexOf(key)}\n`);
-  await hostRead();
-  await refreshState();
-  note('host-note', t('host-made', { file }), 'ok');
-});
+/* A new key: written as its check value. Secrets already on the board were
+   sealed with the old one, and are sealed again with it -- which needs the
+   old one, and nothing on screen not yet written, since the table goes
+   with them. */
+$('keynew').onclick = () => {
+  if (rowsSealed(macros)) { note('key-note', t('key-sealed-left'), 'bad'); return; }
+  const secrets = savedSecrets;
+  if (secrets && snapshot() !== saved) { note('key-note', t('key-write-first'), 'bad'); return; }
+  run('key-note', async () => {
+    const was = secretKey;
+    secretKey = crypto.getRandomValues(new Uint8Array(KEY_LEN));
+    try {
+      await eeWrite(KEY_WAIT_ADDR, Uint8Array.from([keyWaitWanted() ?? 6]));
+      if (secrets) await writeTable(tableBytes(), 'key-note');
+      else await writeCheck(keyCheck(secretKey));
+    } catch (e) { secretKey = was; throw e; }
+    const file = `digimacro-${serial}.key`;
+    download(file, `# ${t('key-file-comment', { serial })}\n${serial} ${hexOf(secretKey)}\n`);
+    await keyRead();
+    await refreshState();
+    if (secrets) saved = snapshot();
+    draw();
+    note('key-note', t('key-made', { file }), 'ok');
+  });
+};
 
-$('hostdel').onclick = () => run('host-note', async () => {
-  await eeWrite(HOST_ADDR, new Uint8Array(HOST_LEN).fill(0xFF));
-  await hostRead();
-  await refreshState();
-  note('host-note', t('host-removed'), 'ok');
-});
+/* The key file again, to open this board's secrets: its line for this
+   board's serial number, or the one key it holds. */
+$('keyload').onclick = () => { $('keyfile').value = ''; $('keyfile').click(); };
+$('keyfile').onchange = async () => {
+  const f = $('keyfile').files[0];
+  if (!f) return;
+  const lines = (await f.text()).split(/\r?\n/)
+    .map(l => l.trim().split(/\s+/)).filter(w => w.length >= 2 && !w[0].startsWith('#'));
+  const mine = lines.filter(w => w[0].toUpperCase() === serial);
+  const line = mine.length ? mine[0] : lines.length === 1 ? lines[0] : null;
+  if (!line) { note('key-note', t('key-not-in-file', { serial }), 'bad'); return; }
+  if (/^[0-9a-f]{16}$/i.test(line[1])) { note('key-note', t('key-v2-host'), 'bad'); return; }
+  if (!/^[0-9a-f]{32}$/i.test(line[1])) { note('key-note', t('key-not-in-file', { serial }), 'bad'); return; }
+  const key = Uint8Array.from(line[1].match(/../g).map(h => parseInt(h, 16)));
+  if (hexOf(keyCheck(key)) !== hexOf(boardCheck)) {
+    note('key-note', t('key-not-this'), 'bad');
+    return;
+  }
+  /* Opened on screen, edits and all; unchanged, it is still what the board
+     holds. */
+  const unchanged = snapshot() === saved;
+  secretKey = key;
+  const open = blob => openSecret(key, blob);
+  macros = macros.map(r => {
+    if (!r.sealed) return r;
+    try { return { code: r.code, text: decodeMacro(encodeMacro(full(r)), open) }; }
+    catch (e) { return r; }
+  });
+  if (unchanged) saved = snapshot();
+  draw();
+  note('key-note', t('key-opened'), 'ok');
+};
 
-$('hostsave').onclick = () => {
-  const w = hostWaitWanted();
-  if (w === null) { note('host-note', t('host-wait-bad'), 'bad'); return; }
-  run('host-note', async () => {
-    await eeWrite(HOST_WAIT_ADDR, Uint8Array.from([w]));
-    await hostRead();
-    note('host-note', t('host-wait-saved', { wait: fmtWait(w) }), 'ok');
+/* Removing it leaves any secret on the board for good: not while there are
+   any. */
+$('keydel').onclick = () => {
+  if (rowsSecret(macros)) { note('key-note', t('key-secrets-left'), 'bad'); return; }
+  run('key-note', async () => {
+    await writeCheck(new Uint8Array(8).fill(0xFF));
+    secretKey = null;
+    await keyRead();
+    await refreshState();
+    note('key-note', t('key-removed'), 'ok');
+  });
+};
+
+$('keysave').onclick = () => {
+  const w = keyWaitWanted();
+  if (w === null) { note('key-note', t('key-wait-bad'), 'bad'); return; }
+  run('key-note', async () => {
+    await eeWrite(KEY_WAIT_ADDR, Uint8Array.from([w]));
+    await keyRead();
+    note('key-note', t('key-wait-saved', { wait: fmtWait(w) }), 'ok');
   });
 };
 
@@ -1662,6 +1798,9 @@ $('bkrestore').onclick = async () => {
   image[0x1EF] = image[0x1F0] = 0xFF;           /* the lockout's counts start
                                                    again: no restoring a lock */
   run('bk-note', async () => {
+    if (fwOnBoard < F_FIRST_SECRET && unpackTable(image.slice(0, TABLE_TOP))
+                                        .some(([, body]) => hasSecret(body)))
+      throw new Error(t('secret-old-fw', { fw: F_FIRST_SECRET }));
     note('bk-note', t('writing'), 'dim');
     for (let a = 0; a < PASS; a += CHUNK)
       await eeWrite(a, image.slice(a, Math.min(a + CHUNK, PASS)));
@@ -1677,9 +1816,9 @@ $('bkrestore').onclick = async () => {
       throw new Error(t('write-mismatch', { at: PASS, wrote: hex2(image[PASS]), read: hex2(pb[0]) }));
     $('bkpass').value = '';
     await refreshState();
+    await keyRead();
     await readTable();
     lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
-    await hostRead();
 
     /* The serial number goes out at enumeration, so a restored one only
        takes effect when the board is plugged in again -- which is easy to

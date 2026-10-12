@@ -183,7 +183,7 @@ stays plugged in.
 
 The sections are **Macros**, with the keyboard layout picker beside the
 heading; **Keys**, a palette that inserts anything below at the cursor;
-**Startup**; **Host**; **Password**; **Lockout**; **Backup**; and **Back to a
+**Startup**; **Secrets**; **Password**; **Lockout**; **Backup**; and **Back to a
 plain Digispark**. The
 table's headings are links: **Code** explains codes and has a Morse table to
 pick memorable ones from, and **Types** is the reference for what a macro
@@ -203,7 +203,7 @@ A macro is text, with braces for what text cannot say:
  x{11}                        eleven of them, as in a regular expression
  (ab){3}                      ...of a whole group rather than one thing
  {goto .-}                    carry on with another macro, and never come back
- {host}  {host!}              stop unless this computer sent the host key lately
+ {secret}  {secret!}          the rest is encrypted, and needs this computer's key
  {IR 00 45}                   where the remote's button 00 45 starts typing
 ```
 
@@ -245,7 +245,7 @@ can do is type one button as hex.
 
 Buttons that are not in the table do nothing at all, and never count toward
 the lockout: rooms are full of other people's remotes. A locked board ignores
-the remote, as it ignores taps, and a `{host}` check holds wherever the
+the remote, as it ignores taps, and a secret needs the key wherever the
 remote starts. Holding a button plays its macro once. The receiver is
 optional, and `HAVE_IR 0` in `DigiMacro.ino` builds without it.
 
@@ -337,32 +337,66 @@ found at power-up starts its whole wait again. A wrong code is counted
 blinks start saves nothing. A code that plays writes nothing unless there is
 a count to clear, so ordinary use causes no EEPROM wear.
 
-### Trusting the host
+### Secrets
 
 A USB device has no idea which computer it is plugged into, so a board that
-types a password types it for whoever holds it. For a computer whose software
-you control, there is an answer: a small client there sends the board a key,
-and for a while afterwards — a minute by default, up to forty — macros
-guarded by a host check play. Plugged into any other computer, they stop.
+types a password types it for whoever holds it, and anyone who reads its
+EEPROM reads the password. For a computer whose software you control, there
+is an answer to both: what follows `{secret}` in a macro is kept on the board
+encrypted, and the key is not kept on the board at all. A small client on the
+computer sends it, and for a while afterwards — a minute by default, up to
+forty — secrets play. Plugged into any other computer, or stolen, the board
+holds only scrambled bytes.
 
 ```
- {host}      stop here, quietly, unless this computer sent the key lately
- {host!}     stop as if the code were not in the table at all
+ user{Tab}{secret}hunter2{Enter}
 ```
 
-`{host!}` is the one that matters against a guesser. Refused, it looks exactly
-like a code that is not there — three blinks, and a wrong code for the
+Anybody's tap types the user name and the Tab; the rest needs the key.
+
+```
+ {secret}    the rest is encrypted; without the key, stop here quietly
+ {secret!}   ...and without it, stop as if the code were not in the table at all
+```
+
+`{secret!}` is the one that matters against a guesser. Refused, it looks
+exactly like a code that is not there — three blinks, and a wrong code for the
 lockout — so on the wrong computer a guarded code cannot be told from an
-empty one. That holds only if nothing shows before the check, which the app
-warns about. The LED stays dark until a macro types or pauses, for the same
-reason: a flash on the way in would give the code away. `{host}` may go
-anywhere, for a macro that types a user name and then stops short of the
-password. A refused macro does not count as a code that worked, so tapping a
-guarded code on the wrong computer does not clear a guesser's misses.
+empty one. That holds only if nothing shows before it, which the app warns
+about. The LED stays dark until a macro types or pauses, for the same reason:
+a flash on the way in would give the code away. `{secret}` may go anywhere,
+for a macro that types a user name and then stops short of the password. A
+refused macro does not count as a code that worked, so tapping a guarded code
+on the wrong computer does not clear a guesser's misses.
 
-The key is eight random bytes, made in the app's Host section, written to the
-board, and downloaded as a file named after the board's serial number. The
-client is `tools/hostauth`, one C file with no library, for Linux and
+A secret runs to the end of its macro, 255 keystrokes at most, and holds
+anything a macro can: pauses, repeats, modifiers, a `{goto}` — which carries on
+in the other macro as that macro is, in the clear unless it has a secret of
+its own.
+
+**The key** is sixteen random bytes, made in the app's Secrets section and
+downloaded as a file named after the board's serial number. The board keeps
+only a check value, which is how it tells the right key from a wrong one, and
+from which the key cannot be worked out. The page keeps the key while it is
+open, to encrypt secrets as it writes them and to show them as text; in a
+later session, **Load the key file** does the same. Without it, a secret
+shows as `{secret 9a0f…}`, which can still be moved to another code or
+position, but not read or changed. **Keep the file**: without it nobody, you
+included, can read the secrets again — only make a new key and type them in
+again.
+
+The board forgets the key when its time runs out, when it is unplugged or
+restarts, and whenever anything is written to it, the table included. A key
+that runs out part way through a macro stops it there.
+
+**A copied board** could take the key: a board made to look like yours, with
+your serial number, plugged in where the client runs. So before sending the
+key, the client sends the board eight random bytes and checks that it
+answers them encrypted under the check value, which only your board holds.
+A copy could only know it by reading your board's EEPROM, which a password
+and hardened mode stop ([HARDENED_MODE.md](HARDENED_MODE.md)).
+
+The client is `tools/hostauth`, one C file with no library, for Linux and
 Windows. Both are ready-built on the
 [releases page](https://github.com/marcocarnut/DigiMacro/releases):
 `digimacro-host-linux-x86_64`, statically linked so it runs on any
@@ -392,25 +426,36 @@ digimacro-host.exe -e 30
 To keep it running while you are logged in, put a shortcut to
 `digimacro-host.exe -e 30` in the Startup folder (`shell:startup`).
 
-Run with `-e` from your session, and stopped when the screen locks, the trust
-becomes "while I am logged in". The client finds every board plugged in by
-its serial number, so one key file serves several boards. `-k` names another
-key file; on Linux the default honours `$XDG_CONFIG_HOME`.
+Run with `-e` from your session, and stopped when the screen locks, the key
+is held "while I am logged in". The client finds every board plugged in by
+its serial number, so one key file serves several boards, and says for each
+whether it now holds the key, refused it, failed to prove itself — a copy,
+or a key that is not that board's — or runs firmware older than 16. `-k`
+names another key file; on Linux the default honours `$XDG_CONFIG_HOME`.
 
-Sending the key needs neither the hold nor the password, because nobody is
-at the board — like INFO, and reading the flash, which holds nothing secret.
-So it can do nothing else:
-it opens no window, unlocks nothing and reads nothing, and a wrong key does
-**not** count against the lockout. If it did, any program on any computer
-could hard-lock the board without anyone touching it. A wrong key costs a
-second instead, on a clock of its own.
+Sending the key, and the proof before it, need neither the hold nor the
+password, because nobody is at the board — like INFO, and reading the flash,
+which holds nothing secret. So they can do nothing else: they open no window,
+unlock nothing and read nothing, and a wrong key does **not** count against
+the lockout. If it did, any program on any computer could hard-lock the board
+without anyone touching it. A wrong key costs a second instead, on a clock of
+its own.
+
+**`{host}` and `{host!}`**, which firmware 15 and older had, are gone: a
+`{secret}` at the start of a macro does everything they did, and encrypts
+what follows besides. Firmware 16 refuses a `{host}` left in a table every
+time, quietly or as an empty code, as it asked. After the update, the page
+marks each one and offers **Turn {host} into {secret}**; then **Make a key**
+and write the table, and replace the board's line in the key file on each
+computer with the new one. Both the client and the page skip a v2 host key,
+which is sixteen digits rather than thirty-two, with a word.
 
 ### Backups
 
 **Backup** saves the board's whole EEPROM to a file — macros, startup,
-lockout, host key, password and serial number — and **Restore** puts it back,
-so a board erased by a programmer comes back as itself, Chrome's permission
-and host key files included. v1 and v2 keep the same EEPROM map, so a v1
+lockout, the secrets' check value, password and serial number — and
+**Restore** puts it back, so a board erased by a programmer comes back as
+itself, Chrome's permission and key files included. v1 and v2 keep the same EEPROM map, so a v1
 board's backup restores onto a v2 one. The password goes in last, or the board would lock
 itself half way through its own restore, and the lockout's wrong-code and
 soft-lock counts start again. Then the board restarts itself — leaves the bus and comes back, as if
@@ -442,7 +487,7 @@ number: the serial must begin with a domain the author owns, so that devices
 from different people on the same ID cannot be confused. Chrome remembers a WebHID permission
 only for a device that has a serial number, so without one every replug would
 mean picking the board out of the chooser again. Making it per board rather
-than per model means two boards get their own grants, and their own host keys.
+than per model means two boards get their own grants, and their own keys.
 
 The randomness comes from the watchdog oscillator's jitter against the CPU
 clock: two independent RC oscillators, so the low bits of a timer sampled at
@@ -458,8 +503,8 @@ update in it. Press **Update the firmware** with the window
 open, or hold the pad when it asks: the page writes the new firmware over the
 same connection, a page of flash at a time, and the board restarts into it a
 few seconds later and asks for the hold again. No bootloader, no second
-picker, no driver. The macros, the password, the lockout, the host key and
-the serial number all live in EEPROM, which an update leaves alone.
+picker, no driver. The macros, the password, the lockout, the secrets' check
+value and the serial number all live in EEPROM, which an update leaves alone.
 
 - **Six seconds.** While firmware runs, the core takes the first page of an
   update only in the six seconds after the board was plugged in, as
@@ -498,8 +543,8 @@ life.
 
 **A v1 board** moves the same way: connect it, and **(move to v2…)** in the
 status line opens the firmware dialog. The board restarts into Micronucleus,
-takes the core, and comes back asking for the firmware. Its macros, password, host key and serial number
-come along: v2 keeps v1's EEPROM map.
+takes the core, and comes back asking for the firmware. Its macros, password and serial number come
+along: v2 keeps v1's EEPROM map.
 
 Micronucleus is reached over WebUSB: Linux needs its line in
 `web/60-digimacro.rules`, and Windows needs [Zadig](https://zadig.akeo.ie/)
@@ -513,7 +558,7 @@ program the board again. It goes on as an update does — the hold, and the
 password if there is one — as an uninstaller that carries Micronucleus in its
 own image (`app/uninstall.c`). Started by the core, it erases the EEPROM
 first, so no program put on the board afterwards finds the macros, the
-password, the host key or the serial number; then it points the reset vector
+password, the secrets or the serial number; then it points the reset vector
 at Micronucleus, which waits for a program with no time limit. Save a backup
 first if you may want any of it back. **Set up a new board** brings DigiMacro
 back.
@@ -613,7 +658,7 @@ descriptors, the feature report, the password check, and the page writer
 that takes new firmware and refuses any address below the boundary. It is
 never rewritten from USB, so it is kept small and dull, and tested on the
 host harder than anything else. Above it, the **firmware**: the pad, morse,
-the table, playback, the lockout, the host check, the clock and the window.
+the table, playback, the lockout, the secrets, the clock and the window.
 
 They call each other through two tables of jumps at fixed addresses — the
 core's just below the boundary, the firmware's header at it — and agree on
@@ -622,7 +667,7 @@ carries a magic, its length, its version and the core API it was built for,
 and a CRC follows it: the core runs only firmware that checks out. Every
 interrupt but V-USB's is passed on to the firmware, and the watchdog watches
 it. v2's design record tells how it was decided and why: it was retired once
-everything in it was built, and `git show ae7e0ac:PLAN-v2.md` has it.
+everything in it was built, and `git show 5890dee:PLAN-v2.md` has it.
 
 ### The protocol
 
@@ -639,20 +684,21 @@ and UNLOCK when there is no firmware; the firmware answers the rest.
 | | |
 |---|---|
 | `0x40` INFO | always answers: `[1..2]` "DM", `[3]` protocol (3), `[4]` the core's version, `[5..6]` EEPROM size, `[7]` state, `[8..11]` the low, high and extended fuses and the lock byte as the chip reads them, `[12]` the core's state (below), `[13]` the firmware's version, 0 for none, `[14]` the core's API, `[15..18]` where the firmware may go, `[19]` the flash page size. With no firmware running, the firmware's parts — `[5..6]`, and all of `[7]` but the password bits — read 0 |
-| `0x42` RESTART | off the bus and back, as if replugged, without a reset: the serial number is read again, so a restored one takes effect. The window closes, the host's trust is forgotten, and the power-on macro does not type; the six seconds for an update do not start again |
+| `0x42` RESTART | off the bus and back, as if replugged, without a reset: the serial number is read again, so a restored one takes effect. The window closes, the key is forgotten, and the power-on macro does not type; the six seconds for an update do not start again |
 | `0x60` READ | address and count in, up to 32 bytes of EEPROM back |
 | `0x61` WRITE | address, count and up to 32 bytes in |
 | `0x62` UNLOCK | the password, if the board has one |
 | `0x63` SETPASS | a new password, or none at all with a count of 0 |
-| `0x64` HOSTAUTH | the host key. Needs neither the window nor the password, and does nothing else |
 | `0x65` PAGE | half a page of new firmware, 32 bytes at an address; the second half writes it |
 | `0x66` FREAD | flash, up to 32 bytes: published firmware, so no gate. Refused while a page waits to be written |
 | `0x67` COMMIT | the new firmware checks out: start it |
 | `0x68` UPDATE | the firmware opens the update window: six seconds for the first PAGE |
 | `0x69` LEARN | the next remote button, within ten seconds, is typed as two hex bytes rather than played |
-| `0xEE` | comes back in place of the command when a request is refused: the window is shut, the password has not been given, the password or host key is wrong or came within a second of a wrong one, or the command is not one there is |
+| `0x6A` KEYAUTH | the key, 16 bytes. Held for the time at `0x1F2` if it matches the check value; wiped from the report either way. Needs neither the window nor the password, and does nothing else |
+| `0x6B` PROVE | 8 bytes in; back, in their place, XTEA of them under the check value twice over. No gate |
+| `0xEE` | comes back in place of the command when a request is refused: the window is shut, the password has not been given, the password or key is wrong or came within a second of a wrong one, or the command is not one there is — `0x64`, v2's HOSTAUTH before firmware 16, among them |
 
-INFO, HOSTAUTH, FREAD and LEARN need no gate. PAGE needs the password if one is set,
+INFO, KEYAUTH, PROVE, FREAD and LEARN need no gate. PAGE needs the password if one is set,
 and with firmware running, the update window; COMMIT needs only pages taken
 and firmware that checks out. UNLOCK needs the window — and with only the
 core, nothing at all. Everything else needs the window, and the password if
@@ -665,9 +711,9 @@ one is set. INFO's state byte:
 | `0x04` | ...and has been given, or there is none |
 | `0x08` | soft lock |
 | `0x10` | hard lock |
-| `0x20` | the host sent its key lately |
-| `0x40` | there is a host key |
-| `0x80` | v1 only: built with no bootloader |
+| `0x20` | firmware 15 and older: the host sent its key lately |
+| `0x40` | firmware 15 and older: there is a host key |
+| `0x80` | firmware 16: the key is held; v1: built with no bootloader |
 
 and the core's, in `[12]`: `0x01` firmware running, `0x02` taking pages,
 `0x04` firmware there but not started — the watchdog reset it, or it
@@ -728,8 +774,9 @@ taken:
 | `0x02 mm` | latch HID modifier mask `mm` into the next keystroke |
 | `0x03 nn` | do the previous keystroke `nn` more times |
 | `0x81 hh` | carry on with the macro whose header is `hh-1` |
+| `0x81 FE` | `{secret}`: what follows is encrypted (below); `0x81 FF` is `{secret!}` |
 | `0x82` | mark: what follows repeats as a group, not as one keystroke |
-| `0x83 nn` | stop unless the host sent its key lately: quietly if `nn` is 1, as an empty code if 2 |
+| `0x83 nn` | `{host}`, before firmware 16; now always refused: quietly if `nn` is 1, as an empty code if 2 |
 | `0x80 a c x` | where the remote's button `a`/`c` starts this macro: `a` and `c` with bit 7 forced on, `x` = `0x80` plus their own top bits (`a`'s in bit 0, `c`'s in bit 1). Played through, it does nothing |
 
 No argument may be zero, since a zero byte ends the macro. `0x03` is
@@ -746,20 +793,37 @@ trusted on its own: `web/table.js` is one original, shared by the app and a
 test that plays what it encodes through the real firmware, and another test
 reads the escape values out of `DigiMacro.ino` and checks the two agree.
 
+A secret is a jump to a code no macro can have, so firmware older than 16
+types nothing of it:
+
+```
+ [0x81][FE or FF][nonce, 4 bytes][the rest of the macro and its 0x00, encrypted][0x00]
+```
+
+The cipher is XTEA in counter mode: byte `j` of the secret is XORed with the
+first byte of XTEA under the key of the block (nonce, `j`), both
+little-endian 32-bit words. The board only ever encrypts, and its XTEA is
+`app/xtea.S`, 214 bytes. There is no length: the page tries random nonces
+until neither nonce nor ciphertext has a zero byte, nothing in them reads as
+the remote's escape, and a walk with the usual escape rules lands exactly on
+the final `0x00` — so anything that walks the table, old firmware and old
+pages included, keeps its place. The check value is XTEA under the key of
+the block (0, 0), which no secret's nonce can be.
+
 ### The EEPROM
 
 | | |
 |---|---|
 | `0x000`–`0x1DF` | the macro table |
 | `0x1E0`–`0x1E3` | the serial number |
-| `0x1E4`–`0x1EB` | the host key; all `0xFF` for none |
+| `0x1E4`–`0x1EB` | the secrets' check value; all `0xFF` for none. Before firmware 16, the host key |
 | `0x1EC` | lockout: wrong codes before a soft lock; 0 or `0xFF` for no lockout |
 | `0x1ED` | ...soft locks in a row before a hard lock; 0 or `0xFF` for never |
 | `0x1EE` | ...a soft lock's length in tens of seconds, 1–240; anything else is 6 |
 | `0x1EF` | ...wrong codes so far |
 | `0x1F0` | ...soft locks in a row so far |
 | `0x1F1` | ...hard locks lifted with the password, ever |
-| `0x1F2` | how long the host stays trusted, in tens of seconds, 1–240; anything else is 6 |
+| `0x1F2` | how long the key is held, in tens of seconds, 1–240; anything else is 6 |
 | `0x1F3` | the power-on macro's header; anything impossible as one means none |
 | `0x1F4`–`0x1FF` | the password, zero-padded; `0xFF` in the first byte for none |
 
@@ -813,7 +877,7 @@ test/run.sh
 compiles the real `DigiMacro.ino` for the host against stub hardware and
 exercises the table walk, every escape, the bounds that keep a malformed table
 from reaching the reserved bytes, the morse decoding from the input pin, the
-password, the lockout and the host check, and both ways of reading the pad.
+password, the lockout and the secrets, and both ways of reading the pad.
 Then the app's macro language on its own; the two languages against each
 other; v2's core laid out for Micronucleus, with both jumps decoded and
 followed to where they land; the page's updates against a fake v2 board that
@@ -825,19 +889,25 @@ can ask, twice — with the firmware's region to the end of the chip and
 stopping below Micronucleus; the backups, with scrypt checked against node's
 own and a file that opens only for its password; the published page, one file
 with the firmware in it; and last, across the language boundary, a table
-encoded by `web/table.js` played through the firmware. Thirteen suites, a few
-seconds. Without `node`, the nine that need it are skipped.
+encoded by `web/table.js` played through the firmware, secrets sealed by the
+page among them. Then the secrets end to end on a simulated board — the real
+firmware, `xtea.S` and all, which nothing compiled for the PC runs, enumerated
+by a simulated USB host and tapped by a simulated finger — when
+`../simavr-softusb` is built beside this repository (`make simtest` runs it on
+its own); and `digimacro-host`'s own code against a fake board, a copy of it
+and an old one. Fifteen suites, a few seconds and the simulated minute.
+Without `node`, the ten that need it are skipped.
 
 ## Layout
 
 | | |
 |---|---|
-| `DigiMacro.ino` | the firmware: touch, morse, the table walk, playback, the lockout, the host check |
-| `app/` | what every firmware links: its header, the calls into the core, and `hidusb.c` — the clock, the window, typing and the protocol's verbs. Also the spike's apps, `spikectl.py` and its page |
+| `DigiMacro.ino` | the firmware: touch, morse, the table walk, playback, the lockout, the secrets |
+| `app/` | what every firmware links: its header, the calls into the core, and `hidusb.c` — the clock, the window, typing and the protocol's verbs; `xtea.S`, the cipher. Also the spike's apps, `spikectl.py` and its page |
 | `core/` | the core: V-USB with its configuration, the descriptors, the password check and the page writer; `layout.h`, the contract with the firmware; and its host tests |
 | `Makefile` | builds all of it |
 | `test/` | host build of the real sketch against stub hardware, and the web side's tests |
-| `tools/hostauth/` | the client that sends the host key, for Linux and Windows |
+| `tools/hostauth/` | the client that sends the key, for Linux and Windows, and `xtea.h`, the C reference the tests share |
 | `web/` | `index.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `webusb.js` reaches the board without WebHID, `vkbd.js` the on-screen keyboard, `backup.js` the backups, `60-digimacro.rules` the udev rule |
 | `web/firmware/` | what the page installs: v2's firmware, core and full image |
 | `docs/` | the photos above |

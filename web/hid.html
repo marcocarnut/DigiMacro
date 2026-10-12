@@ -46,8 +46,8 @@ const DATA_AT   = 4;
 const CHUNK     = VND_LEN - DATA_AT;
 const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61, F_REFUSED = 0xEE;
 const ST_NAMES = ['window open', 'password set', 'unlocked', 'soft lock',
-                  'hard lock', 'host trusted', 'host key set',
-                  'no bootloader (v1)'];
+                  'hard lock', 'host trusted (v2)', 'host key set (v2)',
+                  'key held (16) / no bootloader (v1)'];
 
 let dev = null, idInPayload = null;
 

@@ -8,9 +8,12 @@ segredo numa placa DigiMacro.
 Uma placa DigiMacro sem senha **não** é um lugar seguro para um segredo. O
 núcleo dela aceita firmware novo de qualquer um nos seis segundos depois de
 ser conectada — é assim que a página a atualiza — e um firmware que digita a
-EEPROM inteira se escreve em segundos: todas as macros, e a chave de
-computador junto. O toque longo, o bloqueio e a verificação do computador
-moram todos no firmware, que é exatamente o que um firmware desses substitui.
+EEPROM inteira se escreve em segundos: todas as macros junto. O toque longo,
+o bloqueio e a verificação dos segredos moram todos no firmware, que é
+exatamente o que um firmware desses substitui. O que vem depois de `{secret}`
+numa macro é cifrado, com uma chave que a placa não guarda, então esse
+firmware o digita embaralhado — mas ele ainda pode esperar a placa ser ligada
+no seu computador, provar quem é para o cliente e receber a chave.
 
 **Uma senha fecha essa porta.** Quem a verifica é o núcleo da placa, não o
 firmware, e uma atualização precisa dela, haja firmware rodando ou não — e
@@ -36,7 +39,7 @@ você confia.
 | **o toque longo** — quatro segundos no sensor abrem uma janela de meio minuto | uma página web ou programa em qualquer computador ler ou gravar a tabela | quem estiver com a placa na mão |
 | **a senha** | quem está com a placa na mão ler a tabela pelo aplicativo, ou gravar nela um firmware que a lê inteira | ler o chip com um gravador |
 | **o bloqueio** | alguém ir tocando os 62 códigos possíveis até acertar | qualquer coisa que não envolva tocar |
-| **confiança no computador** — `{host}` e `{host!}` | uma macro protegida digitar num computador que não enviou a chave de computador da placa | qualquer coisa que leia a EEPROM diretamente |
+| **segredos** — `{secret}` e `{secret!}` | um segredo digitar num computador que não enviou a chave da placa; quem lê a EEPROM — pelo aplicativo, com um gravador ou num laboratório — ler o segredo | a placa, ou uma cópia feita a partir da EEPROM dela, receber a chave de um computador que a envia |
 | **bits de trava** | ler a flash ou a EEPROM com um gravador, e mudar os fuses | apagar o chip, o que também limpa os bits de trava |
 | **EESAVE deixado não programado** | esse apagamento virar uma porta de entrada: apagar o chip apaga a EEPROM junto | — |
 | **detecção de queda de tensão** | uma alimentação fraca corromper a flash que a placa grava ao se atualizar | — |
@@ -71,21 +74,25 @@ Seja honesto consigo mesmo sobre estes pontos antes de confiar nele.
   técnicas como glitch de tensão e de clock, e abrindo o encapsulamento
   ("delidding", como se diz). O modo protegido detém alguém com um gravador e
   uma tarde livre. Não detém alguém com equipamento, dinheiro, tempo,
-  habilidade e um motivo.
+  habilidade e um motivo. Os segredos são a exceção: não estão na placa de
+  nenhuma forma que se leia sem a chave. Mas o valor de verificação está, e
+  com ele um laboratório consegue fazer uma cópia da placa para a qual os
+  seus computadores mandariam a chave. Trate uma placa perdida como uma chave
+  perdida: veja *Mudando as coisas depois*.
 - **O computador em que ela digita.** Uma macro digita o segredo como
   teclas, então qualquer coisa nesse computador que vê teclas vê o segredo:
   um keylogger, um programa malicioso, um gravador de tela, o campo que
-  estiver com o foco. A confiança no computador decide *onde* a placa
-  digita, não o que esse computador faz com isso.
-- **O seu arquivo de chave de computador.** Quem consegue ler
-  `~/.config/digimacro/host.key` (`%APPDATA%\digimacro\host.key` no Windows),
-  ou conectar a placa no computador onde o cliente roda, consegue fazer as
-  macros protegidas rodarem. O root desse computador também consegue ler a
-  chave no barramento USB.
+  estiver com o foco. A chave decide *onde* a placa digita um segredo, não o
+  que esse computador faz com ele.
+- **O seu arquivo de chaves.** Quem consegue conectar a placa num computador
+  onde o cliente roda consegue fazer os segredos dela rodarem. Quem consegue
+  ler `~/.config/digimacro/host.key` (`%APPDATA%\digimacro\host.key` no
+  Windows) consegue isso em qualquer lugar e, com a EEPROM da placa, ou uma
+  cópia de segurança que consiga abrir, lê os segredos diretamente. O root
+  desse computador também consegue ler a chave no barramento USB.
 - **Alguém vendo você tocar.** Código visto é código conhecido. O bloqueio
-  limita adivinhar, não saber. A confiança no computador ajuda aqui: um
-  código visto não serve de nada em outro computador, se a macro for
-  protegida.
+  limita adivinhar, não saber. Os segredos ajudam aqui: um código visto não
+  serve de nada em outro computador, se a macro tiver um.
 - **Uma senha fraca.** A placa aceita uma resposta errada por segundo, e o
   aplicativo ainda exige o toque longo, mas uma senha curta acaba caindo
   para alguém paciente com a placa na mão — e, sem firmware na placa, depois
@@ -94,8 +101,10 @@ Seja honesto consigo mesmo sobre estes pontos antes de confiar nele.
 - **As suas próprias cópias de segurança.** A cópia do aplicativo é cifrada
   com a senha da placa, então é tão forte quanto essa senha — mas um arquivo
   copiado pode ser atacado fora da placa, sem toque longo e sem a espera de
-  um segundo. Uma placa sem senha gera cópias às claras. Guarde as cópias
-  onde você guardaria os próprios segredos.
+  um segundo. Uma placa sem senha gera cópias às claras. Os segredos numa
+  cópia continuam cifrados com a chave, que nenhuma cópia guarda. Guarde as
+  cópias onde você guardaria os próprios segredos, e longe do arquivo de
+  chaves.
 - **Uma página falsificada ou adulterada.** A página lê todas as macros e
   guarda a senha, então, se alguém conseguir mudar o código que ela roda,
   nada mais vale. A nossa é servida por HTTPS e fizemos a lição de casa, mas
@@ -118,9 +127,10 @@ Seja honesto consigo mesmo sobre estes pontos antes de confiar nele.
   outro gravador AVR também serve; as linhas do avrdude estão abaixo.
 - **Recomeçar apaga a identidade da placa,** a menos que você restaure uma
   cópia. O número de série fica na EEPROM. Um número novo faz o Chrome pedir
-  que você escolha a placa de novo, e cada computador precisa do novo
-  arquivo de chave de computador; uma cópia restaurada traz os dois de
-  volta.
+  que você escolha a placa de novo, e os segredos precisam de uma chave
+  nova, que cada computador então precisa no seu arquivo de chaves; uma
+  cópia restaurada traz os dois de volta, e o arquivo antigo volta a
+  servir.
 
 Atualizações não são um custo: uma placa protegida as recebe pela página,
 atrás do toque longo e da senha, como qualquer outra placa v2.
@@ -146,17 +156,20 @@ No aplicativo:
   pena: a placa aceita firmware de qualquer um por seis segundos depois de
   cada reconexão;
 - **o bloqueio**;
-- **uma chave de computador**, com `{host!}` logo no início de cada macro que
-  digita um segredo, e o arquivo da chave instalado em cada computador de
-  confiança.
+- **uma chave para os segredos** (**Segredos**, **Criar uma chave**), com
+  `{secret!}` antes da parte secreta de cada macro que tenha uma — logo no
+  início dela, a menos que ela digite um nome de usuário antes — e o arquivo
+  da chave instalado em cada computador de confiança. Guarde uma cópia do
+  arquivo num lugar seguro: sem ele, ninguém consegue ler nem mudar os
+  segredos de novo.
 
 Ou restaure uma cópia que tenha tudo isso: **Cópia de segurança**, escolha o
 arquivo, digite a senha com que ela foi salva e clique em **Restaurar** duas
 vezes — o primeiro clique pede confirmação. A placa reinicia sozinha para o
 número de série restaurado valer; clique em Conectar e escolha-a de novo.
 
-De um jeito ou de outro, teste cada macro protegida num computador de
-confiança e num que não seja, enquanto o chip ainda está aberto para
+De um jeito ou de outro, teste cada segredo num computador de confiança e
+num que não seja, enquanto o chip ainda está aberto para
 corrigir erros.
 
 ### 3. Salve uma cópia de segurança
@@ -232,8 +245,11 @@ placa travada também: faça de novo sempre que as macros mudarem.
 
 ## Mudando as coisas depois
 
-- **Macros, senha, bloqueio, chave de computador:** pelo aplicativo, como
-  sempre. A proteção não muda nada disso.
+- **Macros, senha, bloqueio, chave:** pelo aplicativo, como sempre. A
+  proteção não muda nada disso.
+- **Uma placa perdida ou roubada:** apague a linha dela do arquivo de chaves
+  em cada computador. Os segredos dela continuam ilegíveis, e nenhuma cópia
+  dela volta a receber a chave.
 - **O firmware:** pela página, como em qualquer placa v2 — **(atualizar…)**
   na linha de status, o toque longo e a senha. Os bits de trava ficam; nada
   é apagado.
@@ -253,11 +269,10 @@ placa travada também: faça de novo sempre que as macros mudarem.
 ## Lista de verificação
 
 - [ ] v2 na placa, pela página ou pelo gravador
-- [ ] uma senha de doze caracteres, o bloqueio, uma chave de computador
-      instalada e `{host!}` primeiro em cada macro secreta — ou uma cópia
-      restaurada que tenha tudo isso
-- [ ] macros protegidas testadas num computador de confiança e num que não
-      seja
+- [ ] uma senha de doze caracteres, o bloqueio, uma chave instalada e o
+      arquivo dela guardado em segurança, e `{secret!}` antes de cada
+      segredo — ou uma cópia restaurada que tenha tudo isso
+- [ ] segredos testados num computador de confiança e num que não seja
 - [ ] uma cópia de segurança salva
 - [ ] fuses `0xE1` `0xDD` `0xFE`: a lista de verificação mostra faltando só
       os bits de trava

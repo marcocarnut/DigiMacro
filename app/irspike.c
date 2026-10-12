@@ -110,7 +110,7 @@ void app_loop(void)
     SREG = sreg;
 }
 
-/* No lockout, no host key, no remote of the firmware's. The password is the
+/* No lockout, no key, no remote of the firmware's. The password is the
    core's, and still holds. */
 void    hidPassWrong(void)                       { }
 void    hidPassRight(void)                       { }

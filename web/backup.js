@@ -1,10 +1,10 @@
 /* backup.js -- a board's whole EEPROM, saved to a file and put back.
  *
  * What is saved is the image itself, all 512 bytes: the table, the serial
- * number, the host key, the lockout, the power-on macro and the password,
+ * number, the key check, the lockout, the power-on macro and the password,
  * exactly as stored. That is the point of a backup -- after a hardened board
  * has been erased to update it, it comes back as the same board, Chrome's
- * permission and every computer's host key file included.
+ * permission and every computer's key file included.
  *
  * A board with a password has its backup encrypted with that password, so
  * the file is no easier a way in than the board itself. Except that it is, in

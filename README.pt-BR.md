@@ -188,7 +188,7 @@ continua conectada.
 
 As seções são **Macros**, com a escolha do layout de teclado ao lado do
 título; **Teclas**, uma paleta que insere no cursor qualquer coisa da lista
-abaixo; **Inicialização**; **Computador**; **Senha**; **Bloqueio**; **Cópia
+abaixo; **Inicialização**; **Segredos**; **Senha**; **Bloqueio**; **Cópia
 de segurança**; e **De volta a um Digispark comum**. Os títulos da tabela são links: **Código** explica os
 códigos e tem uma tabela de Morse para escolher códigos fáceis de lembrar, e
 **Digita** é a referência do que uma macro pode conter. O aplicativo fala
@@ -207,7 +207,7 @@ Uma macro é texto, com chaves para o que o texto não consegue dizer:
  x{11}                        eleven of them, as in a regular expression
  (ab){3}                      ...of a whole group rather than one thing
  {goto .-}                    carry on with another macro, and never come back
- {host}  {host!}              stop unless this computer sent the host key lately
+ {secret}  {secret!}          the rest is encrypted, and needs this computer's key
  {IR 00 45}                   where the remote's button 00 45 starts typing
 ```
 
@@ -250,8 +250,8 @@ em hexa.
 
 Botões que não estão na tabela não fazem nada, e nunca contam para o
 bloqueio: as salas estão cheias de controles remotos dos outros. Uma placa
-bloqueada ignora o controle remoto, assim como ignora os toques, e uma
-verificação `{host}` vale onde quer que o controle comece. Segurar um botão
+bloqueada ignora o controle remoto, assim como ignora os toques, e um
+segredo exige a chave onde quer que o controle comece. Segurar um botão
 executa a macro dele uma vez. O receptor é opcional, e `HAVE_IR 0` em
 `DigiMacro.ino` compila sem ele.
 
@@ -350,36 +350,69 @@ o cabo assim que as piscadas começam não adianta nada. Um código que é
 executado não grava nada, a menos que haja uma contagem a zerar, então o uso
 normal não desgasta a EEPROM.
 
-### Confiando no computador
+### Segredos
 
 Um dispositivo USB não faz ideia de em qual computador está conectado, então
-uma placa que digita uma senha a digita para quem a tiver na mão. Para um
-computador cujo software você controla, há uma resposta: um pequeno programa
-cliente nele manda uma chave à placa e, por um tempo depois disso — um minuto
-por padrão, até quarenta —, as macros protegidas por uma verificação do
-computador são executadas. Conectadas em qualquer outro computador, elas
-param.
+uma placa que digita uma senha a digita para quem a tiver na mão, e quem lê a
+EEPROM dela lê a senha. Para um computador cujo software você controla, há
+uma resposta para as duas coisas: o que vem depois de `{secret}` numa macro
+fica cifrado na placa, e a chave não fica na placa de jeito nenhum. Um
+pequeno programa cliente no computador a envia e, por um tempo depois disso
+— um minuto por padrão, até quarenta —, os segredos são digitados. Ligada em
+qualquer outro computador, ou roubada, a placa só guarda bytes embaralhados.
 
 ```
- {host}      stop here, quietly, unless this computer sent the key lately
- {host!}     stop as if the code were not in the table at all
+ user{Tab}{secret}hunter2{Enter}
 ```
 
-`{host!}` é o que importa contra quem tenta adivinhar. Recusado, ele parece
+O toque de qualquer um digita o nome de usuário e o Tab; o resto exige a
+chave.
+
+```
+ {secret}    the rest is encrypted; without the key, stop here quietly
+ {secret!}   ...and without it, stop as if the code were not in the table at all
+```
+
+`{secret!}` é o que importa contra quem tenta adivinhar. Recusado, ele parece
 exatamente um código que não existe — três piscadas, e um código errado para
 o bloqueio —, então, no computador errado, um código protegido não se
-distingue de um vazio. Isso só vale se nada aparecer antes da verificação, e
-o aplicativo avisa sobre isso. O LED fica apagado até uma macro digitar ou
+distingue de um vazio. Isso só vale se nada aparecer antes dele, e o
+aplicativo avisa sobre isso. O LED fica apagado até uma macro digitar ou
 pausar, pelo mesmo motivo: uma piscada na entrada entregaria o código.
-`{host}` pode ir em qualquer lugar, para uma macro que digita um nome de
+`{secret}` pode ir em qualquer lugar, para uma macro que digita um nome de
 usuário e então para antes da senha. Uma macro recusada não conta como um
 código que funcionou, então tocar um código protegido no computador errado
 não zera os erros de quem tenta adivinhar.
 
-A chave são oito bytes aleatórios, criados na seção Computador do aplicativo,
-gravados na placa e baixados num arquivo com o nome do número de série da
-placa. O cliente é o `tools/hostauth`, um único arquivo C sem bibliotecas,
-para Linux e Windows. Os dois estão prontos na
+Um segredo vai até o fim da sua macro, com no máximo 255 teclas, e comporta
+tudo o que uma macro comporta: pausas, repetições, modificadores, um `{goto}`
+— que continua na outra macro do jeito que ela é, às claras, a menos que ela
+tenha um segredo próprio.
+
+**A chave** são dezesseis bytes aleatórios, criados na seção Segredos do
+aplicativo e baixados num arquivo com o nome do número de série da placa. A
+placa guarda só um valor de verificação, que é como ela distingue a chave
+certa de uma errada, e do qual não dá para deduzir a chave. A página guarda a
+chave enquanto está aberta, para cifrar os segredos ao gravá-los e mostrá-los
+como texto; numa sessão posterior, **Carregar o arquivo da chave** faz o
+mesmo. Sem ela, um segredo aparece como `{secret 9a0f…}`, que ainda pode ser
+levado para outro código ou posição, mas não lido nem alterado. **Guarde o
+arquivo**: sem ele, ninguém, nem você, consegue ler os segredos de novo — só
+criar uma chave nova e digitá-los outra vez.
+
+A placa esquece a chave quando o tempo acaba, quando é desconectada ou
+reinicia, e sempre que alguma coisa é gravada nela, a tabela inclusive. Uma
+chave que expira no meio de uma macro a interrompe ali.
+
+**Uma placa copiada** poderia receber a chave: uma placa feita para se passar
+pela sua, com o seu número de série, ligada onde o cliente roda. Por isso,
+antes de mandar a chave, o cliente manda à placa oito bytes aleatórios e
+confere se ela os devolve cifrados com o valor de verificação, que só a sua
+placa tem. Uma cópia só o conheceria lendo a EEPROM da sua placa, o que uma
+senha e o modo blindado impedem ([HARDENED_MODE.pt-BR.md](HARDENED_MODE.pt-BR.md)).
+
+O cliente é o `tools/hostauth`, um único arquivo C sem bibliotecas, para
+Linux e Windows. Os dois estão prontos na
 [página de releases](https://github.com/marcocarnut/DigiMacro/releases):
 `digimacro-host-linux-x86_64`, linkado estaticamente para rodar em qualquer
 distribuição, e `digimacro-host.exe`. No Linux ele precisa da mesma regra do
@@ -409,27 +442,39 @@ digimacro-host.exe -e 30
 Para mantê-lo rodando enquanto você estiver logado, ponha um atalho para
 `digimacro-host.exe -e 30` na pasta Inicializar (`shell:startup`).
 
-Rodado com `-e` a partir da sua sessão, e parado quando a tela trava, a
-confiança passa a ser "enquanto eu estiver logado". O cliente encontra pelo
-número de série cada placa conectada, então um arquivo de chaves serve a
-várias placas. `-k` indica outro arquivo de chaves; no Linux, o padrão
+Rodado com `-e` a partir da sua sessão, e parado quando a tela trava, a chave
+fica com a placa "enquanto eu estiver logado". O cliente encontra pelo número
+de série cada placa conectada, então um arquivo de chaves serve a várias
+placas, e diz de cada uma se agora tem a chave, se a recusou, se não provou
+quem é — uma cópia, ou uma chave que não é a dela — ou se roda um firmware
+anterior ao 16. `-k` indica outro arquivo de chaves; no Linux, o padrão
 respeita `$XDG_CONFIG_HOME`.
 
-Mandar a chave não exige nem o toque longo nem a senha, porque não há
-ninguém na placa — como o INFO, e a leitura da flash, que não guarda nada
-secreto. Por isso não pode fazer mais nada: não abre janela, não destrava
-nada e não lê nada, e uma chave errada **não** conta para o bloqueio. Se
-contasse, qualquer programa em qualquer computador poderia pôr a placa em
-bloqueio forte sem ninguém tocar nela. Em vez disso, uma chave errada custa
-um segundo, num relógio próprio.
+Mandar a chave, e a prova antes dela, não exigem nem o toque longo nem a
+senha, porque não há ninguém na placa — como o INFO, e a leitura da flash,
+que não guarda nada secreto. Por isso não podem fazer mais nada: não abrem
+janela, não destravam nada e não leem nada, e uma chave errada **não** conta
+para o bloqueio. Se contasse, qualquer programa em qualquer computador poderia
+pôr a placa em bloqueio forte sem ninguém tocar nela. Em vez disso, uma chave
+errada custa um segundo, num relógio próprio.
+
+**`{host}` e `{host!}`**, que o firmware 15 e anteriores tinham, acabaram: um
+`{secret}` no início de uma macro faz tudo o que eles faziam, e ainda cifra o
+que vem depois. O firmware 16 recusa sempre um `{host}` que tenha ficado numa
+tabela, em silêncio ou como um código vazio, conforme ele pedia. Depois da
+atualização, a página marca cada um e oferece **Trocar {host} por
+{secret}**; em seguida, **Criar uma chave** e gravar a tabela, e trocar a
+linha da placa no arquivo de chaves de cada computador pela nova. Tanto o
+cliente quanto a página pulam, com um aviso, uma chave de computador da v2,
+que tem dezesseis dígitos em vez de trinta e dois.
 
 ### Cópias de segurança
 
 **Salvar uma cópia** salva a EEPROM inteira da placa num arquivo — macros,
-inicialização, bloqueio, chave de computador, senha e número de série — e
-**Restaurar** a coloca de volta, então uma placa apagada por um gravador volta
-a ser a mesma, inclusive a permissão do Chrome e os arquivos de chave de
-computador. A v1 e a v2 usam o mesmo mapa de EEPROM, então a cópia de uma
+inicialização, bloqueio, o valor de verificação dos segredos, senha e número
+de série — e **Restaurar** a coloca de volta, então uma placa apagada por um
+gravador volta a ser a mesma, inclusive a permissão do Chrome e os arquivos
+de chave. A v1 e a v2 usam o mesmo mapa de EEPROM, então a cópia de uma
 placa v1 pode ser restaurada numa v2. A senha entra por último, senão a placa
 se trancaria no meio da própria restauração, e as contagens de códigos
 errados e de bloqueios leves do bloqueio recomeçam. Depois a placa reinicia
@@ -465,7 +510,7 @@ dispositivos de pessoas diferentes no mesmo ID não se confundam. O Chrome só
 memoriza uma permissão WebHID para um dispositivo que tenha número de série,
 então, sem ele, cada reconexão exigiria escolher a placa na lista de novo.
 Ser por placa, e não por modelo, faz com que duas placas tenham cada uma sua
-permissão, e sua chave de computador.
+permissão, e sua chave.
 
 A aleatoriedade vem do jitter do oscilador do watchdog contra o clock da CPU:
 dois osciladores RC independentes, então os bits baixos de um timer amostrado
@@ -481,8 +526,8 @@ abre uma caixa de diálogo com a atualização. Clique em **Atualizar o
 firmware** com a janela aberta, ou segure o sensor quando ela pedir: a página
 grava o novo firmware pela mesma conexão, uma página de flash por vez, e a
 placa reinicia nele alguns segundos depois e pede o toque longo de novo. Sem
-bootloader, sem segunda lista, sem driver. As macros, a senha, o bloqueio, a
-chave de computador e o número de série ficam todos na EEPROM, que uma
+bootloader, sem segunda lista, sem driver. As macros, a senha, o bloqueio, o
+valor de verificação dos segredos e o número de série ficam todos na EEPROM, que uma
 atualização não toca.
 
 - **Seis segundos.** Com o firmware rodando, o núcleo só aceita a primeira
@@ -522,8 +567,8 @@ gravação pelo Micronucleus; acontece uma vez na vida da placa.
 
 **Uma placa v1** muda do mesmo jeito: conecte-a, e **(mudar para a v2…)** na
 linha de status abre a caixa de diálogo do firmware. A placa reinicia no
-Micronucleus, recebe o núcleo e volta pedindo o firmware. As macros, a senha,
-a chave de computador e o número de série vêm junto: a v2 mantém o mapa de
+Micronucleus, recebe o núcleo e volta pedindo o firmware. As macros, a senha e
+o número de série vêm junto: a v2 mantém o mapa de
 EEPROM da v1.
 
 O Micronucleus é acessado por WebUSB: o Linux precisa da linha dele em
@@ -539,7 +584,7 @@ possam gravar a placa de novo. Ele entra como uma atualização — o toque long
 e a senha se houver uma — na forma de um desinstalador que traz o Micronucleus
 na própria imagem (`app/uninstall.c`). Iniciado pelo núcleo, ele apaga
 primeiro a EEPROM, para que nenhum programa gravado depois encontre as macros,
-a senha, a chave do computador ou o número de série; depois aponta o vetor de
+a senha, os segredos ou o número de série; depois aponta o vetor de
 reset para o Micronucleus, que espera um programa sem limite de tempo. Salve
 uma cópia antes se puder querer algo disso de volta. **Preparar uma placa
 nova** traz o DigiMacro de volta.
@@ -644,7 +689,7 @@ páginas, que recebe firmware novo e recusa qualquer endereço abaixo da
 divisa. Ele nunca é regravado por USB, então é mantido pequeno e sem graça,
 e testado no computador com mais rigor do que qualquer outra coisa. Acima,
 o **firmware**: o sensor, o morse, a tabela, a execução das macros, o
-bloqueio, a verificação do computador, o relógio e a janela.
+bloqueio, os segredos, o relógio e a janela.
 
 Os dois se chamam por duas tabelas de saltos em endereços fixos — a do
 núcleo logo abaixo da divisa, o cabeçalho do firmware nela — e não combinam
@@ -654,7 +699,7 @@ compilado, seguido de um CRC: o núcleo só roda firmware que confere. Toda
 interrupção, exceto a do V-USB, é repassada ao firmware, e o watchdog o
 vigia. O registro de projeto da v2 conta como e por que isso foi decidido:
 ele foi aposentado quando tudo o que havia nele estava construído, e `git
-show ae7e0ac:PLAN-v2.md` o mostra.
+show 5890dee:PLAN-v2.md` o mostra.
 
 ### O protocolo
 
@@ -671,20 +716,21 @@ COMMIT, e a UNLOCK quando não há firmware; o firmware responde ao resto.
 | | |
 |---|---|
 | `0x40` INFO | sempre responde: `[1..2]` "DM", `[3]` protocolo (3), `[4]` a versão do núcleo, `[5..6]` tamanho da EEPROM, `[7]` estado, `[8..11]` os fuses baixo, alto e estendido e o byte de trava como o chip os lê, `[12]` o estado do núcleo (abaixo), `[13]` a versão do firmware, 0 se não houver, `[14]` a API do núcleo, `[15..18]` onde o firmware pode ficar, `[19]` o tamanho da página de flash. Sem firmware rodando, as partes do firmware — `[5..6]`, e todo o `[7]` exceto os bits da senha — vêm como 0 |
-| `0x42` RESTART | sai do barramento e volta, como se reconectada, sem reset: o número de série é lido de novo, então um restaurado passa a valer. A janela fecha, a confiança no computador é esquecida e a macro de inicialização não digita; os seis segundos para uma atualização não recomeçam |
+| `0x42` RESTART | sai do barramento e volta, como se reconectada, sem reset: o número de série é lido de novo, então um restaurado passa a valer. A janela fecha, a chave é esquecida e a macro de inicialização não digita; os seis segundos para uma atualização não recomeçam |
 | `0x60` READ | endereço e contagem na ida, até 32 bytes de EEPROM na volta |
 | `0x61` WRITE | endereço, contagem e até 32 bytes na ida |
 | `0x62` UNLOCK | a senha, se a placa tiver uma |
 | `0x63` SETPASS | uma senha nova, ou nenhuma, com contagem 0 |
-| `0x64` HOSTAUTH | a chave de computador. Não exige nem a janela nem a senha, e não faz mais nada |
 | `0x65` PAGE | meia página de firmware novo, 32 bytes num endereço; a segunda metade a grava |
 | `0x66` FREAD | flash, até 32 bytes: firmware publicado, então sem barreira. Recusado enquanto houver uma página esperando para ser gravada |
 | `0x67` COMMIT | o firmware novo confere: inicie-o |
 | `0x68` UPDATE | o firmware abre a janela de atualização: seis segundos para o primeiro PAGE |
 | `0x69` LEARN | o próximo botão do controle remoto, em até dez segundos, é digitado como dois bytes em hexa em vez de executado |
-| `0xEE` | volta no lugar do comando quando um pedido é recusado: a janela está fechada, a senha não foi dada, a senha ou a chave de computador está errada ou veio menos de um segundo depois de uma errada, ou o comando não existe |
+| `0x6A` KEYAUTH | a chave, 16 bytes. Guardada pelo tempo em `0x1F2` se bater com o valor de verificação; apagada do report de qualquer jeito. Não exige nem a janela nem a senha, e não faz mais nada |
+| `0x6B` PROVE | 8 bytes na ida; na volta, no lugar deles, o XTEA deles sob o valor de verificação duas vezes seguidas. Sem barreira |
+| `0xEE` | volta no lugar do comando quando um pedido é recusado: a janela está fechada, a senha não foi dada, a senha ou a chave está errada ou veio menos de um segundo depois de uma errada, ou o comando não existe — entre eles o `0x64`, o HOSTAUTH da v2 antes do firmware 16 |
 
-INFO, HOSTAUTH, FREAD e LEARN não exigem barreira. PAGE exige a senha, se
+INFO, KEYAUTH, PROVE, FREAD e LEARN não exigem barreira. PAGE exige a senha, se
 houver uma, e, com o firmware rodando, a janela de atualização; COMMIT só
 exige páginas recebidas e um firmware que confira. UNLOCK exige a janela — e,
 só com o núcleo, nada. Todo o resto exige a janela, e a senha se houver uma.
@@ -697,9 +743,9 @@ O byte de estado do INFO:
 | `0x04` | ...e ela foi dada, ou não há nenhuma |
 | `0x08` | bloqueio leve |
 | `0x10` | bloqueio forte |
-| `0x20` | o computador mandou a chave há pouco |
-| `0x40` | há uma chave de computador |
-| `0x80` | só v1: compilado sem bootloader |
+| `0x20` | firmware 15 e anteriores: o computador mandou a chave há pouco |
+| `0x40` | firmware 15 e anteriores: há uma chave de computador |
+| `0x80` | firmware 16: a chave está com a placa; v1: compilado sem bootloader |
 
 e o do núcleo, em `[12]`: `0x01` firmware rodando, `0x02` recebendo páginas,
 `0x04` firmware presente mas não iniciado — o watchdog o reiniciou, ou ele
@@ -764,8 +810,9 @@ menores que quatro. Os sete estão ocupados:
 | `0x02 mm` | aplica a máscara de modificadores HID `mm` à próxima tecla |
 | `0x03 nn` | repete a tecla anterior mais `nn` vezes |
 | `0x81 hh` | continua na macro cujo cabeçalho é `hh-1` |
+| `0x81 FE` | `{secret}`: o que vem depois é cifrado (abaixo); `0x81 FF` é `{secret!}` |
 | `0x82` | marca: o que vem depois se repete como grupo, não como uma tecla só |
-| `0x83 nn` | para, a menos que o computador tenha mandado a chave há pouco: em silêncio se `nn` for 1, como um código vazio se for 2 |
+| `0x83 nn` | `{host}`, antes do firmware 16; agora sempre recusado: em silêncio se `nn` for 1, como um código vazio se for 2 |
 | `0x80 a c x` | onde o botão `a`/`c` do controle remoto inicia esta macro: `a` e `c` com o bit 7 forçado para 1, `x` = `0x80` mais os bits altos originais deles (o de `a` no bit 0, o de `c` no bit 1). Na execução normal, não faz nada |
 
 Nenhum argumento pode ser zero, já que um byte zero encerra a macro. `0x03` é
@@ -784,20 +831,38 @@ aplicativo e por um teste que executa o que ele codifica no firmware de
 verdade, e outro teste lê os valores dos escapes em `DigiMacro.ino` e confere
 se os dois concordam.
 
+Um segredo é um salto para um código que nenhuma macro pode ter, então um
+firmware anterior ao 16 não digita nada dele:
+
+```
+ [0x81][FE or FF][nonce, 4 bytes][the rest of the macro and its 0x00, encrypted][0x00]
+```
+
+A cifra é o XTEA em modo contador: o byte `j` do segredo passa por XOR com o
+primeiro byte do XTEA, sob a chave, do bloco (nonce, `j`), duas palavras de 32
+bits little-endian. A placa só cifra, nunca decifra, e o XTEA dela é o
+`app/xtea.S`, de 214 bytes. Não há campo de tamanho: a página sorteia nonces
+até que nem o nonce nem o texto cifrado tenham um byte zero, nada neles seja
+lido como o escape do controle remoto, e um percurso com as regras de escape
+de sempre caia exatamente no `0x00` final — assim, qualquer coisa que percorra
+a tabela, firmwares e páginas antigas inclusive, não se perde. O valor de
+verificação é o XTEA, sob a chave, do bloco (0, 0), que o nonce de nenhum
+segredo pode ser.
+
 ### A EEPROM
 
 | | |
 |---|---|
 | `0x000`–`0x1DF` | a tabela de macros |
 | `0x1E0`–`0x1E3` | o número de série |
-| `0x1E4`–`0x1EB` | a chave de computador; tudo `0xFF` se não houver |
+| `0x1E4`–`0x1EB` | o valor de verificação dos segredos; tudo `0xFF` se não houver. Antes do firmware 16, a chave de computador |
 | `0x1EC` | bloqueio: códigos errados antes de um bloqueio leve; 0 ou `0xFF` para sem bloqueio |
 | `0x1ED` | ...bloqueios leves seguidos antes de um bloqueio forte; 0 ou `0xFF` para nunca |
 | `0x1EE` | ...duração de um bloqueio leve em dezenas de segundos, 1–240; qualquer outro valor vale 6 |
 | `0x1EF` | ...códigos errados até agora |
 | `0x1F0` | ...bloqueios leves seguidos até agora |
 | `0x1F1` | ...bloqueios fortes desfeitos com a senha, desde sempre |
-| `0x1F2` | por quanto tempo o computador continua confiável, em dezenas de segundos, 1–240; qualquer outro valor vale 6 |
+| `0x1F2` | por quanto tempo a placa guarda a chave, em dezenas de segundos, 1–240; qualquer outro valor vale 6 |
 | `0x1F3` | o cabeçalho da macro de inicialização; qualquer valor impossível como cabeçalho significa nenhuma |
 | `0x1F4`–`0x1FF` | a senha, completada com zeros; `0xFF` no primeiro byte se não houver |
 
@@ -853,8 +918,8 @@ test/run.sh
 compila o `DigiMacro.ino` de verdade para o computador contra um hardware
 simulado e exercita o percurso da tabela, cada escape, os limites que impedem
 uma tabela malformada de chegar aos bytes reservados, a decodificação do morse
-a partir do pino de entrada, a senha, o bloqueio e a verificação do
-computador, e os dois jeitos de ler o sensor. Depois, a linguagem de macros do
+a partir do pino de entrada, a senha, o bloqueio e os segredos, e os dois
+jeitos de ler o sensor. Depois, a linguagem de macros do
 aplicativo sozinha; as duas linguagens uma contra a outra; o núcleo da v2
 montado para o Micronucleus, com os dois saltos decodificados e seguidos até
 onde vão parar; as atualizações da página contra uma placa v2 simulada que
@@ -867,19 +932,26 @@ do firmware indo até o fim do chip e parando abaixo do Micronucleus; as cópias
 de segurança, com o scrypt conferido contra o do próprio node e um arquivo que
 só abre com a sua senha; a página publicada, um arquivo só com o firmware
 dentro; e, por último, atravessando a fronteira entre as linguagens, uma
-tabela codificada pelo `web/table.js` executada no firmware. Treze suítes,
-poucos segundos. Sem `node`, as nove que precisam dele são puladas.
+tabela codificada pelo `web/table.js` executada no firmware, com segredos
+cifrados pela página entre elas. Depois, os segredos de ponta a ponta numa
+placa simulada — o firmware de verdade, `xtea.S` e tudo, que nada compilado
+para o PC executa, enumerada por um host USB simulado e tocada por um dedo
+simulado — quando o `../simavr-softusb` está compilado ao lado deste
+repositório (`make simtest` roda só ele); e o código do próprio
+`digimacro-host` contra uma placa simulada, uma cópia dela e uma antiga.
+Quinze suítes, poucos segundos e o minuto simulado. Sem `node`, as dez que
+precisam dele são puladas.
 
 ## Organização
 
 | | |
 |---|---|
-| `DigiMacro.ino` | o firmware: toque, morse, o percurso da tabela, a execução, o bloqueio, a verificação do computador |
-| `app/` | o que todo firmware linka: o cabeçalho, as chamadas ao núcleo e o `hidusb.c` — o relógio, a janela, a digitação e os verbos do protocolo. Também os aplicativos do spike, o `spikectl.py` e a página dele |
+| `DigiMacro.ino` | o firmware: toque, morse, o percurso da tabela, a execução, o bloqueio, os segredos |
+| `app/` | o que todo firmware linka: o cabeçalho, as chamadas ao núcleo e o `hidusb.c` — o relógio, a janela, a digitação e os verbos do protocolo; `xtea.S`, a cifra. Também os aplicativos do spike, o `spikectl.py` e a página dele |
 | `core/` | o núcleo: o V-USB com sua configuração, os descritores, a verificação da senha e o gravador de páginas; `layout.h`, o contrato com o firmware; e os testes dele no computador |
 | `Makefile` | compila tudo isso |
 | `test/` | o build no computador do sketch de verdade contra hardware simulado, e os testes do lado web |
-| `tools/hostauth/` | o cliente que manda a chave de computador, para Linux e Windows |
+| `tools/hostauth/` | o cliente que manda a chave, para Linux e Windows, e o `xtea.h`, a referência em C que os testes compartilham |
 | `web/` | `index.html` é o aplicativo, `hid.html` uma página de protocolo cru para desenvolvedores, `table.js` e `i18n.js` o que eles compartilham, `coreupdate.js` atualiza placas v2, `micronucleus.js` acessa o Micronucleus, `webusb.js` acessa a placa sem WebHID, `vkbd.js` o teclado na tela, `backup.js` as cópias de segurança, `60-digimacro.rules` a regra do udev |
 | `web/firmware/` | o que a página instala: o firmware, o núcleo e a imagem completa da v2 |
 | `docs/` | as fotos lá de cima |

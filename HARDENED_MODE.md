@@ -8,9 +8,12 @@ secret on a DigiMacro board.
 A DigiMacro board with no password is **not** a safe place for a secret. Its
 core takes new firmware from anyone in the six seconds after it is plugged in
 — that is how the page updates it — and firmware that types out the whole
-EEPROM takes seconds to write: every macro and the host key with it. The
-hold, the lockout and the host check all live in the firmware, which is
-exactly what such firmware replaces.
+EEPROM takes seconds to write: every macro with it. The hold, the lockout
+and the secrets' check all live in the firmware, which is exactly what such
+firmware replaces. What follows `{secret}` in a macro is encrypted, with a
+key the board does not keep, so that firmware types it out scrambled — but it
+can still wait until the board is plugged into your computer, prove itself to
+the client and be given the key.
 
 **A password closes that door.** The board's core checks it, not the
 firmware, and an update needs it, whether firmware is running or not — and
@@ -35,7 +38,7 @@ others'. A secret is only as safe as the weakest one you rely on.
 | **the hold** — four seconds on the pad opens a half-minute window | a web page or program on any computer reading or writing the table | anyone holding the board |
 | **the password** | someone holding the board reading the table through the app, or putting firmware on it that reads it out | reading the chip with a programmer |
 | **the lockout** | someone tapping their way through the 62 possible codes | anything that does not involve tapping |
-| **host trust** — `{host}` and `{host!}` | a guarded macro typing on a computer that has not sent the board's host key | anything that reads the EEPROM directly |
+| **secrets** — `{secret}` and `{secret!}` | a secret typing on a computer that has not sent the board's key; anyone who reads the EEPROM — through the app, with a programmer, or in a laboratory — reading the secret | the board, or a copy made from its EEPROM, being given the key by a computer that sends it |
 | **lock bits** | reading the flash or the EEPROM with a programmer, and changing the fuses | erasing the chip, which also clears the lock bits |
 | **EESAVE left unprogrammed** | that erase being a way in: erasing the chip erases the EEPROM with it | — |
 | **brown-out detection** | a sagging supply corrupting the flash the board writes when it updates itself | — |
@@ -69,18 +72,25 @@ Be honest with yourself about these before relying on it.
   like voltage and clock glitching, and by opening the package ("delidding
   the chip", as it is called). Hardened mode stops someone with a programmer
   and an afternoon. It does not stop someone with equipment, money, time, skill
-  and a reason.
+  and a reason. The secrets are the exception: they are not on the board in
+  any form that can be read without the key. But the check value is, and
+  with it a laboratory can make a copy of the board that your computers would
+  send the key to. Treat a board you lose as a key you lose: see *Changing
+  things afterwards*.
 - **The computer it types into.** A macro types its secret as keystrokes, so
   anything on that computer that sees keystrokes sees the secret: a keylogger,
-  a malicious program, a screen recorder, whatever field had focus. Host trust
-  decides *where* the board types, not what that computer does with it.
-- **Your host key file.** Anyone who can read `~/.config/digimacro/host.key`
-  (`%APPDATA%\digimacro\host.key` on Windows), or plug the board into the
-  computer where the client runs, can make guarded macros play. Root on that
-  computer can also read the key off the USB bus.
+  a malicious program, a screen recorder, whatever field had focus. The key
+  decides *where* the board types a secret, not what that computer does with
+  it.
+- **Your key file.** Anyone who can plug the board into a computer where the
+  client runs can make its secrets play. Anyone who can read
+  `~/.config/digimacro/host.key` (`%APPDATA%\digimacro\host.key` on Windows)
+  can do that anywhere, and with the board's EEPROM, or a backup they can
+  open, read the secrets outright. Root on that computer can also read the
+  key off the USB bus.
 - **Someone watching you tap.** A code seen is a code known. The lockout limits
-  guessing, not knowing. Host trust helps here: a code seen is no use on
-  another computer, if the macro is guarded.
+  guessing, not knowing. Secrets help here: a code seen is no use on
+  another computer, if the macro has one.
 - **A weak password.** The board allows one wrong answer per second, and the
   app also wants the hold, but a short password still falls to someone
   patient with the board in hand — and with no firmware on the board, after
@@ -89,8 +99,9 @@ Be honest with yourself about these before relying on it.
 - **Your own backups.** The app's backup is encrypted with the board's
   password, so it is as strong as that password — but a copied file can be
   guessed at offline, with no hold and no one-second wait. A board with no
-  password backs up in the clear. Keep backups where you would keep the
-  secrets themselves.
+  password backs up in the clear. The secrets in a backup stay encrypted
+  with the key, which no backup holds. Keep backups where you would keep the
+  secrets themselves, and apart from the key file.
 - **A counterfeit or tampered-with page.** The page reads every macro and
   holds the password, so if someone can change the code it runs, all bets
   are off. Ours is served over HTTPS and we did our homework, but it is
@@ -112,8 +123,9 @@ Be honest with yourself about these before relying on it.
   too; the avrdude lines are below.
 - **Starting over erases the board's identity,** unless you restore a backup.
   The serial number lives in EEPROM. A new one means Chrome asks you to pick
-  the board again, and every computer needs the new host key file; a restored
-  backup brings both back.
+  the board again, and the secrets need a new key, which every computer then
+  needs in its key file; a restored backup brings both back, so the old key
+  file works again.
 
 Updates are not a cost: a hardened board takes them from the page, behind the
 hold and the password, like any other v2 board.
@@ -139,16 +151,19 @@ In the app:
   doing: the board takes firmware from anyone for six seconds after every
   replug;
 - **the lockout**;
-- **a host key**, with `{host!}` at the very start of every macro that types a
-  secret, and the key file installed on each computer you trust.
+- **a key for secrets** (**Secrets**, **Make a key**), with `{secret!}`
+  before the secret part of every macro that has one — at its very start,
+  unless it types a user name first — and the key file installed on each
+  computer you trust. Keep a copy of the file somewhere safe: without it,
+  nobody can read or change the secrets again.
 
 Or restore a backup that has them: **Backup**, choose the file, type the
 password it was saved with, and press **Restore** twice — the first press
 asks you to confirm. The board restarts itself so that its restored serial
 number takes effect; press Connect and pick it again.
 
-Either way, try every guarded macro on a trusted computer and on one that is
-not, while the chip is still open to fixing mistakes.
+Either way, try every secret on a trusted computer and on one that is not,
+while the chip is still open to fixing mistakes.
 
 ### 3. Save a backup
 
@@ -221,8 +236,11 @@ again whenever the macros change.
 
 ## Changing things afterwards
 
-- **Macros, password, lockout, host key:** the app, as always. Hardening
+- **Macros, password, lockout, key:** the app, as always. Hardening
   changes none of that.
+- **A board lost or stolen:** delete its line from the key file on every
+  computer. Its secrets stay unreadable, and no copy of it is ever sent the
+  key again.
 - **The firmware:** from the page, as on any v2 board — **(update…)** in the
   status line, the hold and the password. The lock bits stay; nothing is
   erased.
@@ -242,10 +260,10 @@ again whenever the macros change.
 ## Checklist
 
 - [ ] v2 on the board, from the page or the programmer
-- [ ] a twelve-character password, the lockout, a host key installed, and
-      `{host!}` first in every secret macro — or a backup restored that has
-      them
-- [ ] guarded macros tried on a trusted computer and an untrusted one
+- [ ] a twelve-character password, the lockout, a key installed and its
+      file kept safe, and `{secret!}` before every secret — or a backup
+      restored that has them
+- [ ] secrets tried on a trusted computer and an untrusted one
 - [ ] a backup saved
 - [ ] fuses `0xE1` `0xDD` `0xFE`: the checklist shows only the lock bits
       missing

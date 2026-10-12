@@ -347,7 +347,7 @@ int main(void)
 
     printf("11. playback stops at the top of the table too\n");
     /* An entry whose keystrokes are not terminated either. What follows in
-       EEPROM is the serial number, the host key, the lockout and the
+       EEPROM is the serial number, the key check, the lockout and the
        password; typing those out would be the worst bug this firmware could
        have. */
     memset(EE, 0xFF, sizeof EE);

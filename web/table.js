@@ -817,12 +817,6 @@ function macroWarnings(bytes) {
   return warn;
 }
 
-const hasHostCheck = bytes => {
-  for (let i = 0; i < bytes.length && !isSecret(bytes, i); i += escStep(bytes, i))
-    if (bytes[i] === ESC_HOST) return true;
-  return false;
-};
-
 const hasSecret = bytes => {
   for (let i = 0; i < bytes.length; i += escStep(bytes, i))
     if (isSecret(bytes, i)) return true;
@@ -920,7 +914,7 @@ function sampleRows() {
 
 if (typeof module !== 'undefined') module.exports = {
   ESC_PAUSE, ESC_MOD, ESC_REPEAT, ESC_JUMP, SHIFT, TABLE_TOP, MAX_SYM,
-  ESC_MARK, ESC_HOST, HOST_SILENT, HOST_LOUD, macroWarnings, hasHostCheck,
+  ESC_MARK, ESC_HOST, HOST_SILENT, HOST_LOUD, macroWarnings,
   ESC_IR, SECRET_QUIET, SECRET_LOUD, CHECK_ADDR, SECRET_MAX, xtea, keyCheck,
   sealSecret, openSecret, walkSafe, hasSecret,
   AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,

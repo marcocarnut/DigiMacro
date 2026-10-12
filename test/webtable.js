@@ -262,7 +262,6 @@ for (const text of ['{IR 00 45}', 'a{IR ff ff}b', '{IR 80 c5}{IR 01 7f}',
 /* {IR 02 03} holds 0x82 and 0x83 -- the mark's and the host check's values
    -- so anything that walks a macro byte by byte rather than escape by
    escape finds things that are not there. */
-check(!t.hasHostCheck(t.encodeMacro('{IR 02 03}')), 'an {IR} is no host check');
 check(t.macroWarnings(t.encodeMacro('{IR 02 02}{secret!}x',
                                     p => t.sealSecret(new Uint8Array(16), p))).length === 0,
       'and nothing shows: a {secret!} after one is still first');

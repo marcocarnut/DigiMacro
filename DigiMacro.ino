@@ -230,7 +230,7 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define ESC_HOST        0x83
 #define ESC_IR          0x80        /* the last escape there is: see below */
 #define HOST_SILENT     1           /* its argument, and what macro_play() */
-#define HOST_LOUD       2           /* ...returns when the check refuses */
+#define HOST_LOUD       2           /* ...returns when a {secret} refuses */
 #define SECRET_QUIET    0xFE        /* the jump's argument for {secret}: a  */
 #define SECRET_LOUD     0xFF        /* code no macro has, plus one; {secret!} */
 
@@ -1030,10 +1030,10 @@ uint8_t pause_poll(uint16_t ms)
 }
 
 /* Type one macro, given where its keystrokes start. Returns 0 if it played,
-   or how a {host} check refused it.
+   or how a {secret} without the key (or an old {host}) refused it.
 
    The LED comes on with the first thing that shows -- a keystroke or a
-   pause -- and not when the macro is found. A {host!} check that refuses
+   pause -- and not when the macro is found. A {secret!} that refuses
    before anything shows must look exactly like a code that is not there,
    and a flash of the LED on the way would give it away. */
 uint8_t macro_play(uint8_t *a)
@@ -1183,7 +1183,7 @@ void code_finish(void)
         ? 0 : find_header(HDR_MAKE(code_len, code_bits));
     code_reset();
 
-    /* A code that is not there, and one whose {host!} check refused, are
+    /* A code that is not there, and one whose {secret!} refused, are
        the same thing from outside, so they are the same thing here. One that
        played clears the lockout's counts -- afterwards, not on being found:
        otherwise tapping a guarded code on the wrong computer would wipe a
@@ -1248,7 +1248,7 @@ void autoexec_run(void)
  * nothing, and counts for nothing: rooms are full of other people's
  * remotes, and a lockout that counted them would be a lockout anyone could
  * set off with a television. Locked, the remote is ignored, as a tapped
- * code is. A {host} check still applies.
+ * code is. A {secret} still needs the key.
  */
 #define IR_T(us)    ((uint8_t)((us) * (F_CPU / 1024) / 1000000UL))
 

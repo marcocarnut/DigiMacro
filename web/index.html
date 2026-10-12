@@ -467,7 +467,7 @@
 <h2 data-t="un-summary">Back to a plain Digispark</h2>
 <p class="dim prose" data-t="un-why"></p>
 <label class="prose"><input id="unsure" type="checkbox">
-  <span data-t="un-sure">I understand: the macros, the password and the host key are erased for good.</span></label>
+  <span data-t="un-sure">I understand: the macros, the secrets and the password are erased for good.</span></label>
 <div class="bar">
   <button id="ungo" data-t="un-go" disabled>Erase and go back to Micronucleus</button>
   <progress id="unbar" max="1" value="0" hidden></progress>
@@ -701,7 +701,7 @@ function renderWho() {
   }
   el.append(after);
   /* Once in, which is when the page has read it: the same eight digits the
-     backups and the host key file are named with. */
+     backups and the key file are named with. */
   if (serial && stage === 'board') el.append(' · ' + t('serial-tag', { serial }));
 }
 
@@ -1244,7 +1244,7 @@ async function readTable() {
 }
 
 /* Everything at once: the table, the power-on macro, the lockout and the
-   host key. */
+   key check. */
 async function enterBoard() {
   note('gate-note', t('gate-reading'), 'dim');
   for (const id of ['table-note', 'auto-note', 'write-note', 'pass-note',

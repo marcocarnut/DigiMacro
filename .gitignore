@@ -5,3 +5,6 @@ tools/hostauth/digimacro-host
 tools/hostauth/digimacro-host.exe
 tools/hostauth/digimacro-host-linux-x86_64
 config.txt
+
+# Key files the page downloads: secrets, never committed
+*.key

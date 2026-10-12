@@ -5,8 +5,8 @@ Branch `v3`, from v2.3 (bf5c596).
 **Status:**
 - Design agreed with Marco on Oct 11 2026, then revised the same day when
   the firmware would not fit (see "What changed, and why").
-- Milestones 1–5 are done. The firmware is tested on the PC and on the
-  simulated board, not yet on real hardware.
+- Done. Marco confirmed it all on real hardware on Oct 11, the Windows
+  client included, and the docs in both languages say how it works.
 
 ## What it is
 
@@ -135,7 +135,7 @@ So the client:
 2. checks the answer against x, which it computes from the key it holds;
 3. sends KEYAUTH only if the answer is right.
 
-## The page (milestone 4)
+## The page (milestone 4, done)
 
 - **Key setup:**
   - Makes a random 128-bit key and offers it as a file.
@@ -147,16 +147,17 @@ So the client:
   - Secrets it cannot open stay sealed, as `{secret <hex>}`, and can be moved
     to another code or position.
 - **Reading a table** without the key shows each secret as
-  `{secret <hex>}`. Showing that more kindly is UI work.
+  `{secret <hex>}`, with a 🔒 badge saying how many keystrokes it holds.
 - **Old firmware:** the page refuses to write secrets to, or restore a backup
   with secrets onto, firmware below 16.
-- **Host-key UI:** what the page does today with `hasHostCheck`, the host key
-  file and the state bits has to be reworked for the key.
+- **Host-key UI:** replaced by the Secrets section, which reads the key
+  state bit and the check value.
 
-## The host client (milestone 5)
+## The host client (milestone 5, done)
 
 - `digimacro-host` does PROVE, then KEYAUTH, from the key file.
-- The key file format is to be settled after reading tools/hostauth.
+- The key file keeps v2's format, `serial key` per line, with 32 hex digits
+  for the key; v2's 16-digit lines are skipped with a word.
 
 ## Firmware: version 16 (milestone 2, done)
 
@@ -235,4 +236,10 @@ So the client:
    - test/hostclient.c runs the client's own code against a fake board: the
      real one, a copy with its serial number, and firmware 15. A client
      that skips the check fails 4 of its checks.
-6. Hardware confirmation, then docs in both languages, then a release.
+6. **Done.** Confirmed on hardware by Marco: the update to 16, the `{host}`
+   conversion, secrets with and without the key, the minute running out,
+   the key file in a new session, the Linux and Windows clients, and the
+   regressions `-mcall-prologues` could have caused (taps, the hold, IR,
+   the power-on macro, the password and lockout). The READMEs and
+   HARDENED_MODEs in both languages describe secrets in place of `{host}`.
+   What remains is the release: the tag, and the host binaries rebuilt.

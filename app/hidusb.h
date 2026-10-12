@@ -58,7 +58,7 @@ uint8_t  hidAllowed(void);      /* ask at least every 32 s: see hidusb.c */
 void     hidKey(uint8_t modifier, uint8_t key);
 void     hidTypeChar(char c, uint8_t mod);  /* US layout; mod adds to it */
 
-/* The firmware's: the lockout and the host key, as in v1. Checking the
+/* The firmware's: the lockout and the secrets' key. Checking the
    password is the core's (core.h); what a right or wrong one means for the
    lockout, and a new one, are the firmware's to hear about. */
 void    hidPassWrong(void);     /* a wrong password: a wrong code */

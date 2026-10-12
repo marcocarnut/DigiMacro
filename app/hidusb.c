@@ -57,7 +57,7 @@ static uint8_t  restartWanted;
 static uint16_t restartAsked;
 
 /* Whatever the last request carried or the last answer held -- a password,
-   a host key, a chunk of EEPROM -- stays in the report until the next one,
+   a key, a chunk of EEPROM -- stays in the report until the next one,
    and anybody who can reach the device can read it back. So it is wiped
    wherever it might have held something, and when the window closes. */
 static void wipe(void)

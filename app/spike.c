@@ -68,7 +68,7 @@ void app_loop(void)
     }
 }
 
-/* No lockout and no host key. The password is real: the core checks it,
+/* No lockout and no key. The password is real: the core checks it,
    and SETPASS sets it. */
 void    hidPassWrong(void)                       { }
 void    hidPassRight(void)                       { }

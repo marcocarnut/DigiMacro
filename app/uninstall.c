@@ -14,7 +14,7 @@
  * and the core has already checked the CRC over all of it before running
  * any. What is left is two things, both before USB connects:
  *
- *   1. wipe the EEPROM -- the table, the password, the host key -- so that
+ *   1. wipe the EEPROM -- the table, the password, the key check -- so that
  *      no program put on the board afterwards finds any of it;
  *   2. point the reset vector, in page 0, at Micronucleus.
  *

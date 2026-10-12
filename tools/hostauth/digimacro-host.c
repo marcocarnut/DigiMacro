@@ -1,17 +1,26 @@
 /*
- * digimacro-host -- prove to a DigiMacro board that it is plugged into a
- * computer it should trust.
+ * digimacro-host -- give a DigiMacro board the key to its secrets.
  *
- * Macros containing {host} stop at that point unless the host has sent the
- * board's host key lately. This sends it: to every DigiMacro plugged in whose
- * serial number has a line in the key file. With -e it sends it again every
- * so many seconds, which turns "lately" into "for as long as this runs" --
- * run it from the session, and stop it when the screen locks.
+ * What follows {secret} in a macro is kept encrypted on the board, which
+ * plays it only while the host has sent the key lately. This sends it: to
+ * every DigiMacro plugged in whose serial number has a line in the key file.
+ * With -e it sends it again every so many seconds, which turns "lately" into
+ * "for as long as this runs" -- run it from the session, and stop it when the
+ * screen locks.
+ *
+ * But first the board proves it is the board: a copy can carry the serial
+ * number, and would gladly take the key. PROVE sends it eight random bytes,
+ * and the answer must be them encrypted under the key's check value --
+ * which only the real board holds, and which this computes from the key.
+ * A board that answers anything else is not sent the key.
  *
  * The key file is what the app downloads, one line per board:
  *
  *      # comments are ignored
- *      7DD5DC7E 0123456789abcdef
+ *      7DD5DC7E 0123456789abcdef0123456789abcdef
+ *
+ * (v2's host keys, sixteen digits, are for {host}, which firmware 16 has no
+ * more: such a line is skipped, with a word.)
  *
  * by default ~/.config/digimacro/host.key on Linux and
  * %APPDATA%\digimacro\host.key on Windows, and it should be readable by you
@@ -21,6 +30,7 @@
  *      make                    Linux
  *      make windows            digimacro-host.exe, with MinGW
  */
+#define _CRT_RAND_S                 /* rand_s(), on Windows */
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,12 +49,16 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <linux/hidraw.h>
+#include <sys/random.h>
 #endif
+
+#include "xtea.h"
 
 #define VND_ID      2           /* the vendor collection's report */
 #define VND_LEN     36
-#define HOSTAUTH    0x64
-#define KEY_LEN     8
+#define KEYAUTH     0x6A
+#define PROVE       0x6B
+#define KEY_LEN     16
 #define MAX_BOARDS  16
 
 /* 16c0:27db is obdev's shared ID for keyboards told apart by serial number,
@@ -94,6 +108,11 @@ static int load_keys(const char *path)
             fprintf(stderr, "%s: skipping a malformed line\n", path);
             continue;
         }
+        if (strlen(hex) == 16) {
+            fprintf(stderr, "%s: skipping %s's v2 host key: firmware 16 uses the "
+                    "32-digit key the page makes now\n", path, serial);
+            continue;
+        }
         if (strlen(serial) >= sizeof keys[0].serial || strlen(hex) != 2 * KEY_LEN) {
             fprintf(stderr, "%s: skipping a malformed line\n", path);
             continue;
@@ -133,50 +152,102 @@ static const char *digits_of(const char *serial, const char *name)
     return NULL;
 }
 
-/* The request: a feature report to set, then one to get. The answer comes
-   back with or without the report ID in front, which is the one thing the
-   HID specification leaves to taste; no command is 2, so it can tell. */
-static void fill_request(unsigned char *buf, const unsigned char *key)
-{
-    memset(buf, 0, 1 + VND_LEN);
-    buf[0] = VND_ID;
-    buf[1] = HOSTAUTH;
-    buf[4] = KEY_LEN;
-    memcpy(buf + 5, key, KEY_LEN);
-}
-
-static int accepted(const unsigned char *buf)
-{
-    return (buf[0] == VND_ID ? buf[1] : buf[0]) == HOSTAUTH;
-}
+/* What could come of it: */
+#define TRUSTED     1               /* the board holds the key */
+#define REFUSED     0               /* wrong key, or within a second of one */
+#define UNREACHED   (-1)            /* could not be asked */
+#define IMPOSTOR    (-2)            /* answered PROVE wrongly: not sent */
+#define TOO_OLD     (-3)            /* refused PROVE: firmware before 16 */
 
 /* Say what changed, so a loop running for hours stays quiet. */
 static void report(struct key *k, const char *digits, int r, int verbose)
 {
     if (verbose || r != k->last)
-        printf("%s: %s\n", digits, r > 0 ? "trusted" : r == 0
-               ? "refused: wrong key, or asked again within a second"
-               : "could not be reached");
+        printf("%s: %s\n", digits,
+               r == TRUSTED ? "holds the key" :
+               r == REFUSED ? "refused: wrong key, or asked again within a second" :
+               r == IMPOSTOR ? "failed to prove itself -- a copy of the board, or a key "
+                               "that is not its own: the key was not sent" :
+               r == TOO_OLD ? "firmware older than 16, which has no secrets: update it" :
+               "could not be reached");
     k->last = r;
+}
+
+/* One request: a feature report to set, then one to get, the answer left in
+   buf without the report ID -- which comes back in front or not, the one
+   thing the HID specification leaves to taste; no command is 2, so it can
+   tell. Defined below for each system; 0, or -1 if it could not be asked. */
+typedef struct port port;
+static int exchange(port *p, unsigned char *buf);
+
+static int ask(port *p, int cmd, const unsigned char *data, int n,
+               unsigned char answer[VND_LEN])
+{
+    unsigned char buf[1 + VND_LEN];
+
+    memset(buf, 0, sizeof buf);
+    buf[0] = VND_ID;
+    buf[1] = cmd;
+    buf[4] = n;
+    memcpy(buf + 5, data, n);
+    if (exchange(p, buf) < 0) return -1;
+    memcpy(answer, buf[0] == VND_ID ? buf + 1 : buf, VND_LEN);
+    memset(buf, 0, sizeof buf);
+    return 0;
+}
+
+static int random_bytes(unsigned char *b, int n);
+
+/* PROVE, and only then KEYAUTH. */
+static int give_key(port *p, const unsigned char *key)
+{
+    unsigned char c[8], want[8], k2[KEY_LEN], a[VND_LEN];
+    int r = UNREACHED;
+
+    if (random_bytes(c, sizeof c) < 0) return UNREACHED;
+    memset(k2, 0, 8);
+    xtea(k2, key);                      /* the check value... */
+    memcpy(k2 + 8, k2, 8);              /* ...twice, PROVE's key */
+    memcpy(want, c, 8);
+    xtea(want, k2);
+
+    if (ask(p, PROVE, c, 8, a) < 0) goto out;
+    if (a[0] != PROVE) { r = TOO_OLD; goto out; }
+    if (memcmp(a + 4, want, 8)) { r = IMPOSTOR; goto out; }
+    if (ask(p, KEYAUTH, key, KEY_LEN, a) < 0) goto out;
+    r = a[0] == KEYAUTH ? TRUSTED : REFUSED;
+out:
+    memset(k2, 0, sizeof k2);
+    return r;
 }
 
 /* ---- Linux: hidraw ------------------------------------------------------ */
 #ifndef _WIN32
 
-/* 1 if the board took it, 0 if it refused, -1 if it could not be asked. */
+struct port { int fd; };
+
+static int exchange(port *p, unsigned char *buf)
+{
+    if (ioctl(p->fd, HIDIOCSFEATURE(1 + VND_LEN), buf) < 0) return -1;
+    memset(buf, 0, 1 + VND_LEN);
+    buf[0] = VND_ID;
+    return ioctl(p->fd, HIDIOCGFEATURE(1 + VND_LEN), buf) < 0 ? -1 : 0;
+}
+
+static int random_bytes(unsigned char *b, int n)
+{
+    return getrandom(b, n, 0) == n ? 0 : -1;
+}
+
 static int send_key(const char *dev, const unsigned char *key)
 {
-    unsigned char buf[1 + VND_LEN];
-    int fd = open(dev, O_RDWR);
+    port p = { open(dev, O_RDWR) };
+    int r;
 
-    if (fd < 0) return -1;
-    fill_request(buf, key);
-    if (ioctl(fd, HIDIOCSFEATURE(sizeof buf), buf) < 0) { close(fd); return -1; }
-    memset(buf, 0, sizeof buf);
-    buf[0] = VND_ID;
-    if (ioctl(fd, HIDIOCGFEATURE(sizeof buf), buf) < 0) { close(fd); return -1; }
-    close(fd);
-    return accepted(buf);
+    if (p.fd < 0) return UNREACHED;
+    r = give_key(&p, key);
+    close(p.fd);
+    return r;
 }
 
 /* Every DigiMacro plugged in, by its hidraw node's uevent: the kernel gives
@@ -218,9 +289,9 @@ static int sweep(int verbose)
         }
         snprintf(path, sizeof path, "/dev/%s", e->d_name);
         int r = send_key(path, k->key);
-        if (r < 0 && (verbose || r != k->last))
+        if (r == UNREACHED && (verbose || r != k->last))
             fprintf(stderr, "%s: %s: %s\n", digits, path, strerror(errno));
-        if (r <= 0) bad = 1;
+        if (r != TRUSTED) bad = 1;
         report(k, digits, r, verbose);
     }
     closedir(d);
@@ -240,6 +311,26 @@ static const char *default_file(char *buf, size_t n)
 
 /* ---- Windows: hid.dll ---------------------------------------------------- */
 #else
+
+struct port { HANDLE h; };
+
+static int exchange(port *p, unsigned char *buf)
+{
+    if (!HidD_SetFeature(p->h, buf, 1 + VND_LEN)) return -1;
+    memset(buf, 0, 1 + VND_LEN);
+    buf[0] = VND_ID;
+    return HidD_GetFeature(p->h, buf, 1 + VND_LEN) ? 0 : -1;
+}
+
+static int random_bytes(unsigned char *b, int n)
+{
+    for (int i = 0; i < n; i++) {
+        unsigned int v;
+        if (rand_s(&v)) return -1;
+        b[i] = (unsigned char)v;
+    }
+    return 0;
+}
 
 static void narrow(char *out, size_t n, const wchar_t *in)
 {
@@ -313,19 +404,11 @@ static int sweep(int verbose)
             continue;
         }
 
-        unsigned char buf[1 + VND_LEN];
-        int r;
-        fill_request(buf, k->key);
-        if (!HidD_SetFeature(h, buf, sizeof buf)) {
-            r = -1;
-        } else {
-            memset(buf, 0, sizeof buf);
-            buf[0] = VND_ID;
-            r = HidD_GetFeature(h, buf, sizeof buf) ? accepted(buf) : -1;
-        }
-        if (r < 0 && (verbose || r != k->last))
+        port p = { h };
+        int r = give_key(&p, k->key);
+        if (r == UNREACHED && (verbose || r != k->last))
             fprintf(stderr, "%s: error %lu\n", digits, GetLastError());
-        if (r <= 0) bad = 1;
+        if (r != TRUSTED) bad = 1;
         report(k, digits, r, verbose);
         CloseHandle(h);
     }

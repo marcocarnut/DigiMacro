@@ -22,7 +22,7 @@
 #include "board.h"
 #include "dm.h"
 #include "touchpad.h"
-#include "../xtea.h"
+#include "../../tools/hostauth/xtea.h"
 
 #define ADDR            7
 #define KEYAUTH         0x6A

@@ -135,7 +135,7 @@ endef
 # test/run.sh runs this when they are there.
 SOFTUSB ?= ../simavr-softusb
 SIMLIB   = $(SOFTUSB)/simavr/simavr/obj-$(shell cc -dumpmachine)/libsimavr.a
-$(O)/sim_secret: test/sim/secret.c test/xtea.h $(SIMLIB) | $(O)
+$(O)/sim_secret: test/sim/secret.c tools/hostauth/xtea.h $(SIMLIB) | $(O)
 	cc -O2 -g -Wall -I$(SOFTUSB)/simavr/simavr/sim -I$(SOFTUSB)/harness -o $@ $< \
 	    $(addprefix $(SOFTUSB)/harness/,board.c softusb.c dm.c touchpad.c) $(SIMLIB) -lelf -lm
 simtest: $(O)/sim_secret $(O)/core.elf $(O)/digimacro.hex

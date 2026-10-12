@@ -1,5 +1,5 @@
-# digimacro-host: send a DigiMacro board its host key, so that macros
-# guarded by {host} play on this computer.
+# digimacro-host: give a DigiMacro board the key to its secrets, once it
+# has proved it is the board, so that {secret}s play on this computer.
 #
 #   make                the client, for Linux
 #   make install        into ~/.local/bin; PREFIX=/usr/local for everyone
@@ -15,16 +15,16 @@ CFLAGS  ?= -O2 -Wall -Wextra
 PREFIX  ?= $(HOME)/.local
 WINCC   ?= x86_64-w64-mingw32-gcc
 
-digimacro-host: digimacro-host.c
+digimacro-host: digimacro-host.c xtea.h
 	$(CC) $(CFLAGS) -o $@ $<
 
 static: digimacro-host-linux-x86_64
-digimacro-host-linux-x86_64: digimacro-host.c
+digimacro-host-linux-x86_64: digimacro-host.c xtea.h
 	$(CC) $(CFLAGS) -static -s -o $@ $<
 
 # Static, so the .exe needs no MinGW runtime DLLs beside it.
 windows: digimacro-host.exe
-digimacro-host.exe: digimacro-host.c
+digimacro-host.exe: digimacro-host.c xtea.h
 	$(WINCC) $(CFLAGS) -static -s -o $@ $< -lhid -lsetupapi
 
 install: digimacro-host

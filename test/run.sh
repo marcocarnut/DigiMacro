@@ -151,3 +151,8 @@ if [ -n "$SIMLIB" ] && command -v node >/dev/null 2>&1; then
 else
     echo "../simavr-softusb not built (see its PLAN.md), skipped"
 fi
+
+echo
+echo "== digimacro-host: PROVE first, and the key only to the real board =="
+cc -w -I../tools/hostauth -o "$OUT"_hostclient hostclient.c && "$OUT"_hostclient 2>/dev/null | tail -1
+"$OUT"_hostclient >/dev/null 2>&1 || exit 1

@@ -21,6 +21,10 @@
 #   make uninstall  uninstall.hex: an app that wipes the EEPROM and hands
 #                   the board back to Micronucleus, which it carries
 #                   (app/uninstall.c)
+#   make coreupdate spike: coreupdate.hex, an app that puts the core just
+#                   built in place of a board's, in one step
+#                   (app/coreupdate.S); make simcoreupdate tries it on a
+#                   simulated board with v3.0's core
 #   make test       the core's request handling, built for the host
 #   make size       what each part takes
 #
@@ -58,6 +62,7 @@ val = $(shell printf '%d' $$(( $$(echo '$(1)' | $(CC) -E -P -Icore $(LAYOUT) -in
 APP_START  := $(call val,APP_START)
 APP_END    := $(call val,APP_END)
 CORE_TABLE := $(call val,CORE_TABLE)
+PAGE       := $(call val,PAGE)
 APP_RAM    := $(call val,APP_RAM)
 APP_VECS   := $(call val,APP_START + 2 * APP_VECTORS)
 APP_HDR    := $(call val,APP_MAGIC - APP_START)
@@ -254,6 +259,35 @@ $(O)/uninstall.hex: $(O)/uninstall.elf app/apphex.py $(MN_HEX)
 	    $$(stat -c %s $(@:.hex=.bin)) $(MN_START)
 	python3 app/apphex.py app $(APP_START) $(APP_HDR) $(@:.hex=.bin) $@ $(MN_HEX)
 
+# ---- spike: the core updater -------------------------------------------
+
+# The core as the updater carries it: its pages up to its end, then its
+# table, and how many pages that is, for app/coreupdate.S.
+APPVER_CU = 1
+
+coreupdate: $(O)/coreupdate.hex
+$(O)/coreimg.bin: $(O)/core.elf $(O)/core.hex
+	$(OBJCOPY) -I ihex -O binary --gap-fill 0xFF $(O)/core.hex $(O)/core-flash.bin
+	@n=$$(( (0x$$($(NM) $< | awk '$$3=="__data_load_end"{print $$1}') + $(PAGE) - 1) / $(PAGE) )); \
+	 echo "#define NCORE $$n" > $(O)/coreimg.h; \
+	 head -c $$(( n * $(PAGE) )) $(O)/core-flash.bin > $@; \
+	 tail -c $$(( $(APP_START) - $(CORE_TABLE) )) $(O)/core-flash.bin >> $@; \
+	 echo "coreupdate: carries $$n pages of core and its table"
+$(O)/coreupdate.o: app/coreupdate.S core/layout.h $(O)/coreimg.bin | $(O)
+	$(CC) $(ASFLAGS) -I$(O) -Wa,-I$(O) -c -o $@ $<
+$(O)/coreupdate.elf: $(O)/apphdrCU.o $(O)/coreupdate.o
+	$(CC) $(CFLAGS) $(APPLINK) -o $@ $^
+$(O)/coreupdate.hex: $(O)/coreupdate.elf app/apphex.py
+	$(apphex)
+
+# Tried on a simulated board: v3.0's core, the updater, and what is left.
+$(O)/sim_coreupdate: test/sim/coreupdate.c $(SIMLIB) | $(O)
+	cc -O2 -g -Wall -I$(SOFTUSB)/simavr/simavr/sim -I$(SOFTUSB)/harness -o $@ $< \
+	    $(addprefix $(SOFTUSB)/harness/,board.c softusb.c dm.c touchpad.c) $(SIMLIB) -lelf -lm
+simcoreupdate: $(O)/sim_coreupdate $(O)/core.elf $(O)/coreupdate.hex
+	git show v3.0:web/firmware/digimacro-v2-core.hex > $(O)/core-v3.0.hex
+	$(O)/sim_coreupdate $(O)/core.elf $(O)/core-v3.0.hex $(O)/coreupdate.hex $(O)/core-flash.bin
+
 # A script, not something to build: without this, make's built-in rules
 # would happily make apphex.py from apphex.py.o.
 app/apphex.py: ;
@@ -280,5 +314,5 @@ clean:
 	rm -rf $(O)
 	$(MAKE) -C core/test clean
 
-.PHONY: all release site hosts spike page irspike uninstall size test simtest clean
+.PHONY: all release site hosts spike page irspike uninstall coreupdate size test simtest simcoreupdate clean
 .SECONDARY:

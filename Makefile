@@ -79,20 +79,26 @@ $(O):
 
 CORE_OBJ = $(O)/core.o $(O)/coretab.o $(O)/usbdrv.o $(O)/usbdrvasm.o $(O)/osccal.o
 
+# Measured, flag by flag, on avr-gcc 7.3: these three take 72 bytes off the
+# core, and nothing else tried did (newer gcc makes it bigger). The core's
+# alone, and at the link too, where -flto compiles it.
+COREOPT = -fno-move-loop-invariants -fno-inline-small-functions \
+          -fno-optimize-sibling-calls
+
 $(O)/core.o: core/core.c core/core.h core/layout.h $(VUSB)/usbconfig.h | $(O)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(COREOPT) -c -o $@ $<
 $(O)/coretab.o: core/coretab.S core/layout.h | $(O)
 	$(CC) $(ASFLAGS) -c -o $@ $<
 $(O)/usbdrv.o: $(VUSB)/usbdrv.c $(VUSB)/usbconfig.h | $(O)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(COREOPT) -c -o $@ $<
 $(O)/usbdrvasm.o: $(VUSB)/usbdrvasm.S $(VUSB)/usbconfig.h | $(O)
 	$(CC) $(ASFLAGS) -c -o $@ $<
 $(O)/osccal.o: $(VUSB)/osccal.c $(VUSB)/usbconfig.h | $(O)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(COREOPT) -c -o $@ $<
 
 # The core must end below its table, and its variables below the app's.
 $(O)/core.elf: $(CORE_OBJ)
-	$(CC) $(CFLAGS) -Wl,--gc-sections -Wl,-u,coretab \
+	$(CC) $(CFLAGS) $(COREOPT) -Wl,--gc-sections -Wl,-u,coretab \
 	    -Wl,--section-start=.coretab=$(call hexaddr,$(CORE_TABLE)) \
 	    -Wl,--defsym=__app_vectors=$(APP_VECS) -o $@ $^
 	@end=$$(( 0x$$($(NM) $@ | awk '$$3=="__data_load_end"{print $$1}') )); \

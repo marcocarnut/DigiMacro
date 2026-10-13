@@ -69,14 +69,14 @@ PROGMEM const uchar usbDescriptorHidReport[] = {
     0x95, 0x01, 0x75, 0x08, 0x81, 0x03,
     0x95, 0x05, 0x75, 0x01, 0x05, 0x08, 0x19, 0x01, 0x29, 0x05, 0x91, 0x02,
     0x95, 0x01, 0x75, 0x03, 0x91, 0x03,
-    0x95, 0x03, 0x75, 0x08, 0x15, 0x00, 0x25, 0x65,
+    0x95, 0x03, 0x75, 0x08, 0x25, 0x65,
     0x05, 0x07, 0x19, 0x00, 0x29, 0x65, 0x81, 0x00,
     0xC0,
 
     0x06, 0x00, 0xFF, 0x09, 0x01, 0xA1, 0x01,
     0x85, HID_REPORT_VND,
-    0x09, 0x02, 0x15, 0x00, 0x26, 0xFF, 0x00,
-    0x75, 0x08, 0x95, DM_VND_LEN, 0xB1, 0x02,
+    0x09, 0x02, 0x26, 0xFF, 0x00,
+    0x95, DM_VND_LEN, 0xB1, 0x02,
     0xC0
 };
 _Static_assert(sizeof usbDescriptorHidReport == (USB_CFG_DESCR_PROPS_HID_REPORT & 0x3FFF),
@@ -497,8 +497,6 @@ uint8_t hidSend(const uint8_t *r, uint8_t n)
 
 static void reconnect(void)
 {
-    USB_INTR_ENABLE &= ~(1 << USB_INTR_ENABLE_BIT);
-    usbDeviceDisconnect();
     for (uint8_t i = 30; i; i--) _delay_ms(10);
     usbDeviceConnect();
     kbdIdle[0] = HID_REPORT_KBD;
@@ -716,10 +714,11 @@ static void NORETURN update(void)
    programmer, which means a power cycle, so once is enough. */
 static void readFuses(void)
 {
-    fuses[0] = boot_lock_fuse_bits_get(GET_LOW_FUSE_BITS);
-    fuses[1] = boot_lock_fuse_bits_get(GET_HIGH_FUSE_BITS);
-    fuses[2] = boot_lock_fuse_bits_get(GET_EXTENDED_FUSE_BITS);
-    fuses[3] = boot_lock_fuse_bits_get(GET_LOCK_BITS);
+    static const uint8_t PROGMEM z[4] = {      /* in INFO's order */
+        GET_LOW_FUSE_BITS, GET_HIGH_FUSE_BITS, GET_EXTENDED_FUSE_BITS, GET_LOCK_BITS
+    };
+    for (uint8_t i = 0; i < 4; i++)
+        fuses[i] = boot_lock_fuse_bits_get(pgm_read_byte(z + i));
 }
 
 /* Called often, by the app or by the loop below. A page that has arrived

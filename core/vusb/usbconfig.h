@@ -372,7 +372,7 @@ section at the end of this file).
  * as "postcogi". hidusb.cpp now refuses to compile if the two disagree. */
 #define USB_CFG_DESCR_PROPS_STRING_SERIAL_NUMBER    (USB_PROP_IS_RAM | USB_PROP_LENGTH(2 + 2 * 23))
 #define USB_CFG_DESCR_PROPS_HID 0
-#define USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH 88
+#define USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH 82
 #define USB_CFG_DESCR_PROPS_HID_REPORT USB_PROP_LENGTH(USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH)
 #define USB_CFG_DESCR_PROPS_UNKNOWN                 0
 

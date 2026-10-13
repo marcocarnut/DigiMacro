@@ -149,9 +149,22 @@ SIMLIB   = $(SOFTUSB)/simavr/simavr/obj-$(shell cc -dumpmachine)/libsimavr.a
 $(O)/sim_secret: test/sim/secret.c tools/hostauth/xtea.h $(SIMLIB) | $(O)
 	cc -O2 -g -Wall -I$(SOFTUSB)/simavr/simavr/sim -I$(SOFTUSB)/harness -o $@ $< \
 	    $(addprefix $(SOFTUSB)/harness/,board.c softusb.c dm.c touchpad.c) $(SIMLIB) -lelf -lm
-simtest: $(O)/sim_secret $(O)/core.elf $(O)/digimacro.hex
+simtest: $(O)/sim_secret $(O)/sim_hang $(O)/core.elf $(O)/digimacro.hex $(O)/hangapp.hex
 	node test/webtable.js --emit-secret > $(O)/sealed.txt
 	$(O)/sim_secret $(O)/core.elf $(O)/digimacro.hex $(O)/sealed.txt
+	$(O)/sim_hang $(O)/core.elf $(O)/hangapp.hex
+
+# ...and the core's watchdog, which only a chip has: an app that hangs.
+APPVER_HG = 1
+$(O)/sim_hang: test/sim/hang.c $(SIMLIB) | $(O)
+	cc -O2 -g -Wall -I$(SOFTUSB)/simavr/simavr/sim -I$(SOFTUSB)/harness -o $@ $< \
+	    $(addprefix $(SOFTUSB)/harness/,board.c softusb.c dm.c touchpad.c) $(SIMLIB) -lelf -lm
+$(O)/hangapp.o: test/sim/hangapp.S | $(O)
+	$(CC) $(ASFLAGS) -c -o $@ $<
+$(O)/hangapp.elf: $(O)/apphdrHG.o $(O)/hangapp.o
+	$(CC) $(CFLAGS) $(APPLINK) -o $@ $^
+$(O)/hangapp.hex: $(O)/hangapp.elf app/apphex.py
+	$(apphex)
 
 # ---- DigiMacro -------------------------------------------------------
 

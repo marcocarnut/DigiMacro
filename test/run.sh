@@ -137,7 +137,7 @@ else
 fi
 
 echo
-echo "== secrets on a simulated board: the real firmware, xtea.S and all =="
+echo "== on a simulated board: secrets, xtea.S and all, and a hung app =="
 SIMLIB=$(ls ../../simavr-softusb/simavr/simavr/obj-*/libsimavr.a 2>/dev/null | head -1)
 if [ -n "$SIMLIB" ] && command -v node >/dev/null 2>&1; then
     if make -s -C .. simtest > "$OUT"_sim 2>&1 && tail -1 "$OUT"_sim | grep -qx PASS; then
@@ -145,7 +145,7 @@ if [ -n "$SIMLIB" ] && command -v node >/dev/null 2>&1; then
         echo "all checks passed"
     else
         cat "$OUT"_sim
-        echo "the simulated board does not play its secrets"
+        echo "the simulated board fails a check"
         exit 1
     fi
 else

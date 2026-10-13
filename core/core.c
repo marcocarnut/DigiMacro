@@ -39,6 +39,20 @@
 #define APP(slot, type)     ((type)(uintptr_t)(APP_START / 2 + (slot)))
 #define FOREVER             for (;;)
 #define NORETURN            __attribute__((noreturn))
+
+/* The watchdog's timed sequence, once: avr-libc's macros put all of it
+   inline, at each of five places. In assembler, so that the second write
+   is certain to follow the first within the four cycles it must. */
+static void __attribute__((noinline)) wdtSet(uint8_t v)
+{
+    asm volatile ("in __tmp_reg__, __SREG__\n\tcli\n\twdr\n\t"
+                  "out %0, %1\n\tout %0, %2\n\tout __SREG__, __tmp_reg__"
+                  :: "I" (_SFR_IO_ADDR(WDTCR)), "r" ((uint8_t)((1 << WDCE) | (1 << WDE))), "r" (v));
+}
+#undef wdt_enable
+#undef wdt_disable
+#define wdt_enable(t)       wdtSet((1 << WDE) | ((t) & 8 ? 1 << WDP3 : 0) | ((t) & 7))
+#define wdt_disable()       wdtSet(0)
 #endif
 
 /* The driver's transmit state: idle when bit 4 is set. Not in usbdrv.h. */
@@ -151,7 +165,6 @@ static uint8_t vnd[DM_VND_LEN];
 static uint8_t vndLeft;
 static uint8_t vndAt;
 
-static uint8_t  fuses[4];       /* low, high, extended, lock, read at boot */
 
 /* The core's flags, as bits of GPIOR0: the compiler reaches a register in
    the low I/O space with SBI, CBI and SBIC, two bytes each, where a byte in
@@ -282,19 +295,22 @@ static void passPause(void)
    host fail it too. */
 static uint8_t appValid(void)
 {
-    if (flashByte(APP_MAGIC) != APP_MAGIC0
-        || flashByte(APP_MAGIC + 1) != APP_MAGIC1
+    if (flashWord(APP_MAGIC) != (APP_MAGIC0 | APP_MAGIC1 << 8)
         || flashByte(APP_API) != CORE_API)
+
         return 0;
 
     uint16_t len = flashWord(APP_LENGTH);
     if (len < APP_CODE - APP_START || len > APP_END - APP_START - 2)
         return 0;
 
+    /* ...over the CRC too: little-endian after its bytes, a right one
+       leaves 0, with no read and compare of its own */
     uint16_t crc = 0xFFFF;
-    for (uint16_t a = APP_START; a < APP_START + len; a++)
+    for (uint16_t a = APP_START; a < APP_START + len + 2; a++)
         crc = _crc16_update(crc, flashByte(a));
-    return crc == flashWord(APP_START + len);
+    return crc == 0;
+
 }
 
 /* Every interrupt source an app might have turned on, off -- before its
@@ -345,7 +361,10 @@ static void takePage(uint16_t addr, uint8_t n)
     memcpy(pageBuf + second, vnd + DM_VND_DATA, DM_VND_CHUNK);
     idleTurns = 0;              /* still at it: see turn() */
     pageAt = addr & ~(PAGE - 1);
-    pageHalf = !second;
+    pageHalf = 1;               /* pageWrite() clears it, and no page comes
+                                   before that. Not = !second: a bit of GPIOR0
+                                   set from a value is a branch and both sbi
+                                   and cbi, 12 bytes more */
     if (second) {
         pageWanted = 1;
         vnd[0] = 0;             /* not written yet: see pageWrite() */
@@ -362,11 +381,20 @@ static void vndAnswer(void)
 
     switch (vnd[0]) {
     case DM_FUNC_INFO:
+        memset(vnd + 1, 0, DM_VND_LEN - 1);
         memcpy_P(vnd + 1, infoFixed, sizeof infoFixed);
-        memset(vnd + 1 + sizeof infoFixed, 0, DM_VND_LEN - 1 - sizeof infoFixed);
-        memcpy(vnd + DM_INFO_FUSES, fuses, 4);
-        vnd[7] = (hidPassSet()  ? DM_ST_PASSWORD : 0)
-               | (hidUnlocked() ? DM_ST_UNLOCKED : 0);
+
+        /* The fuses and lock bits, for the app to say whether a board
+           meant to be hardened really is: low, high, extended, lock, at
+           Z = 0, 3, 2, 1. A read is a write to SPMCSR and an LPM within
+           three cycles, which an interrupt between them would miss. */
+        for (uint8_t i = 0; i < 4; i++) {
+            cli();
+            vnd[DM_INFO_FUSES + i] = boot_lock_fuse_bits_get(-i & 3);
+            sei();
+        }
+        vnd[7] = !hidPassSet() ? DM_ST_UNLOCKED         /* hidUnlocked() */
+               : unlocked ? DM_ST_PASSWORD | DM_ST_UNLOCKED : DM_ST_PASSWORD;
         vnd[DM_INFO_CORE] = mode | halted;
         if (app) {
             vnd[DM_INFO_APPVER] = flashByte(APP_VERSION);
@@ -443,7 +471,8 @@ usbMsgLen_t usbFunctionSetup(uchar data[8])
         return sizeof(kbdIdle);
 
     case USBRQ_HID_SET_REPORT:
-        writingVnd = (rq->wValue.bytes[0] == HID_REPORT_VND);
+        writingVnd = 0;         /* as pageHalf in takePage() */
+        if (rq->wValue.bytes[0] == HID_REPORT_VND) writingVnd = 1;
         vndAt = 0;
         vndLeft = sizeof(vnd);
         return USB_NO_MSG;
@@ -540,7 +569,26 @@ static void spmSlot(void)
     for (i = 300; i && !usbInterruptIsReady(); i--) turn();
 }
 
+/* The SPM commands pageWrite() allows while it writes, and 0 the rest of
+   the time. Each SPM takes its command from here at the last moment, so
+   that a CPU jumping into the middle of spm() -- one running on a sagging
+   supply runs anything, and wrote a word of an app's flash so -- finds 0
+   and does nothing. Only the two or three instructions between the load
+   and the SPM can still write. */
+static volatile uint8_t spmArm;
+#define SPM_ARM ((1 << PGWRT) | (1 << PGERS) | (1 << SPMEN))
+
 #ifndef CORE_HOST_TEST
+/* The command is read and masked right before its SPM, in the same few
+   instructions: loaded earlier, it would sit in a register for a stray
+   jump to find. A fill takes its word in r1:r0, and gives r1 back zero. */
+#define SPMASM(cmd, a, pre, post, ...) ({ uint8_t t; \
+    asm volatile (pre "lds %0, %3\n\tandi %0, %2\n\tout %1, %0\n\tspm" post \
+                  : "=&d" (t) : "I" (_SFR_IO_ADDR(SPMCSR)), "M" (cmd), "i" (&spmArm), \
+                    "z" (a), ##__VA_ARGS__); })
+#define SPM(cmd, a)     SPMASM(cmd, a, "", "")
+#define SPMFILL(a, w)   SPMASM(1 << SPMEN, a, "movw r0, %5\n\t", "\n\tclr r1", "r" (w))
+
 /* Erase the page at `a`, or write `p` to it, or both, with interrupts off
    throughout -- and after any EEPROM write the app left running, since SPM
    and an EEPROM write do not overlap. Both at once is for page 0 alone:
@@ -551,13 +599,13 @@ static void __attribute__((noinline)) spm(uint16_t a, const uint8_t *p, uint8_t 
     eeprom_busy_wait();
     cli();
     if (erase) {
-        boot_page_erase(a);
+        SPM((1 << PGERS) | (1 << SPMEN), a);
         boot_spm_busy_wait();
     }
     if (p) {
         for (uint8_t i = 0; i < PAGE; i += 2)
-            boot_page_fill(a + i, p[i] | ((uint16_t)p[i + 1] << 8));
-        boot_page_write(a);
+            SPMFILL(a + i, p[i] | ((uint16_t)p[i + 1] << 8));
+        SPM((1 << PGWRT) | (1 << SPMEN), a);
         boot_spm_busy_wait();
     }
     sei();
@@ -659,6 +707,8 @@ static void pageWrite(void)
 {
     uint16_t a = pageAt;
 
+    spmArm = SPM_ARM;
+
 #if !HAS_BOOTLOADER
     ownResetVector();
 #endif
@@ -667,6 +717,7 @@ static void pageWrite(void)
         spm(APP_START, 0, 1);
     }
     spmPage(a, pageBuf);
+    spmArm = 0;
 
     /* The answer the host reads next: the page, or a refusal if the flash
        does not hold what was sent. */
@@ -700,25 +751,15 @@ static void updateStep(void)
         softReset();
 }
 
-static void NORETURN update(void)
+/* Not inlined: in corePoll() it would bring along ownResetVector()'s page
+   on the stack, a frame built and torn down on every call -- 36 bytes,
+   and time. */
+static void NORETURN __attribute__((noinline)) update(void)
 {
     quiet();
     F.app = 0;
     F.update = 1;
     FOREVER updateStep();
-}
-
-/* The fuses and lock bits, for the app to say whether a board meant to be
-   hardened really is. A read is a write to SPMCSR and an LPM within three
-   cycles, so it runs before interrupts are on. They only change with a
-   programmer, which means a power cycle, so once is enough. */
-static void readFuses(void)
-{
-    static const uint8_t PROGMEM z[4] = {      /* in INFO's order */
-        GET_LOW_FUSE_BITS, GET_HIGH_FUSE_BITS, GET_EXTENDED_FUSE_BITS, GET_LOCK_BITS
-    };
-    for (uint8_t i = 0; i < 4; i++)
-        fuses[i] = boot_lock_fuse_bits_get(pgm_read_byte(z + i));
 }
 
 /* Called often, by the app or by the loop below. A page that has arrived
@@ -785,7 +826,6 @@ int main(void)
     GPIOR0 = 0;
     DM_WINDOW = 0;              /* the seconds after a replug: layout.h */
     wdt_disable();
-    readFuses();
     sei();
 
     appStart(why);

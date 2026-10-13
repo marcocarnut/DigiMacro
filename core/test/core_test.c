@@ -46,8 +46,12 @@ static void spmWrite(uint16_t a, const uint8_t *p);
 /* core.c's spm(): what it may do to page 0 is erase and write it in the
    same call, interrupts off throughout. Erased alone, the vectors stay
    blank until the next call, and V-USB's interrupt finds them so. */
+static volatile uint8_t spmArm;         /* core.c's: armed while pageWrite() runs */
+static int unarmed, spms;
 static void spm(uint16_t a, const uint8_t *p, uint8_t erase)
 {
+    spms++;
+    if (!spmArm) unarmed++;
     if (a == 0 && !(erase && p)) vectorsBlank++;
     if (erase) spmErase(a);
     if (p) spmWrite(a, p);
@@ -195,7 +199,7 @@ static void boot(void)                  /* main(), without the loop */
     DM_WINDOW = 0;
     pageWanted = 0;
     commitWait = 0; allowOpen = 0; restartWanted = 0;
-    readFuses();
+
     halted = 0; wdtEnabled = 0;
     appStart(1 << PORF);                /* plugged in */
     hidRestart();
@@ -312,6 +316,7 @@ int main(void)
     CHECK((r[DM_INFO_START] | r[DM_INFO_START + 1] << 8) == APP_START);
     CHECK((r[DM_INFO_END] | r[DM_INFO_END + 1] << 8) == APP_END);
     CHECK(r[DM_INFO_PAGE] == PAGE);
+    CHECK((r[7] & (DM_ST_PASSWORD | DM_ST_UNLOCKED)) == DM_ST_UNLOCKED);   /* no password */
     storePass("test"); lockState = DM_ST_SOFTLOCK; keyState = DM_ST_KEY;
     r = ask(DM_FUNC_INFO, 0, 0, NULL);
     CHECK(r[7] == (DM_ST_PASSWORD | DM_ST_SOFTLOCK | DM_ST_KEY));
@@ -774,6 +779,9 @@ int main(void)
     for (int i = 0; i < 60; i++) hidPoll();
     CHECK(!restartWanted && !allowOpen && keyForgot == 1);
     CHECK(getReport()[0] == DM_FUNC_INFO);
+
+    printf("the flash, only ever written armed\n");
+    CHECK(spms > 0 && unarmed == 0 && spmArm == 0);
 
     printf("%d checks, %d failed\n", checks, fails);
     return fails != 0;

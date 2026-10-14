@@ -389,8 +389,9 @@ en: {
                   + 'is decided by the keyboard layout of the machine it is '
                   + 'plugged into — which is what the keyboard setting beside '
                   + 'Macros says. '
-                  + 'On US International an accented character is two presses, '
-                  + 'the accent and then the letter, and a bare accent mark is '
+                  + 'On US International and on Brazil\'s ABNT2 an accented '
+                  + 'character is two presses, the accent and then the letter '
+                  + '(ç has a key of its own on ABNT2), and a bare accent mark is '
                   + 'that key followed by a space. On a plain US keyboard there is '
                   + 'no way to type one at all, so the editor says so rather '
                   + 'than typing something else.',
@@ -955,10 +956,11 @@ pt: {
   'ref-layout':     'A placa envia pressionamentos de tecla, não letras, então '
                   + 'o que aparece é decidido pelo layout de teclado da '
                   + 'máquina em que ela está ligada — que é o que a opção de '
-                  + 'teclado ao lado de Macros informa. No US International um '
-                  + 'caractere '
+                  + 'teclado ao lado de Macros informa. No US International e '
+                  + 'no ABNT2 um caractere '
                   + 'acentuado são dois pressionamentos, o acento e depois a '
-                  + 'letra, e um acento sozinho é a tecla dele seguida de espaço. '
+                  + 'letra (no ABNT2, o ç tem tecla própria), e um acento '
+                  + 'sozinho é a tecla dele seguida de espaço. '
                   + 'Num teclado US puro não há como digitar um acento, então '
                   + 'o editor avisa em vez de digitar outra coisa.',
 

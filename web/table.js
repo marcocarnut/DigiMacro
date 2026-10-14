@@ -171,17 +171,39 @@ const TABLE_TOP  = 0x1E0;   /* the firmware stops walking here: 480,
 const MAX_SYM    = 5;
 
 /* ==================================================================== */
-/* The US layout                                                        */
+/* The layouts                                                          */
 /* ==================================================================== */
 
-const PLAIN = {' ': 0x2C, '-': 0x2D, '=': 0x2E, '[': 0x2F, ']': 0x30,
+/* What each key types, as the host's layout has it: character -> usage.
+   Letters and digits sit where they do on all of these, so only the rest is
+   listed. ALTGR is what Right Alt reaches -- AltGr, where a layout has one. */
+const US_PLAIN = {' ': 0x2C, '-': 0x2D, '=': 0x2E, '[': 0x2F, ']': 0x30,
                '\\': 0x31, ';': 0x33, "'": 0x34, '`': 0x35, ',': 0x36,
                '.': 0x37, '/': 0x38, '\n': 0x28, '\t': 0x2B, '\b': 0x2A};
-const SHIFTED = {'!': 0x1E, '@': 0x1F, '#': 0x20, '$': 0x21, '%': 0x22,
+const US_SHIFTED = {'!': 0x1E, '@': 0x1F, '#': 0x20, '$': 0x21, '%': 0x22,
                  '^': 0x23, '&': 0x24, '*': 0x25, '(': 0x26, ')': 0x27,
                  '_': 0x2D, '+': 0x2E, '{': 0x2F, '}': 0x30, '|': 0x31,
                  ':': 0x33, '"': 0x34, '~': 0x35, '<': 0x36, '>': 0x37,
                  '?': 0x38};
+
+/* Brazil's ABNT2. Its own "/?" key, right of ";", is usage 0x87, and the
+   board's keyboard only goes to 0x65 -- a stored keystroke keeps Shift in
+   bit 7 besides. So "/" comes from the keypad, which types it on any layout,
+   and "?" from AltGr+W, which ABNT2 prints on the key for the same reason:
+   keyboards without that key. "]" is the key beside Enter, which a real
+   ABNT2 keyboard sends as 0x32; hosts take 0x31 for the same key. */
+const ABNT2_PLAIN = {' ': 0x2C, "'": 0x35, '-': 0x2D, '=': 0x2E, '´': 0x2F,
+               '[': 0x30, ']': 0x32, 'ç': 0x33, '~': 0x34, '\\': 0x64,
+               ',': 0x36, '.': 0x37, ';': 0x38, '/': 0x54,
+               '\n': 0x28, '\t': 0x2B, '\b': 0x2A};
+const ABNT2_SHIFTED = {'"': 0x35, '!': 0x1E, '@': 0x1F, '#': 0x20, '$': 0x21,
+                 '%': 0x22, '¨': 0x23, '&': 0x24, '*': 0x25, '(': 0x26,
+                 ')': 0x27, '_': 0x2D, '+': 0x2E, '`': 0x2F, '{': 0x30,
+                 '}': 0x32, 'Ç': 0x33, '^': 0x34, '|': 0x64, '<': 0x36,
+                 '>': 0x37, ':': 0x38};
+const ABNT2_ALTGR = {'?': 0x1A, '°': 0x08, '§': 0x2E, 'ª': 0x30,
+                 'º': 0x32, '¹': 0x1E, '²': 0x1F, '³': 0x20,
+                 '£': 0x21, '¢': 0x22, '¬': 0x23};
 
 /* Keys that are not characters, so they can be named rather than numbered.
    "Break" rather than "Pause", because {pause 1.5} is a wait. */
@@ -206,15 +228,8 @@ const MODS = { ctrl: 0x01, shift: 0x02, alt: 0x04, gui: 0x08,
 const MOD_ALIAS = { control: 'ctrl', win: 'gui', cmd: 'gui', meta: 'gui',
                     super: 'gui', option: 'alt', altgr: 'ralt' };
 
-/* reverse maps, for turning a table back into something editable */
-const UNPLAIN = {}, UNSHIFTED = {}, UNNAMED = {};
-for (const [c, u] of Object.entries(PLAIN))   UNPLAIN[u] = c;
-for (const [c, u] of Object.entries(SHIFTED)) UNSHIFTED[u] = c;
+const UNNAMED = {};
 for (const [n, u] of Object.entries(NAMED))   if (!(u in UNNAMED)) UNNAMED[u] = n;
-for (let i = 0; i < 26; i++) UNPLAIN[0x04 + i] = String.fromCharCode(97 + i);
-for (let i = 0; i < 26; i++) UNSHIFTED[0x04 + i] = String.fromCharCode(65 + i);
-for (let i = 0; i < 9; i++)  UNPLAIN[0x1E + i] = String(i + 1);
-UNPLAIN[0x27] = '0';
 
 /* ==================================================================== */
 /* What it says when something is wrong                                 */
@@ -292,40 +307,75 @@ function fail(key, params = {}) {
  * are accepted and expanded; leave it at plain US and they are refused, which
  * is better than silently typing something else.
  */
-const DEAD = {
+const US_DEAD = {
   "'": { base: 'aeiouycnszAEIOUYCNSZ', out: 'áéíóúýçńśźÁÉÍÓÚÝÇŃŚŹ' },
   '`': { base: 'aeiouAEIOU',           out: 'àèìòùÀÈÌÒÙ' },
   '^': { base: 'aeiouAEIOU',           out: 'âêîôûÂÊÎÔÛ' },
   '~': { base: 'anoANO',               out: 'ãñõÃÑÕ' },
   '"': { base: 'aeiouyAEIOUY',         out: 'äëïöüÿÄËÏÖÜŸ' },
 };
+/* ABNT2's accents have keys of their own, and its apostrophe and quote are
+   only that. Ç has a key too, so it is never the acute and a c. */
+const ABNT2_DEAD = {
+  '´': { base: 'aeiouAEIOU', out: 'áéíóúÁÉÍÓÚ' },
+  '`': { base: 'aeiouAEIOU', out: 'àèìòùÀÈÌÒÙ' },
+  '^': { base: 'aeiouAEIOU', out: 'âêîôûÂÊÎÔÛ' },
+  '~': { base: 'anoANO',     out: 'ãñõÃÑÕ' },
+  '¨': { base: 'aeiouAEIOU', out: 'äëïöüÄËÏÖÜ' },
+};
 
-/* composed character -> [the dead key, the letter under it] */
-const COMPOSE = {};
-for (const [mark, m] of Object.entries(DEAD))
-  [...m.out].forEach((ch, i) => { COMPOSE[ch] = [mark, [...m.base][i]]; });
+/* A layout: its keys, its dead keys, and the reverse of both, for turning
+   a table back into something editable. */
+function makeLayout(label, plain, shifted, altgr, dead) {
+  const L = { label, plain, shifted, altgr, dead,
+              unplain: {}, unshifted: {}, unaltgr: {}, compose: {} };
+  for (const [c, u] of Object.entries(plain))   if (!(u in L.unplain)) L.unplain[u] = c;
+  for (const [c, u] of Object.entries(shifted)) L.unshifted[u] = c;
+  for (const [c, u] of Object.entries(altgr))   L.unaltgr[u] = c;
+  for (let i = 0; i < 26; i++) L.unplain[0x04 + i] = String.fromCharCode(97 + i);
+  for (let i = 0; i < 26; i++) L.unshifted[0x04 + i] = String.fromCharCode(65 + i);
+  for (let i = 0; i < 9; i++)  L.unplain[0x1E + i] = String(i + 1);
+  L.unplain[0x27] = '0';
+  /* composed character -> [the dead key, the letter under it] */
+  for (const [mark, m] of Object.entries(dead || {}))
+    [...m.out].forEach((ch, i) => { L.compose[ch] = [mark, [...m.base][i]]; });
+  return L;
+}
 
 const LAYOUTS = {
-  'us':      { label: 'US', dead: false },
-  'us-intl': { label: 'US International', dead: true },
+  'us':      makeLayout('US', US_PLAIN, US_SHIFTED, {}, null),
+  'us-intl': makeLayout('US International', US_PLAIN, US_SHIFTED, {}, US_DEAD),
+  'abnt2':   makeLayout('Brasil (ABNT2)', ABNT2_PLAIN, ABNT2_SHIFTED,
+                        ABNT2_ALTGR, ABNT2_DEAD),
 };
 let layout = 'us';
 function setLayout(name) { layout = name in LAYOUTS ? name : 'us'; }
 function getLayout() { return layout; }
-const deadKeys = () => LAYOUTS[layout].dead;
+const L = () => LAYOUTS[layout];
 
-/* one character -> [usage, needsShift] */
+/* Any accented character some layout can compose: on one that cannot, it is
+   refused for want of dead keys rather than of a key. */
+const COMPOSABLE = new Set(Object.values(LAYOUTS).flatMap(l => Object.keys(l.compose)));
+
+/* one character -> [usage, the modifiers it needs] */
 function charUsage(ch) {
-  if (ch >= 'a' && ch <= 'z') return [ch.charCodeAt(0) - 97 + 0x04, false];
-  if (ch >= 'A' && ch <= 'Z') return [ch.charCodeAt(0) - 65 + 0x04, true];
-  if (ch >= '1' && ch <= '9') return [ch.charCodeAt(0) - 49 + 0x1E, false];
-  if (ch === '0')             return [0x27, false];
-  if (ch in PLAIN)            return [PLAIN[ch], false];
-  if (ch in SHIFTED)          return [SHIFTED[ch], true];
+  const l = L();
+  if (ch >= 'a' && ch <= 'z') return [ch.charCodeAt(0) - 97 + 0x04, 0];
+  if (ch >= 'A' && ch <= 'Z') return [ch.charCodeAt(0) - 65 + 0x04, MODS.shift];
+  if (ch >= '1' && ch <= '9') return [ch.charCodeAt(0) - 49 + 0x1E, 0];
+  if (ch === '0')             return [0x27, 0];
+  if (ch in l.plain)          return [l.plain[ch], 0];
+  if (ch in l.shifted)        return [l.shifted[ch], MODS.shift];
+  if (ch in l.altgr)          return [l.altgr[ch], MODS.ralt];
   fail('no-key-for', { what: ch });
 }
 
-const keystroke = ch => { const [u, sh] = charUsage(ch); return sh ? u | SHIFT : u; };
+/* The bytes for one character's key: one, Shift in bit 7, or an AltGr
+   character's three, the modifier said first. */
+const keystroke = ch => {
+  const [u, m] = charUsage(ch);
+  return m === MODS.ralt ? [ESC_MOD, m, u] : [m ? u | SHIFT : u];
+};
 
 /* Plain text, nothing else. Bit 7 carries Shift, so one byte covers every
    character on the keyboard and the firmware needs no ASCII table.
@@ -337,18 +387,19 @@ const keystroke = ch => { const [u, sh] = charUsage(ch); return sh ? u | SHIFT :
    when the next character does not combine -- write it in braces: {'}. */
 function usages(text) {
   const out = [];
+  const l = L();
   for (const ch of text) {
-    if (deadKeys()) {
-      if (ch in COMPOSE) {
-        const [mark, base] = COMPOSE[ch];
-        out.push(keystroke(mark), keystroke(base));
+    if (l.dead) {
+      if (ch in l.compose) {
+        const [mark, base] = l.compose[ch];
+        out.push(...keystroke(mark), ...keystroke(base));
         continue;
       }
-      if (ch in DEAD) { out.push(keystroke(ch), keystroke(' ')); continue; }
+      if (ch in l.dead) { out.push(...keystroke(ch), ...keystroke(' ')); continue; }
     }
-    if (ch in COMPOSE)
+    if (!l.dead && COMPOSABLE.has(ch) && !(ch in l.plain || ch in l.shifted || ch in l.altgr))
       fail('needs-dead-keys', { what: ch });
-    out.push(keystroke(ch));
+    out.push(...keystroke(ch));
   }
   return out;
 }
@@ -558,9 +609,9 @@ function encodeMacro(text, seal = null) {
       if (named !== undefined) {
         usage = named;
       } else if ([...keyName].length === 1) {
-        const [u, sh] = charUsage(keyName);
+        const [u, m] = charUsage(keyName);
         usage = u;
-        if (sh) mask |= MODS.shift;
+        mask |= m;
       } else {
         fail('not-a-key', { what: keyName });
       }
@@ -591,7 +642,7 @@ function modNames(mask) {
 
 function keyName(usage) {
   if (usage in UNNAMED) return UNNAMED[usage][0].toUpperCase() + UNNAMED[usage].slice(1);
-  if (usage in UNPLAIN) return UNPLAIN[usage];
+  if (usage in L().unplain) return L().unplain[usage];
   return '0x' + usage.toString(16).padStart(2, '0');
 }
 
@@ -607,7 +658,7 @@ function literal(ch) {
 /* The character a plain keystroke types, or undefined if it types none */
 function plainChar(b) {
   if ((b & 0x7F) < 0x04) return undefined;
-  return (b & SHIFT) ? UNSHIFTED[b & 0x7F] : UNPLAIN[b & 0x7F];
+  return (b & SHIFT) ? L().unshifted[b & 0x7F] : L().unplain[b & 0x7F];
 }
 
 /* Text that a count can follow without parentheses: one character, or one
@@ -635,13 +686,14 @@ function decodeMacro(bytes, open = null) {
        what either of them shows alone, and the editor should say what will
        appear. A mark with nothing that combines after it is written {'}, the
        one form that survives being encoded again. */
-    if (deadKeys() && !mod) {
+    const dead = L().dead;
+    if (dead && !mod) {
       const mark = plainChar(b);
-      if (mark !== undefined && mark in DEAD) {
+      if (mark !== undefined && mark in dead) {
         const next = i + 1 < bytes.length ? plainChar(bytes[i + 1]) : undefined;
         if (next === ' ') { out += literal(mark); i++; continue; }
-        const joined = next !== undefined && DEAD[mark].base.includes(next)
-                     ? [...DEAD[mark].out][[...DEAD[mark].base].indexOf(next)]
+        const joined = next !== undefined && dead[mark].base.includes(next)
+                     ? [...dead[mark].out][[...dead[mark].base].indexOf(next)]
                      : undefined;
         if (joined !== undefined) { out += joined; i++; continue; }
         out += `{${mark}}`;
@@ -702,12 +754,15 @@ function decodeMacro(bytes, open = null) {
     /* A keystroke reads back as the character it types, wherever one exists:
        Shift plus the usage for "1" is "!", and needs no saying. */
     if (!mask) {
-      const ch = UNPLAIN[usage];
+      const ch = L().unplain[usage];
       if (ch !== undefined) { out += literal(ch); continue; }
     } else if (mask === MODS.shift) {
-      const ch = UNSHIFTED[usage];
+      const ch = L().unshifted[usage];
       if (ch !== undefined) { out += literal(ch); continue; }
       /* Shift on a key that types nothing -- Shift+Left -- has to be said */
+    } else if (mask === MODS.ralt) {
+      const ch = L().unaltgr[usage];
+      if (ch !== undefined) { out += literal(ch); continue; }
     }
 
     out += mask ? `{${modNames(mask).join('+')}+${keyName(usage)}}`

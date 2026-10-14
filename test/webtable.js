@@ -360,6 +360,56 @@ check(['Digit0', 'Numpad7', 'KeyA', 'KeyF', 'Space'].map(t.irKeyChar).join('') =
 check(t.irKeyChar('KeyG') === null && t.irKeyChar('Enter') === null,
       'irKeyChar ignores other keys');
 
+console.log('6b. ABNT2, Brazil\'s');
+/* Its accents are keys of their own, ç is a key, and its apostrophe and
+   quote are not dead. "/" is the keypad's and "?" is AltGr+W: the board
+   cannot send ABNT2's own key for them, usage 0x87. */
+t.setLayout('abnt2');
+const bytesOf = s => JSON.stringify(t.encodeMacro(s));
+const want = (s, b, what) => check(bytesOf(s) === JSON.stringify(b),
+                                   `abnt2: ${what}, got ${bytesOf(s)}`);
+want('ç', [0x33], 'ç is its own key');
+want('Ç', [0xB3], 'Ç is Shift and that key');
+want('á', [0x2F, 0x04], 'á is the acute key and then a');
+want('à', [0xAF, 0x04], 'à is Shift and the acute key, then a');
+want('ã', [0x34, 0x04], 'ã is the tilde key and then a');
+want('ô', [0xB4, 0x12], 'ô is Shift and the tilde key, then o');
+want('ü', [0xA3, 0x18], 'ü is Shift and 6, then u');
+want(APOS + '"', [0x35, 0xB5], 'the apostrophe and the quote are plain keys');
+want('~', [0x34, 0x2C], 'a bare tilde is the key and a space');
+want('/', [0x54], '/ is the keypad\'s');
+want('?', [t.ESC_MOD, 0x40, 0x1A], '? is AltGr+W');
+want('º', [t.ESC_MOD, 0x40, 0x32], 'º is AltGr and the key beside Enter');
+want(']}\\\\|;:', [0x32, 0xB2, 0x64, 0xE4, 0x38, 0xB8], 'the keys that moved');
+want('{Ctrl+ç}', [t.ESC_MOD, 0x01, 0x33], 'ç takes a modifier');
+check(t.decodeMacro([t.ESC_MOD, 0x40, 0x1A]) === '?', 'AltGr+W reads back as ?');
+check(t.decodeMacro([0x2F, 0x17]) === '{´}t', 'the acute then t reads back as {´}t');
+msg = null;
+try { t.encodeMacro('ń'); } catch (e) { msg = e.message; }
+check(msg !== null && /no key/.test(msg), `ń has no key on ABNT2: ${msg}`);
+for (const text of ['Ação, você? Até já!', 'nº 1, 2ª via, 30°C, §3', 'pão{Enter}',
+                    '(a/b?){2}', '?{3}', 'lingüiça', '~^´`¨ ' + APOS + '"',
+                    '{Ctrl+c}á', 'ÀÉÎÕÜ', 'x{´}t']) {
+  const bytes = t.encodeMacro(text);
+  const back = t.decodeMacro(bytes);
+  check(JSON.stringify(t.encodeMacro(back)) === JSON.stringify(bytes),
+        `abnt2: ${JSON.stringify(text)} drifts: ${JSON.stringify(back)}`);
+}
+/* Every character a layout has a key for reads back as itself */
+for (const name of Object.keys(t.LAYOUTS)) {
+  t.setLayout(name);
+  const l = t.LAYOUTS[name];
+  for (const ch of [...Object.keys(l.plain), ...Object.keys(l.shifted),
+                    ...Object.keys(l.altgr)]) {
+    if (l.dead && ch in l.dead) continue;       /* the mark and a space */
+    const back = t.decodeMacro(t.usages(ch));
+    check(back === ch || back === { '\n': '\\n', '\t': '\\t', '\b': '\\b',
+                                    '\\': '\\\\', '{': '{{' }[ch],
+          `${name}: ${JSON.stringify(ch)} reads back as ${JSON.stringify(back)}`);
+  }
+}
+t.setLayout('us-intl');
+
 console.log('7. secrets');
 const hex = b => [...b].map(v => v.toString(16).padStart(2, '0')).join('');
 const unhex = h => Uint8Array.from(h.match(/../g).map(x => parseInt(x, 16)));

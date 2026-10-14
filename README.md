@@ -218,8 +218,9 @@ is written until every macro is valid.
 
 **Accented characters are the host's business, not the board's.** The board
 sends key presses, so what appears depends on the keyboard layout of the
-computer it is plugged into. Pick that layout beside the Macros heading and
-`coração` is accepted and expanded into the accent and then the letter. Leave
+computer it is plugged into. Pick that layout beside the Macros heading — US,
+US International or Brazil's ABNT2 — and `coração` is accepted and expanded
+into the accent and then the letter (on ABNT2, `ç` is a key of its own). Leave
 it at plain US, where there is no way to type one, and the editor says so
 rather than typing something else.
 

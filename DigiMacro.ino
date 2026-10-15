@@ -238,6 +238,10 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define SECRET_QUIET    0xFE        /* the jump's argument for {secret}: a  */
 #define SECRET_LOUD     0xFF        /* code no macro has, plus one; {secret!} */
 #define JUMP_CLEAR      0xF7        /* {clear}: another, 0xF6 being 7 symbols */
+#define JUMP_ALONE      0xF6        /* {Gui}: the modifiers ESC_MOD latched,
+                                       pressed with no key -- which no
+                                       keystroke byte can say, 0 ending the
+                                       macro. 0xF5 would be 6 symbols */
 
 
 /* Touching the pad stops a macro, so a loop that types or pauses can always
@@ -1154,6 +1158,9 @@ uint8_t macro_play(uint8_t *a)
                 }
             } else if (c == ESC_JUMP && arg == JUMP_CLEAR) {
                 lock_clear();           /* the owner's own way round the lockout */
+            } else if (c == ESC_JUMP && arg == JUMP_ALONE) {
+                c = 0;                  /* a keystroke of no key: Windows' */
+                goto key;               /* Start, a TV's home screen */
             } else if (c == ESC_JUMP && arg >= SECRET_QUIET) {
                 /* {secret}: refused without the key, quietly or as if the
                    code were not there */
@@ -1196,6 +1203,7 @@ uint8_t macro_play(uint8_t *a)
             continue;
         }
 
+key:
         if (c & KEY_SHIFT) mod |= MOD_SHIFT;
         lastmod = mod;
         lastkey = c & 0x7F;

@@ -456,7 +456,19 @@ for (const bad of ['{40*0.5,90}', '{40*4,90}', '{40,90*0}']) {
   check(msg !== null && /scale/.test(msg), `${bad}: ${msg}`);
 }
 
-console.log('6d. {clear}: the lockout forgotten, by the owner\'s choice');
+console.log('6d. modifiers alone: {Gui}, {Win}, {Cmd}, and Gui still a modifier');
+check(hexs('{Gui}') === '2 8 81 f6', `{Gui}: ${hexs('{Gui}')}`);
+check(hexs('{win}') === hexs('{Gui}') && hexs('{Cmd}') === hexs('{Gui}'),
+      'Win and Cmd are Gui');
+check(hexs('{Ctrl+Shift}') === '2 3 81 f6', `{Ctrl+Shift}: ${hexs('{Ctrl+Shift}')}`);
+for (const s of ['{Gui}', 'a{Gui}b', '{Ctrl+Shift}', '{Gui}{3}', '{Gui+d}', '{Shift}x'])
+  check(t.decodeMacro(t.encodeMacro(s)) === s, `${s} reads back as ${t.decodeMacro(t.encodeMacro(s))}`);
+msg = null;
+try { t.encodeTable([{ code: '.', text: '{Gui}' }, { code: '..', text: '{Gui}{goto .}' }]); }
+catch (e) { msg = e.message; }
+check(msg === null, `not a jump: ${msg}`);
+
+console.log('6e. {clear}: the lockout forgotten, by the owner\'s choice');
 check(hexs('{clear}') === '81 f7', `{clear}: ${hexs('{clear}')}`);
 check(t.decodeMacro(t.encodeMacro('ab{Clear}c')) === 'ab{clear}c', 'reads back, any case');
 msg = null;
@@ -592,8 +604,9 @@ check(t.macroWarnings(t.encodeMacro('x{secret!}y', sealer)).includes('secret-lat
       'something before {secret!} is a warning, before {secret} not');
 check(t.macroWarnings(t.encodeMacro('{40,40}{secret!}y', sealer)).includes('secret-late') &&
       t.macroWarnings(t.encodeMacro('{click}{secret!}y', sealer)).includes('secret-late') &&
-      t.macroWarnings(t.encodeMacro('{clear}{secret!}y', sealer)).length === 0,
-      'the mouse shows, as typing does; {clear} does not');
+      t.macroWarnings(t.encodeMacro('{clear}{secret!}y', sealer)).length === 0 &&
+      t.macroWarnings(t.encodeMacro('{Gui}{secret!}y', sealer)).includes('secret-late'),
+      'the mouse and {Gui} show, as typing does; {clear} does not');
 /* What a secret holds is never walked for jumps: its bytes would read as
    gotos to codes that are not there */
 let spurious = 0;

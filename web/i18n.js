@@ -373,6 +373,8 @@ en: {
   'ref-named':      'a key that is not a character',
   'ref-mods':       'modifiers on any key or character',
   'ref-combined':   '...combined, in any order',
+  'ref-mod-alone':  'a modifier pressed alone: Windows\' Start, a TV\'s home '
+                  + 'screen. Gui is Win and Cmd',
   'ref-pause':      'wait, in seconds, 0.1 to 25.5',
   'ref-repeat':     'eleven of them in all, as in a regular expression',
   'ref-group':      '...of a whole group rather than one thing',
@@ -968,6 +970,8 @@ pt: {
   'ref-named':      'uma tecla que não é um caractere',
   'ref-mods':       'modificadores em qualquer tecla ou caractere',
   'ref-combined':   '...combinados, em qualquer ordem',
+  'ref-mod-alone':  'um modificador sozinho: o Iniciar do Windows, a tela '
+                  + 'inicial de uma TV. Gui é o Win e o Cmd',
   'ref-pause':      'espera, em segundos, de 0,1 a 25,5',
   'ref-repeat':     'onze deles ao todo, como numa expressão regular',
   'ref-group':      '...de um grupo inteiro, em vez de uma coisa só',

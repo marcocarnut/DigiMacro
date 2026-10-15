@@ -203,6 +203,7 @@ Uma macro é texto, com chaves para o que o texto não consegue dizer:
  hello{Enter}                 anything is typed as itself
  \n  \t  \\  {{               newline, tab, backslash, a literal {
  {Ctrl+c}  {Alt+Tab}  {F5}    modifiers, and keys that are not characters
+ {Gui}  {Win}  {Cmd}          a modifier alone: Windows' Start, a TV's home
  {pause 1.5}                  wait, in seconds
  x{11}                        eleven of them, as in a regular expression
  (ab){3}                      ...of a whole group rather than one thing
@@ -880,6 +881,7 @@ menores que quatro. Os sete estão ocupados:
 | `0x82` | marca: o que vem depois se repete como grupo, não como uma tecla só |
 | `0x83 nn` | o mouse, para `nn` de 3 em diante: `1xxxxxxx` define para onde x vai, 0–127 na horizontal, e `01yyyyyy` y, 0–63 na vertical, e move até lá — 0 empurra contra aquela borda; `001c00bb` pressiona os botões `bb` (bit 0 o esquerdo, bit 1 o direito; nenhum é soltar), e `c` os solta de novo, um clique. Qualquer coisa abaixo de `0x20` define a velocidade do próximo movimento: o bit 4 escolhe y, e os quatro bits baixos são contagens por relatório, 4 se não definido, então `{x*a}` é `4a`. `nn` 1 e 2 eram `{host}`, antes do firmware 16; agora sempre recusado, em silêncio se 1, como um código vazio se 2 |
 | `0x81 F7` | `{clear}`: as contagens do bloqueio de volta a zero. `F7` não pode ser um cabeçalho: `F6` seriam sete símbolos |
+| `0x81 F6` | depois de `0x02 mm`: os modificadores `mm` pressionados sem tecla nenhuma, `{Gui}` — o que nenhum byte de tecla consegue dizer, já que o zero encerra a macro. `F5` seriam seis símbolos |
 | `0x80 a c x` | onde o botão `a`/`c` do controle remoto inicia esta macro: `a` e `c` com o bit 7 forçado para 1, `x` = `0x80` mais os bits altos originais deles (o de `a` no bit 0, o de `c` no bit 1). Na execução normal, não faz nada |
 
 Nenhum argumento pode ser zero, já que um byte zero encerra a macro. `0x03` é

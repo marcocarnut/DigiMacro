@@ -117,6 +117,8 @@ const escStep = (b, i) => b[i] === ESC_IR ? 4
 const SECRET_QUIET = 0xFE;  /* the jump's argument: {secret} */
 const SECRET_LOUD  = 0xFF;  /* ...and {secret!} */
 const JUMP_CLEAR   = 0xF7;  /* ...and {clear}: 0xF6 would be seven symbols */
+const JUMP_ALONE   = 0xF6;  /* ...and after ESC_MOD, those modifiers pressed
+                               with no key: {Gui}. 0xF5 would be six */
 const CHECK_ADDR   = 0x1E4; /* the check value's eight bytes, in EEPROM */
 const SECRET_MAX   = 255;   /* keystrokes in a secret */
 const isSecret = (b, i) => b[i] === ESC_JUMP &&
@@ -452,6 +454,7 @@ function usages(text) {
  *    (ab){3}             ...of a whole group, rather than one thing
  *    {goto .-}           carry on with another macro, and never come back
  *    {clear}             forget the lockout's wrong codes, as the password does
+ *    {Gui}  {Ctrl+Shift} modifiers alone, pressed with no key
  *    {IR 00 45}          where the remote's button 00 45 starts typing
  *    \(  \)              a parenthesis that is only a parenthesis
  *
@@ -653,11 +656,19 @@ function encodeMacro(text, seal = null) {
       if (body === '+' || body.endsWith('++')) keyName = '+';
       else if (body.endsWith('+')) fail('no-key-after', { what: body });
       else keyName = parts.pop();
+      const modOf = m => MODS[MOD_ALIAS[m.toLowerCase()] || m.toLowerCase()];
       let mask = 0;
       for (const m of parts) {
-        const name = MOD_ALIAS[m.toLowerCase()] || m.toLowerCase();
-        if (!(name in MODS)) fail('not-a-modifier', { what: m });
-        mask |= MODS[name];
+        if (modOf(m) === undefined) fail('not-a-modifier', { what: m });
+        mask |= modOf(m);
+      }
+
+      /* {Gui}, {Ctrl+Shift}: modifiers alone, pressed and let go, which a
+         TV takes for its home screen and Windows for Start */
+      if (keyName !== '+' && modOf(keyName) !== undefined) {
+        unitAt = out.length;
+        push(ESC_MOD, mask | modOf(keyName), ESC_JUMP, JUMP_ALONE);
+        continue;
       }
 
       let usage;
@@ -777,6 +788,11 @@ function decodeMacro(bytes, open = null) {
       const arg = bytes[++i];
       if (b === ESC_PAUSE)  { out += `{pause ${(arg / 10).toFixed(1)}}`; continue; }
       if (b === ESC_JUMP && arg === JUMP_CLEAR) { out += '{clear}'; continue; }
+      if (b === ESC_JUMP && arg === JUMP_ALONE) {
+        out += `{${modNames(mod).join('+')}}`;
+        mod = 0;
+        continue;
+      }
       if (b === ESC_JUMP) { out += `{goto ${codeOf(arg - 1)}}`; continue; }
       if (b === ESC_HOST && arg in PTR_NAMES) { out += `{${PTR_NAMES[arg]}}`; continue; }
       if (b === ESC_HOST && (arg > HOST_LOUD && arg < 0x20 || arg & 0x80)) {
@@ -891,6 +907,7 @@ function entryFate(bytes) {
     /* what a secret does is not known here: count it as doing something */
     if (isSecret(bytes, i)) return { acts: true, goes: null };
     if (b === ESC_JUMP && bytes[i + 1] === JUMP_CLEAR) continue;   /* nothing shows */
+    if (b === ESC_JUMP && bytes[i + 1] === JUMP_ALONE) { acts = true; continue; }
     if (b === ESC_JUMP)  return { acts, goes: bytes[i + 1] - 1 };
     if (b === ESC_MARK || b === ESC_IR || b === ESC_HOST || b === ESC_MOD)
       continue;                                 /* nothing shows */
@@ -943,7 +960,8 @@ function macroWarnings(bytes) {
     }
     if (b === ESC_HOST && bytes[i + 1] === HOST_LOUD && shown)
       warn.push('host-late');
-    if (b === ESC_MARK || b === ESC_IR || b === ESC_MOD || b === ESC_JUMP ||
+    if (b === ESC_MARK || b === ESC_IR || b === ESC_MOD ||
+        b === ESC_JUMP && bytes[i + 1] !== JUMP_ALONE ||
         b === ESC_HOST && bytes[i + 1] <= HOST_LOUD) continue;
     shown = true;
   }
@@ -1048,7 +1066,7 @@ function sampleRows() {
 if (typeof module !== 'undefined') module.exports = {
   ESC_PAUSE, ESC_MOD, ESC_REPEAT, ESC_JUMP, SHIFT, TABLE_TOP, MAX_SYM,
   ESC_MARK, ESC_HOST, HOST_SILENT, HOST_LOUD, macroWarnings,
-  ESC_IR, SECRET_QUIET, SECRET_LOUD, JUMP_CLEAR, CHECK_ADDR, SECRET_MAX, xtea, keyCheck,
+  ESC_IR, SECRET_QUIET, SECRET_LOUD, JUMP_CLEAR, JUMP_ALONE, CHECK_ADDR, SECRET_MAX, xtea, keyCheck,
   sealSecret, openSecret, walkSafe, hasSecret,
   AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
   usages, header, codeOf, tappable, IR_CODES, packTable, unpackTable,

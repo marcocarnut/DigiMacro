@@ -305,6 +305,17 @@ int main(void)
     CHECK(!strcmp(play(".."), "<03/04><03/04>"),
           "the repeat must carry the modifiers: \"%s\"", typed);
 
+    printf("6b. modifiers alone: {Gui}, pressed with no key\n");
+    /* No keystroke byte can say "no key": 0 ends the macro. ESC_MOD, then
+       the jump's JUMP_ALONE, presses what it latched with none */
+    table_reset();
+    add(".",  { K('a'), ESC_MOD, 0x08, ESC_JUMP, 0xF6, K('b') });
+    add("..", { ESC_MOD, 0x03, ESC_JUMP, 0xF6, ESC_REPEAT, 1, K('c') });
+    CHECK(!strcmp(play("."), "<00/04><08/00><00/05>"),
+          "Gui alone, between a and b: \"%s\"", typed);
+    CHECK(!strcmp(play(".."), "<03/00><03/00><00/06>"),
+          "repeated, modifiers and all, and the next key plain: \"%s\"", typed);
+
     printf("7. a pause waits, and keeps typing afterwards\n");
     table_reset();
     add(".", { K('a'), ESC_PAUSE, 5, K('b') });         /* half a second */

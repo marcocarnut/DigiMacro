@@ -199,6 +199,7 @@ A macro is text, with braces for what text cannot say:
  hello{Enter}                 anything is typed as itself
  \n  \t  \\  {{               newline, tab, backslash, a literal {
  {Ctrl+c}  {Alt+Tab}  {F5}    modifiers, and keys that are not characters
+ {Gui}  {Win}  {Cmd}          a modifier alone: Windows' Start, a TV's home
  {pause 1.5}                  wait, in seconds
  x{11}                        eleven of them, as in a regular expression
  (ab){3}                      ...of a whole group rather than one thing
@@ -841,6 +842,7 @@ taken:
 | `0x82` | mark: what follows repeats as a group, not as one keystroke |
 | `0x83 nn` | the mouse, for `nn` from 3 on: `1xxxxxxx` sets where x goes, 0–127 across, and `01yyyyyy` y, 0–63 down, and moves there — 0 drives into that edge; `001c00bb` presses buttons `bb` (bit 0 left, bit 1 right; none is a release), and `c` lets them up again, a click. Anything below `0x20` sets the next move's speed: bit 4 picks y, and the low four bits are counts a report, 4 if not set, so `{x*a}` is `4a`. `nn` 1 and 2 were `{host}`, before firmware 16; now always refused, quietly if 1, as an empty code if 2 |
 | `0x81 F7` | `{clear}`: the lockout's counts back to zero. `F7` cannot be a header: `F6` would be seven symbols |
+| `0x81 F6` | after `0x02 mm`: the modifiers `mm` pressed with no key, `{Gui}` — which no keystroke byte can say, zero ending the macro. `F5` would be six symbols |
 | `0x80 a c x` | where the remote's button `a`/`c` starts this macro: `a` and `c` with bit 7 forced on, `x` = `0x80` plus their own top bits (`a`'s in bit 0, `c`'s in bit 1). Played through, it does nothing |
 
 No argument may be zero, since a zero byte ends the macro. `0x03` is

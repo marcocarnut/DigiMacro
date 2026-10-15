@@ -16,8 +16,9 @@
 
 /* DigiMacro's own version, in INFO's [13] as the app's. v1 counted to 9
    in [4]; v2 goes on from there, and [4] is the core's now. */
-#define DM_FW_VERSION       17      /* 17: the mouse, {clear}, and a right
-                                       code no longer clears the lockout */
+#define DM_FW_VERSION       17      /* 17: the mouse, {clear}, {Gui} alone,
+                                       and a right code no longer clears
+                                       the lockout */
 
 #define DM_FUNC_RESTART     0x42    /* off the bus and back, as if replugged */
 #define DM_FUNC_READ        0x60    /* address, count -> EEPROM */

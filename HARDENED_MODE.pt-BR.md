@@ -91,7 +91,9 @@ Seja honesto consigo mesmo sobre estes pontos antes de confiar nele.
   cópia de segurança que consiga abrir, lê os segredos diretamente. O root
   desse computador também consegue ler a chave no barramento USB.
 - **Alguém vendo você tocar.** Código visto é código conhecido. O bloqueio
-  limita adivinhar, não saber. Os segredos ajudam aqui: um código visto não
+  limita adivinhar, não saber — embora, desde o firmware 17, tocar um código
+  conhecido não o zere mais, e assim um código não compra mais tentativas
+  nos outros. Os segredos ajudam aqui: um código visto não
   serve de nada em outro computador, se a macro tiver um.
 - **Uma senha fraca.** A placa aceita uma resposta errada por segundo, e o
   aplicativo ainda exige o toque longo, mas uma senha curta acaba caindo

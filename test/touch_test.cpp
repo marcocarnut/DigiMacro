@@ -37,7 +37,7 @@ void fake_charge(void){ pinb_count = q[qi++ % qn]; }
 void hidBegin(void){} void hidPoll(void){}
 uint8_t hidReady(void){ return 1; } uint8_t hidAwake(void){ return 1; }
 void hidAllow(uint16_t){} uint8_t hidAllowed(void){ return 0; }
-void hidKey(uint8_t,uint8_t){} void hidTypeChar(char,uint8_t){}
+void hidKey(uint8_t,uint8_t){} void hidTypeChar(char,uint8_t){} void hidPoint(uint8_t){}
 /* The core's password: none, here */
 uint8_t hidPassSet(void){ return 0; } uint8_t hidUnlocked(void){ return 1; }
 uint8_t hidUnlock(const uint8_t *, uint8_t){ return DM_PASS_RIGHT; }

@@ -7,7 +7,8 @@ from pathlib import Path
 
 WEB = Path(__file__).resolve().parent.parent / 'web'
 FILES = ['firmware/digimacro-v2.json', 'firmware/digimacro-v2.hex',
-         'firmware/digimacro-v2-core.hex', 'firmware/digimacro-uninstall.hex']
+         'firmware/digimacro-v2-core.hex', 'firmware/digimacro-uninstall.hex',
+         'firmware/digimacro-uninstall-api1.hex', 'firmware/digimacro-coreupdate.hex']
 
 def script(m):
     code = (WEB / m.group(1)).read_text()

@@ -312,6 +312,29 @@ async function main() {
     }
   }
 
+  console.log('7b. what the page sends a core it moves first goes only on that core');
+  {
+    /* API 1: the boundary at 0x1000, the cores already out there. The core
+       updater and that core's uninstaller go on them, and on nothing else;
+       this page's own app goes on them never. */
+    const FW = path.join(__dirname, '../web/firmware');
+    const old = { start: 0x1000, end: APP_END, page: PAGE, api: 1 };
+    const now = { start: APP_START, end: APP_END, page: PAGE, api: API };
+    const read = f => parseIntelHex(fs.readFileSync(path.join(FW, f), 'utf8'), 8192);
+    const fits = (f, info) => { try { cu.appPages(read(f), info); return true; }
+                                catch (e) { return false; } };
+    if (fs.existsSync(path.join(FW, 'digimacro-coreupdate.hex'))) {
+      check(fits('digimacro-coreupdate.hex', old), 'the core updater does not fit an API 1 core');
+      check(!fits('digimacro-coreupdate.hex', now), 'the core updater fits this core too');
+      check(fits('digimacro-uninstall-api1.hex', old), 'the API 1 uninstaller does not fit an API 1 core');
+      check(!fits('digimacro-uninstall-api1.hex', now), 'the API 1 uninstaller fits this core too');
+      check(fits('digimacro-uninstall.hex', now), 'the uninstaller does not fit this core');
+      check(!fits('digimacro-v2.hex', old), 'this app fits an API 1 core');
+    } else {
+      console.log('  (not built yet: make release)');
+    }
+  }
+
   console.log('8. the core, laid out for Micronucleus, starts where the core will put its reset back');
   {
     const FW = path.join(__dirname, '../web/firmware');

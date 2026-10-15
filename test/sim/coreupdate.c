@@ -1,16 +1,18 @@
 /*
- * Spike: the core updater (app/coreupdate.S) on a simulated board.
+ * The core updater (app/coreupdate.S) on a simulated board.
  *
  *   coreupdate core.elf old-core.hex coreupdate.hex core-flash.bin
  *
- * The board starts with an older core -- v3.0's, as boards have it -- and
- * the updater above it. core.elf is the new core, for its symbols: the
- * harness watches its calibration by address, and once the updater has
- * run, the new core is what runs. core-flash.bin is its 4 KB as they should
- * end up.
+ * The board starts with an older core -- v2.0's or v3.0's, as boards have
+ * it -- and the updater above it. core.elf is the new core, for its
+ * symbols: the harness watches its calibration by address, and once the
+ * updater has run, the new core is what runs. core-flash.bin is its flash
+ * up to its own boundary, which is below the old one; the rest, to 0x1000,
+ * must end up erased, or the new core might take the old one's tail for an
+ * app.
  *
  *   1. the old core runs the updater, which rewrites everything below the
- *      boundary into the new core, byte for byte;
+ *      old boundary into the new core, byte for byte;
  *   2. erases its own header, so it does not run again;
  *   3. resets, and the new core comes up alone and enumerates.
  */
@@ -32,7 +34,9 @@ int main(int argc, char **argv)
 	uint8_t want[4096], v[64];
 	char what[100];
 	FILE *f = fopen(argv[4], "rb");
-	if (!f || fread(want, 1, sizeof want, f) != sizeof want) { perror(argv[4]); return 2; }
+	memset(want, 0xFF, sizeof want);
+	size_t got = f ? fread(want, 1, sizeof want, f) : 0;
+	if (got < 0x0F00) { perror(argv[4]); return 2; }
 	fclose(f);
 
 	board_load(argv[1], NULL);

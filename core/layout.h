@@ -25,7 +25,9 @@
 /* The boundary. The core lives below it and can never be written from
    USB; the app lives above it and can be replaced whole. */
 #ifndef APP_START
-#define APP_START       0x1000          /* 4 KB each side: the core all but fills its own */
+#define APP_START       0x0F80          /* two pages under half way: room for
+                                           bugfixes in the core, and in the
+                                           app, which had run out */
 #endif
 
 /* Where the app must stop: the end of the chip, since a v2 board has no
@@ -74,7 +76,9 @@
  * this API. Sixteen slots; the unused ones return at once. */
 #define CORE_SLOTS      16
 #define CORE_TABLE      (APP_START - 2 * CORE_SLOTS)
-#define CORE_API        1
+#ifndef CORE_API                        /* the core updater says 1: see Makefile */
+#define CORE_API        2               /* 2: the boundary at 0x0F80, not 0x1000 */
+#endif
 
 /* slot, name -- add at the end, never renumber */
 #define CORE_CALLS(X)                   \

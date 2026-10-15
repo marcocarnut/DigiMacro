@@ -5,7 +5,8 @@
  * Micronucleus does not come back by being written here: it comes with this
  * app, in the same image, the way any app arrives (make uninstall):
  *
- *      0x1000  this app, a few dozen bytes of it
+ *      0x0F80  this app, a few dozen bytes of it (0x1000 in
+ *              uninstall1.hex, for an older core)
  *              blank -- which is what Micronucleus finds 4 bytes below its
  *              start, where it looks for a program to run: none, so it
  *              stays in the bootloader instead of timing out to one

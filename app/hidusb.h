@@ -16,7 +16,8 @@
 
 /* DigiMacro's own version, in INFO's [13] as the app's. v1 counted to 9
    in [4]; v2 goes on from there, and [4] is the core's now. */
-#define DM_FW_VERSION       16
+#define DM_FW_VERSION       17      /* 17: the mouse, {clear}, and a right
+                                       code no longer clears the lockout */
 
 #define DM_FUNC_RESTART     0x42    /* off the bus and back, as if replugged */
 #define DM_FUNC_READ        0x60    /* address, count -> EEPROM */
@@ -57,6 +58,9 @@ void     hidAllow(uint16_t ms); /* somebody is at the board, briefly */
 uint8_t  hidAllowed(void);      /* ask at least every 32 s: see hidusb.c */
 void     hidKey(uint8_t modifier, uint8_t key);
 void     hidTypeChar(char c, uint8_t mod);  /* US layout; mod adds to it */
+void     hidPoint(uint8_t what);    /* 1xxxxxxx x, 01yyyyyy y and moves, else: */
+#define PTR_BUTTONS     0x20    /* ...the buttons in bits 0-1 are down, */
+#define PTR_CLICK       0x10    /* ...and then up again */
 
 /* The firmware's: the lockout and the secrets' key. Checking the
    password is the core's (core.h); what a right or wrong one means for the

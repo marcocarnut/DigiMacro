@@ -35,6 +35,11 @@ void hidKey(uint8_t mod, uint8_t key)
         typedn += sprintf(typed + typedn, "<%02X/%02X>", mod, key);
 }
 void hidTypeChar(char, uint8_t){}
+void hidPoint(uint8_t what)
+{
+    if (typedn < (int)sizeof typed - 16)
+        typedn += sprintf(typed + typedn, "[%02X]", what);
+}
 /* The core's password: none, here */
 uint8_t hidPassSet(void){ return 0; } uint8_t hidUnlocked(void){ return 1; }
 uint8_t hidUnlock(const uint8_t *, uint8_t){ return DM_PASS_RIGHT; }

@@ -10,7 +10,7 @@
  * stays away rather than coming up over it.
  *
  * The keys are what the board can type: test/vkbd.js holds every one of them
- * to web/table.js, the accents under US International.
+ * to web/table.js, the accents under US International and ABNT2.
  */
 
 const VK_PAGES = {

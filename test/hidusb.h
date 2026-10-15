@@ -19,6 +19,7 @@ uint8_t hidAllowed(void);
 #define DM_KEY_LEN     16
 void    hidKey(uint8_t modifier, uint8_t key);
 void    hidTypeChar(char c, uint8_t mod);
+void    hidPoint(uint8_t what);
 
 /* The core's password (core/core.h), which the sketch asks but no longer
    keeps. Each test that compiles the sketch provides them. */

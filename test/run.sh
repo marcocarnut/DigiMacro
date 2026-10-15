@@ -6,7 +6,7 @@
 # can be tested here in a second, which beats reflashing a board to find out
 # that an escape argument was read one byte early.
 #
-# Then the web side's own suites, the page's v2 updates against a fake board,
+# Then the mouse, the web side's own suites, the page's v2 updates against a fake board,
 # and the v2 core itself, compiled for the host (core/test).
 #
 # The last suite crosses the language boundary: web/table.js encodes a table,
@@ -32,6 +32,13 @@ echo
 echo "== touch pad, bleed-resistor method =="
 g++ -w -I. -I.. -DTOUCH_PULLUP=0 -o "$OUT"_touch_rc touch_test.cpp
 "$OUT"_touch_rc
+
+echo
+echo "== the mouse: app/hidusb.c's hidPoint() and what it sends =="
+awk '/^static uint8_t ptr\[4\]/{on=1} on{print} on&&/^}/&&seen{exit} /^void .*hidPoint\(/{seen=1}' \
+    ../app/hidusb.c > "$OUT"_pointer.c
+cc -w -DPOINTER_SRC="\"${OUT}_pointer.c\"" -o "$OUT"_pointer pointer_test.c
+"$OUT"_pointer
 
 echo
 echo "== the app's macro language, on its own =="
@@ -86,6 +93,17 @@ echo "== the v2 core, and the app library over it =="
 make -s -C ../core/test
 
 echo
+echo "== the uninstallers, for core 5 and for older cores =="
+AVRGCC=$(make -s -C .. --eval='cc: ; @echo $(CC)' cc 2>/dev/null)
+if [ -x "$AVRGCC" ]; then
+    make -s -C .. uninstalltest > "$OUT"_un 2>&1 || { cat "$OUT"_un; exit 1; }
+    grep -c "^all checks passed" "$OUT"_un | grep -qx 2 || { cat "$OUT"_un; exit 1; }
+    echo "both uninstallers pass"
+else
+    echo "avr-gcc not found, skipped"
+fi
+
+echo
 echo "== backups: scrypt, and only the right password opens one =="
 if command -v node >/dev/null 2>&1; then
     node backup.js
@@ -137,7 +155,7 @@ else
 fi
 
 echo
-echo "== on a simulated board: secrets, xtea.S and all, and a hung app =="
+echo "== on a simulated board: secrets, xtea.S and all, a hung app, the core updater =="
 SIMLIB=$(ls ../../simavr-softusb/simavr/simavr/obj-*/libsimavr.a 2>/dev/null | head -1)
 if [ -n "$SIMLIB" ] && command -v node >/dev/null 2>&1; then
     if make -s -C .. simtest > "$OUT"_sim 2>&1 && tail -1 "$OUT"_sim | grep -qx PASS; then
@@ -146,6 +164,14 @@ if [ -n "$SIMLIB" ] && command -v node >/dev/null 2>&1; then
     else
         cat "$OUT"_sim
         echo "the simulated board fails a check"
+        exit 1
+    fi
+    # The core updater, from v2.0's and v3.0's cores: the new one in place, running
+    if make -s -C .. simcoreupdate > "$OUT"_simcu 2>&1 && tail -1 "$OUT"_simcu | grep -qx PASS; then
+        echo "the core updater puts the new core on v2.0 and v3.0 boards"
+    else
+        cat "$OUT"_simcu
+        echo "the core updater fails on the simulated board"
         exit 1
     fi
 else

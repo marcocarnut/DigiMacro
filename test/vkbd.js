@@ -49,7 +49,8 @@ check(vk.vkChar('ç', 1) === 'Ç' && vk.vkChar('q', 0) === 'q', 'shifted letters
 console.log('6. every key is one the board can type');
 const chars = page => vk.VK_PAGES[page].flat().filter(k => k.length === 1 || k === 'Space')
   .flatMap(k => k === 'Space' ? [' '] : page === 'sym' ? [k] : [k, vk.vkChar(k, 1)]);
-for (const [layout, pages] of [['us-intl', ['abc', 'sym', 'acc']], ['us', ['abc', 'sym']]]) {
+for (const [layout, pages] of [['us-intl', ['abc', 'sym', 'acc']], ['abnt2', ['abc', 'sym', 'acc']],
+                              ['us', ['abc', 'sym']]]) {
   T.setLayout(layout);
   for (const page of pages)
     for (const c of chars(page)) {
@@ -61,7 +62,7 @@ for (const [layout, pages] of [['us-intl', ['abc', 'sym', 'acc']], ['us', ['abc'
 T.setLayout('us');
 let accentOk = true;
 try { T.usages('á'); } catch (e) { accentOk = false; }
-check(!accentOk, 'US would type an accent: the accent page is only for US International');
+check(!accentOk, 'US would type an accent: the accent page is only for dead-key layouts');
 
 console.log('7. every page fits a phone, and has a way back');
 for (const [page, rows] of Object.entries(vk.VK_PAGES)) {

@@ -89,7 +89,9 @@ Be honest with yourself about these before relying on it.
   open, read the secrets outright. Root on that computer can also read the
   key off the USB bus.
 - **Someone watching you tap.** A code seen is a code known. The lockout limits
-  guessing, not knowing. Secrets help here: a code seen is no use on
+  guessing, not knowing — though since firmware 17 playing a known code no
+  longer clears it, so one code buys no more guesses at the rest. Secrets
+  help here: a code seen is no use on
   another computer, if the macro has one.
 - **A weak password.** The board allows one wrong answer per second, and the
   app also wants the hold, but a short password still falls to someone

@@ -86,6 +86,10 @@
 #define HAVE_IR 1           /* 0 = no IR remote on P2 */
 #endif
 
+#ifndef HAVE_POINTER
+#define HAVE_POINTER 1      /* 0 = no {x,y} and {click} */
+#endif
+
 
 #ifndef TOUCH_DEBUG
 #define TOUCH_DEBUG 0       /* 1 = type the pad readings twice a second, into
@@ -220,7 +224,7 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define MACRO_MAX_SYM   5
 
 #define HDR_END(h)      (((h) & 0x07) >= MACRO_MAX_SYM)
-#define HDR_MAKE(n, c)  ((uint8_t)(((c) << 3) | (((n) - 1) & 0x07)))
+#define HDR_MAKE(n, c)  ((uint8_t)(((c) << 3) | ((n) - 1)))  /* n: 1 to 5 */
 
 #define ESC_PAUSE       0x01
 #define ESC_MOD         0x02
@@ -233,6 +237,7 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 #define HOST_LOUD       2           /* ...returns when a {secret} refuses */
 #define SECRET_QUIET    0xFE        /* the jump's argument for {secret}: a  */
 #define SECRET_LOUD     0xFF        /* code no macro has, plus one; {secret!} */
+#define JUMP_CLEAR      0xF7        /* {clear}: another, 0xF6 being 7 symbols */
 
 
 /* Touching the pad stops a macro, so a loop that types or pauses can always
@@ -255,10 +260,10 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
  *   0x1E4   the secrets' check value, eight bytes (DM_CHECK_ADDR): v2's
  *           host key was here
  *   0x1EC   lockout: wrong codes before a soft lock, 0 or 0xFF for none
- *   0x1ED   ...soft locks in a row before a hard one, 0 or 0xFF for never
+ *   0x1ED   ...soft locks before a hard one, 0 or 0xFF for never
  *   0x1EE   ...how long a soft lock lasts, in tens of seconds
  *   0x1EF   ...wrong codes so far              (these three counters are
- *   0x1F0   ...soft locks in a row so far       stored inverted, so that
+ *   0x1F0   ...soft locks so far               stored inverted, so that
  *   0x1F1   ...hard locks lifted, ever          an erased byte is a zero)
  *   0x1F2   how long the secrets' key is held, in tens of seconds
  *   0x1F3   the code to type at power-on, if any
@@ -287,8 +292,11 @@ static inline uint16_t ticks(void) { return (uint16_t)millis(); }
 /* ==================================================================== */
 
 /* In GPIOR1, which is a register the compiler reaches with SBI and CBI
-   rather than a load-modify-store through a pointer. GPIOR0 is the core's
-   flags and GPIOR2 its update window (core/layout.h); GPIOR1 is the app's. */
+   rather than a load-modify-store through a pointer. One bit at a time,
+   so two bits are two statements: a word each, where a mask of two is a
+   read, a change and a write -- which the remote's interrupt could also
+   land in the middle of. GPIOR0 is the core's flags and GPIOR2 its update
+   window (core/layout.h); GPIOR1 is the app's. */
 #define FLAG_CODE_OPEN  1       /* symbols tapped, waiting for the silence */
 #define FLAG_CODE_OVER  2       /* more symbols than any code can have     */
 #define FLAG_CONSUMED   4       /* this press opened the window, not a symbol */
@@ -320,12 +328,12 @@ void wait_poll(uint16_t ms)
     while ((uint16_t)(ticks() - t) < ms) hidPoll();
 }
 
-void blink(uint8_t n, uint16_t ms)
+void blink(uint8_t n, uint16_t ms)    /* n, never zero, times */
 {
-    while (n--) {
+    do {
         LED_SET(1); wait_poll(ms);
         LED_SET(0); wait_poll(ms);
-    }
+    } while (--n);
 }
 
 /* Whether there is a password, and whether it has been given this session,
@@ -337,11 +345,12 @@ void blink(uint8_t n, uint16_t ms)
  *
  * Two stages, so that the owner can fumble a code without needing the app.
  * Too many wrong codes and the board ignores every tap, right or wrong, for a
- * while: a soft lock. Too many soft locks in a row and it ignores them until
- * the password is given: a hard lock. A macro that plays clears both
- * counts, so somebody guessing gets at most (soft x hard) codes before the
- * board stops listening -- and three, at 1 and 3, is a good deal less than
- * the 62 there are.
+ * while: a soft lock. Too many soft locks and it ignores them until the
+ * password is given: a hard lock. Only the password clears the counts, and
+ * {clear}, which the owner chooses to have: a macro that plays does not, or
+ * one known code would let anybody guess for ever. So somebody guessing gets
+ * at most (soft x hard) codes before the board stops listening -- and
+ * three, at 1 and 3, is a good deal less than the 62 there are.
  *
  * It needs a password, and is off without one whatever the settings say,
  * because the password is the only thing that lifts a hard lock. An erased
@@ -359,7 +368,7 @@ void blink(uint8_t n, uint16_t ms)
  * own length.
  */
 #define LOCK_SOFT       ((uint8_t *)0x1EC)  /* wrong codes before a soft lock */
-#define LOCK_HARD       ((uint8_t *)0x1ED)  /* soft locks in a row, then hard */
+#define LOCK_HARD       ((uint8_t *)0x1ED)  /* soft locks, then hard */
 #define LOCK_WAIT       ((uint8_t *)0x1EE)  /* a soft lock, in tens of seconds */
 #define LOCK_MISSES     ((uint8_t *)0x1EF)  /* the counters, stored inverted */
 #define LOCK_SOFTS      ((uint8_t *)0x1F0)
@@ -383,8 +392,9 @@ static void count_up(uint8_t *a)
 /* The soft threshold, or 0 if there is no lockout. */
 static uint8_t lock_soft(void)
 {
+    if (!hidPassSet()) return 0;
     uint8_t t = eeprom_read_byte(LOCK_SOFT);
-    return hidPassSet() && THR_SET(t) ? t : 0;
+    return t == 0xFF ? 0 : t;           /* THR_SET(t): 0 is 0 already */
 }
 
 uint8_t hidLockState(void)
@@ -609,15 +619,17 @@ uint8_t hidProve(uint8_t *p, uint8_t n)
    it started. */
 static uint8_t secret_byte(uint8_t *a)
 {
-    uint8_t c = eeprom_read_byte(a);
+    uint8_t k = 0;
 
-    if (!sec_at) return c;
-    if (!key_left) return 0;    /* clocks_poll() runs its clock between bytes */
-    memcpy(sec.ks, sec.nonce, 4);
-    sec.ks[4] = a - sec_at;
-    sec.ks[5] = sec.ks[6] = sec.ks[7] = 0;
-    xtea(sec.ks, sec.key);
-    return c ^ sec.ks[0];
+    if (sec_at) {
+        if (!key_left) return 0; /* clocks_poll() runs its clock between bytes */
+        memcpy(sec.ks, sec.nonce, 4);
+        sec.ks[4] = a - sec_at;
+        sec.ks[5] = sec.ks[6] = sec.ks[7] = 0;
+        xtea(sec.ks, sec.key);
+        k = sec.ks[0];
+    }
+    return eeprom_read_byte(a) ^ k;
 }
 
 /* The clocks that must keep running while a macro plays, since loop() does
@@ -739,8 +751,11 @@ uint8_t touch_once(void)
  * therefore the sample that ran undisturbed, and nothing except real
  * capacitance can push a reading up. Masking interrupts instead would put
  * the USB connection at risk for no gain at all.
+ *
+ * Kept out of line: setup and the poll both read the pad, and one copy
+ * costs less than two.
  */
-uint8_t touch_read(void)
+__attribute__((noinline)) uint8_t touch_read(void)
 {
     uint8_t m = 0;
 
@@ -749,6 +764,13 @@ uint8_t touch_read(void)
         if (v > m) m = v;
     }
     return m;
+}
+
+/* The average, put where a reading says the pad is: at power-up, and when a
+   touch has gone on too long to be one. */
+__attribute__((noinline)) static void touch_seed(uint8_t v)
+{
+    touch_base = (uint16_t)v << 4;
 }
 
 void touch_poll(void)
@@ -769,8 +791,9 @@ void touch_poll(void)
        sitting on the threshold chatters, and a single chattering sample ends
        a press -- which costs a four-second hold everything and a tap almost
        nothing. */
-    thr = touch_state ? base + (base >> 3) + 1
-                      : base + (base >> 2) + 2;
+    thr = base >> 2;
+    thr = touch_state ? base + (thr >> 1) + 1
+                      : base + thr + 2;
     touch_state = touch_raw > thr;
 
     /* The average only follows the pad while it is untouched, so a finger
@@ -808,7 +831,7 @@ void touch_poll(void)
        that outlasts any real one is taken as drift, and the average is
        moved to meet it. */
     if ((uint16_t)(now - touch_since) > TOUCH_STUCK_MS)
-        touch_base = (uint16_t)touch_raw << 4;
+        touch_seed(touch_raw);
 }
 
 #endif /* HAVE_TOUCH */
@@ -868,7 +891,8 @@ uint8_t  code_len;
 void code_reset(void)
 {
     code_bits = code_len = 0;
-    FLAGS &= ~(FLAG_CODE_OPEN | FLAG_CODE_OVER);
+    FLAGS &= ~FLAG_CODE_OPEN;
+    FLAGS &= ~FLAG_CODE_OVER;
 }
 
 void handle_input(void)
@@ -900,14 +924,16 @@ void handle_input(void)
 
         if (raw) {
             press_start = now;
-            FLAGS &= ~(FLAG_CONSUMED | FLAG_HELD);
+            FLAGS &= ~FLAG_CONSUMED;
+            FLAGS &= ~FLAG_HELD;
         } else if (!(FLAGS & FLAG_CONSUMED)) {
             /* A completed press is one symbol. */
             uint16_t held = now - press_start;
             if (code_len >= MACRO_MAX_SYM) {
                 FLAGS |= FLAG_CODE_OVER;
             } else {
-                code_bits = (code_bits << 1) | (held >= DOT_MAX_MS ? 1 : 0);
+                code_bits <<= 1;
+                if (held >= DOT_MAX_MS) code_bits |= 1;
                 code_len++;
             }
             last_release = now;
@@ -928,7 +954,8 @@ void handle_input(void)
        cannot forge it. */
     if (in_down && !(FLAGS & FLAG_HELD) &&
         (uint16_t)(now - press_start) >= HOLD_MS) {
-        FLAGS |= FLAG_HELD | FLAG_CONSUMED;
+        FLAGS |= FLAG_HELD;
+        FLAGS |= FLAG_CONSUMED;
         code_reset();
         hidAllow(CONFIG_MS);
     }
@@ -1012,20 +1039,35 @@ static void stop_for_touch(void)
     FLAGS &= ~FLAG_HELD;        /* ...but it may still become a hold */
 }
 
-/* Wait, while watching the pad. Nothing else here is timing critical enough
-   to need a state machine, but dropping hidPoll() for 100 ms loses the host. */
-uint8_t pause_poll(uint16_t ms)
+/* The clocks kept, and the pad read: is anybody touching it? Asked between
+   one thing and the next all through a macro, which a yes stops. */
+static uint8_t touched(void)
+{
+    clocks_poll();
+#if HAVE_TOUCH
+    touch_poll();
+#endif
+    if (!INPUT_ACTIVE()) return 0;
+    stop_for_touch();
+    return 1;
+}
+
+/* Wait some tenths of a second, while watching the pad. Nothing else here is
+   timing critical enough to need a state machine, but dropping hidPoll() for
+   100 ms loses the host. Each tenth is timed from where the last one was due
+   to end, so they add up to the whole wait exactly -- and nothing has to
+   multiply, which this chip does in a library call. */
+uint8_t pause_poll(uint8_t tenths)
 {
     uint16_t t = ticks();
 
-    while ((uint16_t)(ticks() - t) < ms) {
-        hidPoll();
-        clocks_poll();
-#if HAVE_TOUCH
-        touch_poll();
-#endif
-        if (INPUT_ACTIVE()) return 1;
-    }
+    do {
+        while ((uint16_t)(ticks() - t) < 100) {
+            hidPoll();
+            if (touched()) return 1;
+        }
+        t += 100;
+    } while (--tenths);
     return 0;
 }
 
@@ -1053,12 +1095,7 @@ uint8_t macro_play(uint8_t *a)
     while (a < TABLE_TOP) {
         uint8_t c;
 
-        /* Between one thing and the next, is anybody touching it? */
-        clocks_poll();
-#if HAVE_TOUCH
-        touch_poll();
-#endif
-        if (INPUT_ACTIVE()) { stop_for_touch(); break; }
+        if (touched()) break;
 
         c = secret_byte(a++);
         if (!c) break;
@@ -1091,10 +1128,7 @@ uint8_t macro_play(uint8_t *a)
                                            that says otherwise is corrupt */
             if (c == ESC_PAUSE) {
                 LED_SET(1);
-                if (pause_poll((uint16_t)arg * 100)) {
-                    stop_for_touch();
-                    break;
-                }
+                if (pause_poll(arg)) break;
             } else if (c == ESC_MOD) {
                 mod = arg;
             } else if (c == ESC_REPEAT) {
@@ -1106,15 +1140,10 @@ uint8_t macro_play(uint8_t *a)
                     /* Up to 255 keystrokes, each a chance to be stopped,
                        like any other. */
                     LED_SET(1);
-                    while (arg--) {
-                        clocks_poll();
-#if HAVE_TOUCH
-                        touch_poll();
-#endif
-                        if (INPUT_ACTIVE()) break;
+                    do {
+                        if (touched()) goto stop;   /* out of both loops */
                         hidKey(lastmod, lastkey);
-                    }
-                    if (INPUT_ACTIVE()) { stop_for_touch(); break; }
+                    } while (--arg);
                 } else if (!reps) {
                     reps = arg;         /* the group has played once already */
                     a = mark;
@@ -1123,11 +1152,15 @@ uint8_t macro_play(uint8_t *a)
                 } else {
                     mark = 0;           /* done; carry on past the repeat */
                 }
+            } else if (c == ESC_JUMP && arg == JUMP_CLEAR) {
+                lock_clear();           /* the owner's own way round the lockout */
             } else if (c == ESC_JUMP && arg >= SECRET_QUIET) {
                 /* {secret}: refused without the key, quietly or as if the
                    code were not there */
                 if (!key_ok()) {
-                    refused = arg == SECRET_LOUD ? HOST_LOUD : HOST_SILENT;
+                    refused = arg - (SECRET_QUIET - HOST_SILENT);  /* one
+                                           apart, as HOST_LOUD and
+                                           HOST_SILENT are */
                     break;
                 }
                 for (uint8_t i = 0; i < 4; i++)
@@ -1143,9 +1176,18 @@ uint8_t macro_play(uint8_t *a)
                 mark = 0;
                 reps = 0;
 #endif
+#if HAVE_POINTER
+            } else if (c == ESC_HOST && arg > HOST_LOUD) {
+                hidPoint(arg);
+#endif
             } else if (c == ESC_HOST) {
                 /* v2's {host}, which no key satisfies now: see "secrets" */
+#if HAVE_POINTER
+                refused = arg;          /* HOST_SILENT or HOST_LOUD, the rest
+                                           being pointer moves */
+#else
                 refused = arg == HOST_LOUD ? HOST_LOUD : HOST_SILENT;
+#endif
                 break;
             } else {
                 break;                  /* an escape this build does not have:
@@ -1154,7 +1196,8 @@ uint8_t macro_play(uint8_t *a)
             continue;
         }
 
-        lastmod = mod | ((c & KEY_SHIFT) ? MOD_SHIFT : 0);
+        if (c & KEY_SHIFT) mod |= MOD_SHIFT;
+        lastmod = mod;
         lastkey = c & 0x7F;
         mod = 0;
 #if HAVE_JUMP
@@ -1164,8 +1207,17 @@ uint8_t macro_play(uint8_t *a)
         hidKey(lastmod, lastkey);
     }
 
+stop:
     LED_SET(0);
     return refused;
+}
+
+/* Play the macro with this header. One that is not there answers as a
+   {secret!} that refused does, HOST_LOUD: see below. */
+static uint8_t play_header(uint8_t h)
+{
+    uint8_t *a = find_header(h);
+    return a ? macro_play(a) : HOST_LOUD;
 }
 
 /* Look the finished code up, and play it or say we could not. Locked, a code
@@ -1173,27 +1225,21 @@ uint8_t macro_play(uint8_t *a)
    very answer the lock is withholding. */
 void code_finish(void)
 {
-    uint8_t *a, r;
+    uint8_t h = HDR_MAKE(code_len, code_bits);
+    uint8_t ok = !(FLAGS & FLAG_CODE_OVER) && code_len;
 
-    if (hidLockState()) {
-        code_reset();
-        return;
-    }
-    a = ((FLAGS & FLAG_CODE_OVER) || !code_len)
-        ? 0 : find_header(HDR_MAKE(code_len, code_bits));
     code_reset();
+    if (hidLockState()) return;
 
     /* A code that is not there, and one whose {secret!} refused, are
        the same thing from outside, so they are the same thing here. One that
-       played clears the lockout's counts -- afterwards, not on being found:
-       otherwise tapping a guarded code on the wrong computer would wipe a
-       guesser's misses for them. A quiet refusal neither clears nor counts. */
-    r = a ? macro_play(a) : HOST_LOUD;
-    if (r == HOST_LOUD) {
+       plays clears nothing: anybody who knew one code could otherwise guess
+       right up to the lockout, clear it, and go on for ever. Only the
+       password clears the counts, and {clear}. A quiet refusal neither
+       clears nor counts. */
+    if (!ok || play_header(h) == HOST_LOUD) {
         lock_miss();            /* before the blinks: see lock_miss() */
         blink(3, 70);
-    } else if (!r) {
-        lock_clear();
     }
 }
 
@@ -1203,13 +1249,11 @@ uint16_t auto_since;            /* when the host finished enumerating */
 /* Type the nominated macro, once the host is listening. */
 void autoexec_run(void)
 {
-    uint8_t  h = eeprom_read_byte(AUTO_ADDR);
-    uint8_t *a;
+    uint8_t h = eeprom_read_byte(AUTO_ADDR);
 
     if (HDR_END(h)) return;             /* 0xFF, or never set */
     if (hidLockState() == DM_ST_HARDLOCK) return;   /* or a thief replugs it */
-    a = find_header(h);
-    if (a) macro_play(a);
+    play_header(h);
 }
 #endif
 
@@ -1265,7 +1309,7 @@ static volatile uint8_t ir_addr, ir_cmd;    /* the last good one: FLAG_IR */
    half a millisecond between a 0 and a 1. */
 ISR(INT0_vect, ISR_NOBLOCK)
 {
-    uint8_t t = TCNT0;
+    uint8_t t = TCNT0, n = ir_left;
 
     TCNT0 = 0;
     if (TIFR & (1 << TOV0)) {   /* longer than anything inside a frame */
@@ -1273,22 +1317,24 @@ ISR(INT0_vect, ISR_NOBLOCK)
         t = 0xFF;
     }
     if (t >= IR_T(10000) && t <= IR_T(14500)) {
-        ir_left = 32;           /* the start of a frame */
-    } else if (ir_left && t >= IR_T(800) && t <= IR_T(2800)) {
-        ir_bits >>= 1;
-        if (t > IR_T(1690)) ir_bits |= 0x8000;
-        if (--ir_left == 16) {
-            ir_addr = ir_bits;
-        } else if (!ir_left) {
-            uint8_t c = ir_bits;
-            if (c == (uint8_t)~(ir_bits >> 8)) {
+        n = 32;                 /* the start of a frame */
+    } else if (n && t >= IR_T(800) && t <= IR_T(2800)) {
+        uint16_t b = ir_bits >> 1;
+        if (t > IR_T(1690)) b |= 0x8000;
+        ir_bits = b;
+        if (--n == 16) {
+            ir_addr = b;
+        } else if (!n) {
+            uint8_t c = b;
+            if (c == (uint8_t)~(b >> 8)) {
                 ir_cmd = c;
                 FLAGS |= FLAG_IR;
             }
         }
     } else {
-        ir_left = 0;            /* a repeat, a gap, noise: not a frame */
+        n = 0;                  /* a repeat, a gap, noise: not a frame */
     }
+    ir_left = n;
 }
 
 static void ir_begin(void)
@@ -1335,8 +1381,7 @@ static void ir_poll(void)
     ir_key[0] = a | 0x80;
     ir_key[1] = c | 0x80;
     ir_key[2] = x;
-    uint8_t *p = find_header(IR_WANT);
-    if (p) macro_play(p);
+    play_header(IR_WANT);
 }
 #else
 void hidLearn(void) { }         /* no remote to learn from */
@@ -1346,13 +1391,13 @@ void hidLearn(void) { }         /* no remote to learn from */
 
 void update_led(void)
 {
-    uint8_t lock = hidLockState();
+    uint8_t lock;
 
     /* The window comes first: holding the pad on a locked board is how the
        owner gets the app in to lift the lock, and they want to see it took. */
     if (hidAllowed())
-        LED_SET((ticks() & 0x3FF) < 512);       /* a steady blink: configurable */
-    else if (lock == DM_ST_HARDLOCK)
+        LED_SET(!(ticks() & 0x200));            /* a steady blink: configurable */
+    else if ((lock = hidLockState()) == DM_ST_HARDLOCK)
         LED_SET(ticks() & 0x40);                /* fast, eight times a second */
     else if (lock == DM_ST_SOFTLOCK)
         LED_SET((ticks() & 0x7FF) < 60);        /* a blip every two seconds */
@@ -1378,8 +1423,8 @@ void app_setup(void)
     DDRB  &= ~(1 << PIN_TOUCH); /* input, pull-up off: it would swamp the
                                    pad's capacitance */
     PORTB &= ~(1 << PIN_TOUCH);
-    touch_base = (uint16_t)touch_read() << 4;   /* seed before the loop, or
-                                       every reading looks like a touch */
+    touch_seed(touch_read());   /* before the loop, or every reading
+                                   looks like a touch */
 #else
     DDRB  &= ~(1 << PIN_BUTTON);        /* input... */
     PORTB |=  (1 << PIN_BUTTON);        /* ...with the pull-up on */
@@ -1412,10 +1457,11 @@ void app_loop(void)
        for somewhere to type rather than merely for enumeration -- see
        AUTO_SETTLE_MS above for why those are not the same thing. */
     if (!(FLAGS & FLAG_AUTODONE) && hidReady()) {
+        uint16_t now = ticks();
         if (!(FLAGS & FLAG_AUTOWAIT)) {
             FLAGS |= FLAG_AUTOWAIT;
-            auto_since = ticks();
-        } else if ((uint16_t)(ticks() - auto_since) >=
+            auto_since = now;
+        } else if ((uint16_t)(now - auto_since) >=
                    (hidAwake() ? AUTO_SETTLE_MS : AUTO_WAIT_MS)) {
             FLAGS |= FLAG_AUTODONE;
             autoexec_run();

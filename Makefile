@@ -1,4 +1,4 @@
-# DigiMacro v2: a core below 0x1000, and the app above it.
+# DigiMacro v2: a core below 0x0F80, and the app above it.
 #
 #   make            DigiMacro: digimacro.hex (the app, for updates over USB)
 #                   and digimacro-full.hex (core and app, for a programmer --
@@ -8,8 +8,9 @@
 #   make release    DigiMacro as it ships, into web/firmware/: the app for
 #                   the page to update a v2 board with, the core alone for
 #                   the page to put on a board through Micronucleus, the
-#                   full image for a programmer, and a json naming the core
-#                   API the app needs.
+#                   full image for a programmer, the uninstallers and the
+#                   core updater, and a json naming the core API the app
+#                   needs.
 #                   Commit the result: the page carries it.
 #   make spike      the core, the spike's apps A, B and C, and spikeA.hex,
 #                   all below Micronucleus, in build/v2-spike/
@@ -20,11 +21,13 @@
 #                   irspike-full.hex, core and all, for a programmer
 #   make uninstall  uninstall.hex: an app that wipes the EEPROM and hands
 #                   the board back to Micronucleus, which it carries
-#                   (app/uninstall.c)
-#   make coreupdate spike: coreupdate.hex, an app that puts the core just
-#                   built in place of a board's, in one step
+#                   (app/uninstall.c); uninstall1.hex, the same for an
+#                   older core
+#   make coreupdate coreupdate.hex, an app for boards on an older core --
+#                   API 1, the boundary at 0x1000 -- that puts the core just
+#                   built in place of theirs, in one step
 #                   (app/coreupdate.S); make simcoreupdate tries it on a
-#                   simulated board with v3.0's core
+#                   simulated board, from v2.0's core and from v3.0's
 #   make test       the core's request handling, built for the host
 #   make size       what each part takes
 #
@@ -173,7 +176,9 @@ DMDEFS  = $(if $(BUTTON),-DHAVE_TOUCH=0) $(if $(RC),-DTOUCH_PULLUP=0) \
           $(if $(LEDECHO),-DLED_ECHO=1) $(if $(TOUCHDEBUG),-DTOUCH_DEBUG=1)
 # Shared prologues and epilogues: 34 bytes the secrets needed. The firmware
 # only -- the core is built as it was, and stays byte for byte the same.
-DMOPT   = -mcall-prologues
+# The rest, measured one by one and together: 56 bytes the mouse needed.
+DMOPT   = -mcall-prologues -fno-gcse -fno-tree-loop-optimize -fno-reorder-blocks \
+          -fno-cse-follow-jumps
 CXXFLAGS = $(filter-out -std=gnu11,$(CFLAGS)) -x c++ -std=gnu++11 \
           -fno-exceptions -fno-rtti -fno-threadsafe-statics $(DMOPT) $(DMDEFS)
 APPVER_DM := $(shell sed -n 's/^\#define DM_FW_VERSION *\([0-9]*\).*/\1/p' app/hidusb.h)
@@ -197,9 +202,12 @@ $(O)/digimacro-full.hex: $(O)/core.hex $(O)/digimacro.hex
 CORE_VER := $(shell sed -n 's/^\#define DM_CORE_VERSION *\([0-9]*\).*/\1/p' core/core.h)
 CORE_API := $(call val,CORE_API)
 
-release: $(O)/digimacro.hex $(O)/digimacro-full.hex $(O)/uninstall.hex
+release: $(O)/digimacro.hex $(O)/digimacro-full.hex $(O)/uninstall.hex \
+         $(O)/uninstall1.hex $(O)/coreupdate.hex
 	@[ -z "$(strip $(DMDEFS))" ] || { echo "release is the stock firmware: no options"; exit 1; }
 	cp $(O)/uninstall.hex web/firmware/digimacro-uninstall.hex
+	cp $(O)/uninstall1.hex web/firmware/digimacro-uninstall-api1.hex
+	cp $(O)/coreupdate.hex web/firmware/digimacro-coreupdate.hex
 	cp $(O)/digimacro.hex web/firmware/digimacro-v2.hex
 	cp $(O)/digimacro-full.hex web/firmware/digimacro-v2-full.hex
 	cp $(O)/core.hex web/firmware/digimacro-v2-core.hex
@@ -272,11 +280,27 @@ $(O)/uninstall.hex: $(O)/uninstall.elf app/apphex.py $(MN_HEX)
 	    $$(stat -c %s $(@:.hex=.bin)) $(MN_START)
 	python3 app/apphex.py app $(APP_START) $(APP_HDR) $(@:.hex=.bin) $@ $(MN_HEX)
 
-# ---- spike: the core updater -------------------------------------------
+# ...and the same for a core with the old boundary, which the page sends a
+# board it has not yet moved to this core (OLDLAYOUT: see the core updater).
+$(O)/uninstall1.o: app/uninstall.c core/layout.h | $(O)
+	$(CC) $(CFLAGS) $(OLDLAYOUT) -DMN_START=$(MN_START) -c -o $@ $<
+$(O)/apphdrUN1.o: app/apphdr.S core/layout.h | $(O)
+	$(CC) $(ASFLAGS) $(OLDLAYOUT) -DAPP_VER=$(APPVER_UN) -c -o $@ $<
+$(O)/uninstall1.elf: $(O)/apphdrUN1.o $(O)/uninstall1.o
+	$(CC) $(CFLAGS) -nostartfiles -Wl,--gc-sections -Wl,--section-start=.text=0x1000 \
+	    -Wl,--section-start=.data=$(call hexaddr,$$(( 0x800000 + $(APP_RAM) ))) -o $@ $^
+$(O)/uninstall1.hex: $(O)/uninstall1.elf app/apphex.py $(MN_HEX)
+	$(OBJCOPY) -O binary -R .eeprom $< $(@:.hex=.bin)
+	python3 app/apphex.py app 0x1000 $(APP_HDR) $(@:.hex=.bin) $@ $(MN_HEX)
 
-# The core as the updater carries it: its pages up to its end, then its
-# table, and how many pages that is, for app/coreupdate.S.
+# ---- the core updater -------------------------------------------------
+
+# An app for the cores already out there -- API 1, the boundary at 0x1000 --
+# that carries this core and puts it in their place, in one step. Built to
+# their layout, not this one: OLDLAYOUT. The core as it carries it: its
+# pages up to its end, then its table, and how many pages that is.
 APPVER_CU = 1
+OLDLAYOUT = -DAPP_START=0x1000 -DCORE_API=1
 
 coreupdate: $(O)/coreupdate.hex
 $(O)/coreimg.bin: $(O)/core.elf $(O)/core.hex
@@ -287,19 +311,30 @@ $(O)/coreimg.bin: $(O)/core.elf $(O)/core.hex
 	 tail -c $$(( $(APP_START) - $(CORE_TABLE) )) $(O)/core-flash.bin >> $@; \
 	 echo "coreupdate: carries $$n pages of core and its table"
 $(O)/coreupdate.o: app/coreupdate.S core/layout.h $(O)/coreimg.bin | $(O)
-	$(CC) $(ASFLAGS) -I$(O) -Wa,-I$(O) -c -o $@ $<
+	$(CC) $(ASFLAGS) $(OLDLAYOUT) -DNEW_START=$(APP_START) -I$(O) -Wa,-I$(O) -c -o $@ $<
+$(O)/apphdrCU.o: app/apphdr.S core/layout.h | $(O)
+	$(CC) $(ASFLAGS) $(OLDLAYOUT) -DAPP_VER=$(APPVER_CU) -c -o $@ $<
 $(O)/coreupdate.elf: $(O)/apphdrCU.o $(O)/coreupdate.o
-	$(CC) $(CFLAGS) $(APPLINK) -o $@ $^
+	$(CC) $(CFLAGS) -nostartfiles -Wl,--gc-sections -Wl,--section-start=.text=0x1000 -o $@ $^
 $(O)/coreupdate.hex: $(O)/coreupdate.elf app/apphex.py
-	$(apphex)
+	$(OBJCOPY) -O binary -R .eeprom $< $(@:.hex=.bin)
+	python3 app/apphex.py app 0x1000 $(APP_HDR) $(@:.hex=.bin) $@
+	@[ $$(( 0x1000 + $$(stat -c %s $(@:.hex=.bin)) + 2 )) -le $(APP_END) ] \
+	    || { echo "$@ runs past APP_END"; exit 1; }
 
-# Tried on a simulated board: v3.0's core, the updater, and what is left.
+# Tried on a simulated board: each released core, the updater, and what is
+# left -- v2.0's core 3 and v3.0's core 4 (v2.1 to v3.0 share it).
 $(O)/sim_coreupdate: test/sim/coreupdate.c $(SIMLIB) | $(O)
 	cc -O2 -g -Wall -I$(SOFTUSB)/simavr/simavr/sim -I$(SOFTUSB)/harness -o $@ $< \
 	    $(addprefix $(SOFTUSB)/harness/,board.c softusb.c dm.c touchpad.c) $(SIMLIB) -lelf -lm
 simcoreupdate: $(O)/sim_coreupdate $(O)/core.elf $(O)/coreupdate.hex
-	git show v3.0:web/firmware/digimacro-v2-core.hex > $(O)/core-v3.0.hex
-	$(O)/sim_coreupdate $(O)/core.elf $(O)/core-v3.0.hex $(O)/coreupdate.hex $(O)/core-flash.bin
+	@for v in v2.0 v3.0; do \
+	    echo "== from $$v's core"; \
+	    git show $$v:web/firmware/digimacro-v2-core.hex > $(O)/core-$$v.hex && \
+	    $(O)/sim_coreupdate $(O)/core.elf $(O)/core-$$v.hex $(O)/coreupdate.hex $(O)/core-flash.bin \
+	        | tee $(O)/simcu-$$v.log | grep -v '^ ' ; \
+	    tail -1 $(O)/simcu-$$v.log | grep -qx PASS || exit 1; \
+	done; echo PASS
 
 # A script, not something to build: without this, make's built-in rules
 # would happily make apphex.py from apphex.py.o.
@@ -317,15 +352,21 @@ $(O)/spike-page.html: app/spike.html $(O)/appA.hex $(O)/appB.hex $(O)/appC.hex
 size: $(O)/core.elf $(O)/digimacro.elf $(O)/hidusb.o
 	$(SIZE) $^
 
-test: $(O)/uninstall.hex
+test: uninstalltest
 	$(MAKE) -C core/test
+
+# The uninstallers, built for the AVR, run on the host: both layouts
+uninstalltest: $(O)/uninstall.hex $(O)/uninstall1.hex
 	cc -std=gnu11 -Wall -Wno-int-to-pointer-cast -Itest/uninstall -Icore \
 	    -DMN_START=$(MN_START) -o $(O)/uninstall_test test/uninstall/uninstall_test.c
 	$(O)/uninstall_test $(O)/uninstall.hex $(MN_HEX)
+	cc -std=gnu11 -Wall -Wno-int-to-pointer-cast -Itest/uninstall -Icore $(OLDLAYOUT) \
+	    -DMN_START=$(MN_START) -o $(O)/uninstall1_test test/uninstall/uninstall_test.c
+	$(O)/uninstall1_test $(O)/uninstall1.hex $(MN_HEX)
 
 clean:
 	rm -rf $(O)
 	$(MAKE) -C core/test clean
 
-.PHONY: all release site hosts spike page irspike uninstall coreupdate size test simtest simcoreupdate clean
+.PHONY: all release site hosts spike page irspike uninstall coreupdate size test uninstalltest simtest simcoreupdate clean
 .SECONDARY:

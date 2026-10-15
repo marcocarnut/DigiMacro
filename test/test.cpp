@@ -69,6 +69,13 @@ void hidKey(uint8_t mod, uint8_t key)
     if (stop_after > 0 && --stop_after == 0) btn_held = 1;
 }
 
+/* The pointer's escapes, as they reach the app: the argument, whole */
+void hidPoint(uint8_t what)
+{
+    if (typedn < (int)sizeof typed - 16)
+        typedn += sprintf(typed + typedn, "[%02X]", what);
+}
+
 #include "DigiMacro.ino"
 
 /* ---- the core's password, and the app library's verbs --------------
@@ -332,6 +339,21 @@ int main(void)
     add("-", { K('c') });
     CHECK(!strcmp(play("."), "<00/04>"),
           "a short {IR} must stop, not run on into \"-\": \"%s\"", typed);
+
+    printf("9b. the pointer: {x,y} and {click} are {host}'s other arguments\n");
+    /* 1 and 2 are {host}; anything above goes to the pointer, and the macro
+       carries on afterwards -- {host} stops it. */
+    table_reset();
+    add(".", { K('a'), ESC_HOST, 0xC0, ESC_HOST, 0x60, ESC_HOST, 0x31, K('b') });
+    CHECK(!strcmp(play("."), "<00/04>[C0][60][31]<00/05>"),
+          "a move, then a click, then b: \"%s\"", typed);
+    table_reset();
+    add(".", { K('a'), ESC_HOST, HOST_SILENT, K('b') });
+    CHECK(!strcmp(play("."), "<00/04>"), "{host} still stops: \"%s\"", typed);
+    /* 3 to 0x1F are a move's scale, and go to the pointer too */
+    table_reset();
+    add(".", { K('a'), ESC_HOST, 3, ESC_HOST, 0x1F, K('b') });
+    CHECK(!strcmp(play("."), "<00/04>[03][1F]<00/05>"), "a scale: \"%s\"", typed);
 
     printf("10. the walk cannot leave the table\n");
     /* A table with no terminator would otherwise run straight into the
@@ -745,7 +767,7 @@ int main(void)
     fake_ms += 1100; app_loop();
     CHECK(!hidLockState(), "and over after them");
     CHECK(!strcmp(play("."), "<00/04>"), "taps work again: \"%s\"", typed);
-    CHECK(count_of(LOCK_SOFTS) == 0, "and a right code clears the run of locks");
+    CHECK(count_of(LOCK_SOFTS) == 1, "but a right code does not clear the run of locks");
 
     printf("21d. unplugging does not shorten the wait\n");
     /* No clock runs while it is unplugged, so a soft lock found at power-up
@@ -760,7 +782,7 @@ int main(void)
     fake_ms += 2100; app_loop();
     CHECK(!hidLockState(), "and end ten seconds after the replug");
 
-    printf("21e. soft locks in a row become a hard one\n");
+    printf("21e. soft locks add up to a hard one\n");
     lock_clear();
     for (int n = 0; n < 2; n++) { miss(); miss(); serve(); }
     CHECK(!hidLockState(), "two soft locks of three is still soft");
@@ -832,6 +854,25 @@ int main(void)
     for (int n = 0; n < 5; n++) { miss(); serve(); }
     CHECK(!hidLockState(), "0xFF means never");
     CHECK(count_of(LOCK_SOFTS) == 5, "though they are still counted");
+
+    printf("21j2. a right code clears nothing, or one known code would undo it all\n");
+    /* Anybody who knew a code could guess up to the lock, play it, and go
+       on for ever. {clear} is the owner's choice to allow just that. */
+    lock_clear();
+    lockout(3, 2, 1);
+    add("..", { K('b'), ESC_JUMP, 0xF7, K('c') });     /* "." is still a */
+    miss(); miss();
+    play(".");
+    CHECK(count_of(LOCK_MISSES) == 2, "the misses stand after a right code, %d",
+          count_of(LOCK_MISSES));
+    miss();
+    CHECK(hidLockState() == DM_ST_SOFTLOCK, "and the next wrong one locks");
+    serve();
+    CHECK(count_of(LOCK_SOFTS) == 1, "the soft lock stands too, after the wait");
+    CHECK(!strcmp(play(".."), "<00/05><00/06>"), "{clear} plays on: \"%s\"", typed);
+    CHECK(count_of(LOCK_MISSES) == 0 && count_of(LOCK_SOFTS) == 0,
+          "and clears both, as the password does");
+    lock_clear();
 
     printf("21k. a new password starts the counts again\n");
     miss();
@@ -944,7 +985,7 @@ int main(void)
     miss();
     CHECK(hidKeyAuth(SKEY, 16), "the key");
     CHECK(!strcmp(play("-"), "<00/1B>"), "{secret!} opens and types: \"%s\"", typed);
-    CHECK(count_of(LOCK_MISSES) == 0, "and clears the misses, as any code that works");
+    CHECK(count_of(LOCK_MISSES) == 1, "and clears nothing, as no code that works does");
     key_forget();
 
     printf("22g. jumps: into a secret it is checked there, out of one in the clear\n");

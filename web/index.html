@@ -495,6 +495,11 @@
     <tr><td>{secret}</td><td data-t="ref-secret"></td></tr>
     <tr><td>{secret!}</td><td data-t="ref-secret-loud"></td></tr>
     <tr><td>{IR 00 45}</td><td data-t="ref-ir"></td></tr>
+    <tr><td>{40,90} {0,0}</td><td data-t="ref-point"></td></tr>
+    <tr><td>{40*1.75,90*1.75}</td><td data-t="ref-point-scale"></td></tr>
+    <tr><td>{click} {right-click}</td><td data-t="ref-click"></td></tr>
+    <tr><td>{hold} {release}</td><td data-t="ref-hold"></td></tr>
+    <tr><td>{clear}</td><td data-t="ref-clear"></td></tr>
     <tr><td>á ç ã</td><td data-t="ref-accent"></td></tr>
     <tr><td>{'}</td><td data-t="ref-bare-mark"></td></tr>
   </table>
@@ -687,7 +692,19 @@ function renderWho() {
   /* A hardened v1 board cannot take an update from here; a v2 board can,
      and any other v1 board moves to v2 -- whatever v1 firmware it runs. */
   const latest = fwLatest();
-  if ((!meant || core) && latest !== null) {
+  if (coreBehind()) {
+    /* No firmware here for its core: the core goes first (drawFirmware) */
+    el.append(' ');
+    if (stage === 'board') {
+      const b = document.createElement('button');
+      b.className = 'link';
+      b.textContent = t('fw-link-core', { fw: fwHereV2.app });
+      b.onclick = openFirmware;
+      el.append(b);
+    } else {
+      el.append(t('fw-link-available'));
+    }
+  } else if ((!meant || core) && latest !== null) {
     el.append(' ');
     if (fwOnBoard < latest && stage === 'board') {
       const b = document.createElement('button');
@@ -1440,7 +1457,7 @@ $('clearpass').onclick = () => run('pass-note', async () => {
  * is the only thing that lifts a hard lock, so it cannot be switched on
  * without one -- and the firmware ignores it without one in any case.
  */
-let lockCounts = null;          /* misses, soft locks in a row, hard locks
+let lockCounts = null;          /* misses, soft locks, hard locks
                                    lifted -- as last read, or null */
 
 function lockRead(b) {
@@ -1866,6 +1883,13 @@ fetchText('firmware/digimacro-v2.json').then(JSON.parse)
   .then(j => { fwHereV2 = j; drawFirmware();
                if (stage === 'recovery') drawRecovery(); }).catch(() => {});
 
+/* Whether the board's core is one this page moves to its own first: API 1,
+   the boundary at 0x1000, with the core updater (app/coreupdate.S). */
+function coreBehind() {
+  return !!(core && fwHereV2 && core.api === 1 && fwHereV2.api === 2);
+}
+let coreMoved = false;          /* the core was just moved: say so, once */
+
 /* The newest firmware this page has for the board connected, or null: on
    v1, the v2 it would move to. */
 function fwLatest() {
@@ -1875,6 +1899,16 @@ function fwLatest() {
 
 function drawFirmware() {
   $('fwhow').textContent = t(core ? 'fw-how-v2' : 'fw-how');
+  $('fwupdate').textContent = t(coreBehind() ? 'fw-core-update' : 'fw-update');
+  if (coreBehind()) {
+    $('fwhow').textContent = '';
+    $('fwwhy').textContent = t('fw-core-old', { on: fwOnBoard, core: core.api,
+                                                fw: fwHereV2.app });
+    $('fwwhy').className = 'prose ok';
+    $('fwupdate').disabled = busy;
+    renderWho();
+    return;
+  }
   if (core) {
     const here = fwLatest(), on = fwOnBoard;
     $('fwwhy').textContent = !fwHereV2 ? t('fw-none-here', { on })
@@ -1990,7 +2024,7 @@ async function writeVia(m, app, what, noteId = 'fw-note', bar = $('fwbar')) {
 }
 
 $('fwupdate').onclick = async () => {
-  if (core) { updateV2('fw-note', $('fwbar'), false); return; }
+  if (core) { updateV2('fw-note', $('fwbar'), false, false, coreBehind()); return; }
   if (busy || !dev || !fwHereV2) return;
   if (!navigator.usb) { note('fw-note', t('fw-no-webusb'), 'bad'); return; }
 
@@ -2160,16 +2194,21 @@ async function unSeen() {
  * the password -- and opens six seconds for the first page; with none, as
  * after an update cut off, the core alone asks for the password.
  */
-async function updateV2(noteId, bar, recovering, uninstall = false) {
-  if (busy || !dev || (!uninstall && fwLatest() === null)) return;
+async function updateV2(noteId, bar, recovering, uninstall = false, moveCore = false) {
+  if (busy || !dev || (!uninstall && !moveCore && fwLatest() === null)) return;
   setBusy();
   runDev = dev;
   const fw = uninstall ? null : fwHereV2.app;
   const stock = uninstall ? notStock(fuses) : null;   /* read while it is here */
   let done = false;
   try {
-    const img = parseIntelHex(uninstall ? await fetchText('firmware/digimacro-uninstall.hex')
-                                        : await fetchText('firmware/digimacro-v2.hex'), 8192);
+    /* An uninstaller for the board's own core; the core updater, for a core
+       this page moves first. Either way the board checks the API too. */
+    const text = moveCore ? fetchText('firmware/digimacro-coreupdate.hex')
+               : !uninstall ? fetchText('firmware/digimacro-v2.hex')
+               : core.api === 1 ? fetchText('firmware/digimacro-uninstall-api1.hex')
+               : fetchText('firmware/digimacro-uninstall.hex');
+    const img = parseIntelHex(await text, 8192);
     appPages(img, core);                /* refused here, before the board is
                                            asked for anything */
     if (!recovering) {
@@ -2185,7 +2224,8 @@ async function updateV2(noteId, bar, recovering, uninstall = false) {
     upgrading = true;
     who('fw-who', {}, 'dim');
     bar.hidden = false; bar.value = 0;
-    note(noteId, t('fw-writing', { what: uninstall ? t('un-what') : `DigiMacro ${fw}` }), 'dim');
+    note(noteId, t('fw-writing', { what: uninstall ? t('un-what') : moveCore ? t('cu-what')
+                                       : `DigiMacro ${fw}` }), 'dim');
     await writeApp(io, img, core, { onPage: (n, all) => { bar.value = n / all; } });
     done = true;
   } catch (e) {
@@ -2217,7 +2257,15 @@ async function updateV2(noteId, bar, recovering, uninstall = false) {
         unSeen();
         return;
       }
-      if (done) note('connect-note', t('fw-done', { fw }), 'ok');
+      if (done && moveCore) {
+        /* It comes back as the new core alone, asking for DigiMacro: the
+           recovery view says why, and installs it. */
+        coreMoved = true;
+        note('connect-note', t('fw-core-done', { fw }), 'ok');
+      } else if (done) {
+        coreMoved = false;      /* DigiMacro is on it: that news is old */
+        note('connect-note', t('fw-done', { fw }), 'ok');
+      }
       else note('connect-note', $(noteId).textContent, 'bad');
       reconnectAfter(done ? 1500 : 300, was);
     }
@@ -2242,17 +2290,22 @@ function drawRecovery() {
   if (!core) return;
   const why = core.state & CU_CORE_HALTED ? 'rec-halted'
             : core.state & CU_CORE_UPDATE ? 'rec-updating' : 'rec-none';
-  const here = fwLatest();
+  const here = fwLatest(), move = coreBehind();  /* an older core: it goes first */
   const needPass = !!(state_byte & ST_PASSWORD) && !(state_byte & ST_UNLOCKED);
-  $('recwhy').textContent = t(why) + (needPass ? ' ' + t('rec-pass') : '')
-                          + (here === null ? ' ' + t('rec-no-fw') : '');
+  $('recwhy').textContent = (coreMoved && core.api === 2 && why === 'rec-none'
+                             ? t('rec-core-moved') : t(why))
+                          + (needPass ? ' ' + t('rec-pass') : '')
+                          + (move ? ' ' + t('rec-core-old', { core: core.api,
+                                                              fw: fwHereV2.app })
+                             : here === null ? ' ' + t('rec-no-fw') : '');
   $('recpass').hidden = !needPass;
-  $('recinstall').textContent = t('rec-install', { fw: here === null ? '' : here });
-  $('recinstall').disabled = busy || here === null;
+  $('recinstall').textContent = move ? t('fw-core-update')
+                              : t('rec-install', { fw: here === null ? '' : here });
+  $('recinstall').disabled = busy || (here === null && !move);
 }
-$('recinstall').onclick = () => updateV2('rec-note', $('recbar'), true);
+$('recinstall').onclick = () => updateV2('rec-note', $('recbar'), true, false, coreBehind());
 $('recpass').addEventListener('keydown', e => {
-  if (e.key === 'Enter') updateV2('rec-note', $('recbar'), true);
+  if (e.key === 'Enter') updateV2('rec-note', $('recbar'), true, false, coreBehind());
 });
 
 /* ---- what language to say it in ------------------------------------- */

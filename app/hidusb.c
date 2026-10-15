@@ -32,7 +32,8 @@ ISR(TIMER1_COMPA_vect, ISR_NOBLOCK)
     ms++;
     if (++tenth == 100) {
         tenth = 0;
-        if (DM_WINDOW != 0xFF) DM_WINDOW++;
+        uint8_t w = DM_WINDOW + 1;
+        if (w) DM_WINDOW = w;           /* stops at 0xFF */
     }
 }
 
@@ -106,8 +107,9 @@ static uint32_t entropy(void)
     for (uint8_t i = 0; i < 64; i++) {
         while (!(WDTCR & (1 << WDIF)))
             ;
-        WDTCR |= (1 << WDIF);
-        s = ((s << 3) | (s >> 29)) ^ TCNT0;
+        WDTCR = (1 << WDIF) | (1 << WDIE);  /* a one clears the flag */
+        /* rotated by three: s >> 29 taken from the top byte alone */
+        s = ((s << 3) | ((uint8_t)(s >> 24) >> 5)) ^ TCNT0;
     }
     wdt_disable();
     TCCR0B = 0;
@@ -126,11 +128,11 @@ void hidBegin(void)
        none gets one now, once. Byte by byte, with what the app links
        anyway, rather than the block routines for the sake of four bytes. */
     uint8_t *e = (uint8_t *)DM_SERIAL_ADDR, none = 0xFF;
-    for (uint8_t i = 0; i < 4; i++) none &= eeprom_read_byte(e + i);
+    for (uint8_t i = 4; i; i--) none &= eeprom_read_byte(e++);
     if (none == 0xFF) {
         uint32_t serial = entropy();
-        for (uint8_t i = 0; i < 4; i++, serial >>= 8)
-            eeprom_update_byte(e + i, (uint8_t)serial);
+        for (uint8_t i = 4; i; i--, serial >>= 8)   /* e is past it now */
+            eeprom_update_byte(e - i, (uint8_t)serial);
     }
 }
 
@@ -157,14 +159,84 @@ void hidPoll(void)
 /* Typing                                                                */
 /* ===================================================================== */
 
-static void sendReport(uint8_t modifier, uint8_t key)
+/* The keyboard's report or the mouse's: its id says which, and so how long */
+static void sendRaw(const uint8_t *r)
 {
-    uint8_t r[HID_KBD_LEN] = { HID_REPORT_KBD, modifier, 0, key };
     uint16_t t = ticks();
 
-    while (!hidSend(r, sizeof r)) {
+    while (!hidSend(r, r[0] == HID_REPORT_KBD ? HID_KBD_LEN : 4)) {
         corePoll();
         if ((uint16_t)(ticks() - t) > 50) return;   /* the host is not asking */
+    }
+}
+
+static uint8_t kbd[HID_KBD_LEN];
+
+static void __attribute__((noinline)) sendReport(uint8_t modifier, uint8_t key)
+{
+    kbd[0] = HID_REPORT_KBD;
+    kbd[1] = modifier;
+    kbd[3] = key;
+    sendRaw(kbd);
+}
+
+/* The mouse. A TV takes only a relative one, so the board keeps where it
+   put the cursor, in the page's steps -- 128 across, 64 down -- and moves by
+   the difference: both axes together while each has a way to go, then
+   straight on. A move to 0 slams against that edge instead, fast, so the
+   cursor ends there wherever it was -- {0,0} is home, and a macro that
+   starts there is right whatever moved the cursor meanwhile. A step is 8
+   counts, as two reports of 4, slowly, so that acceleration scales every
+   step alike; {x*a,y*b} makes them 4a and 4b for one move.
+   test/pointer_test.c runs this code, from here to hidPoint()'s end. */
+static uint8_t ptr[4];          /* id, buttons, dx, dy */
+static uint8_t ptrX, ptrY, ptrToX;
+static uint8_t ptrS[2];         /* the next move's counts a report, x and y, xor 4 */
+
+static void ptrSend(int8_t dx, int8_t dy)
+{
+    ptr[0] = HID_REPORT_PTR;
+    ptr[2] = dx;
+    ptr[3] = dy;
+    sendRaw(ptr);
+    sendRaw(ptr);
+}
+
+/* One axis a step nearer, by s counts: what to send for it */
+static int8_t __attribute__((noinline)) ptrStep(uint8_t *at, uint8_t to, uint8_t s)
+{
+    if (*at < to) { ++*at; return s; }
+    if (*at > to) { --*at; return -s; }
+    return 0;
+}
+
+void __attribute__((noinline)) hidPoint(uint8_t what)
+{
+    if (what & 0x80) { ptrToX = what & 0x7F; return; }  /* y moves */
+    if (what & 0x40) {
+        /* Both axes a step at a time, while each still has a way to go:
+           a diagonal, then straight on */
+        uint8_t toY = what & 0x3F;
+        /* to an edge: 30 steps of 127, fast, which acceleration only
+           lengthens */
+        if (!ptrToX) { ptrX = 30; ptrS[0] = 127 ^ 4; }
+        if (!toY) { ptrY = 30; ptrS[1] = 127 ^ 4; }
+        while (ptrX != ptrToX || ptrY != toY) {
+            int8_t dx = ptrStep(&ptrX, ptrToX, ptrS[0] ^ 4);
+            ptrSend(dx, ptrStep(&ptrY, toY, ptrS[1] ^ 4));
+        }
+        ptrS[0] = ptrS[1] = 0;  /* the scale is the one move's */
+        return;
+    }
+    if (!(what & PTR_BUTTONS)) {    /* {x*a,y*b}'s scale, before the move */
+        ptrS[(what >> 4) & 1] = (what & 0x0F) ^ 4;
+        return;
+    }
+    ptr[1] = what & 3;          /* the buttons down now: none is a release */
+    ptrSend(0, 0);
+    if (what & PTR_CLICK) {     /* ...and up again */
+        ptr[1] = 0;
+        ptrSend(0, 0);
     }
 }
 
@@ -198,6 +270,17 @@ void hidTypeChar(char c, uint8_t mod)
 /* Requests                                                              */
 /* ===================================================================== */
 
+/* Whether an address is in the EEPROM: it ends where a 256 does, so the
+   high byte alone says. */
+#if (E2END & 0xFF) != 0xFF
+#error "IN_EEPROM() needs the EEPROM to end on a 256-byte boundary"
+#endif
+#define IN_EEPROM(a)    ((uint8_t)((a) >> 8) <= (E2END >> 8))
+
+#if DM_ST_OPEN != 1
+#error "INFO takes hidAllowed()'s 0 or 1 as DM_ST_OPEN"
+#endif
+
 /* From inside the USB driver: answer at once, and leave anything slow for
    hidPoll(). */
 uint8_t app_request(uint8_t *v)
@@ -205,23 +288,24 @@ uint8_t app_request(uint8_t *v)
     uint16_t addr = v[1] | ((uint16_t)v[2] << 8);
     uint8_t  n    = v[3];
     uint8_t *d    = v + DM_VND_DATA;
+    uint8_t  f    = v[0];
 
     if (n > DM_VND_CHUNK) n = DM_VND_CHUNK;
 
     /* No gate: the worst LEARN does is type the remote's next button as hex
        rather than play it, once, and it reads nothing. */
-    if (v[0] == DM_FUNC_LEARN) {
+    if (f == DM_FUNC_LEARN) {
         hidLearn();
         return 1;
     }
 
-    switch (v[0]) {
+    switch (f) {
     case DM_FUNC_INFO:
         /* The core has filled in what it knows. INFO answers whatever the
            gates say: it tells a page what it would have to do. */
         v[DM_INFO_EESIZE]     = (uint8_t)(E2END + 1);
         v[DM_INFO_EESIZE + 1] = (uint8_t)((E2END + 1) >> 8);
-        v[DM_INFO_STATE] |= (hidAllowed() ? DM_ST_OPEN : 0)
+        v[DM_INFO_STATE] |= hidAllowed()     /* 0 or 1: DM_ST_OPEN */
                           | hidLockState()
                           | hidKeyState();
         return 1;
@@ -229,14 +313,13 @@ uint8_t app_request(uint8_t *v)
     case DM_FUNC_KEYAUTH:
         /* No gate: the point is a program on the host doing it with nobody
            at the board. It can do nothing else. */
-        if (!hidKeyAuth(d, n)) v[0] = DM_REFUSED;
-        wipe();                 /* the key, whether it was right or not */
-        return 1;
+        if (!hidKeyAuth(d, n)) goto refuse;
+        goto done;              /* the key, whether it was right or not */
 
     case DM_FUNC_PROVE:
         /* No gate either: its answer is all it gives, and that is what a
            client checks before it sends the key above. */
-        if (!hidProve(d, n)) v[0] = DM_REFUSED;
+        if (!hidProve(d, n)) goto refuseKept;
         return 1;
 
 
@@ -255,13 +338,10 @@ uint8_t app_request(uint8_t *v)
     /* Two gates: the window says somebody is at the board, the password
        that they are the right somebody. Both, or neither if no password is
        set; UNLOCK is how the second is passed. */
-    if (!hidAllowed() || (v[0] != DM_FUNC_UNLOCK && !hidUnlocked())) {
-        v[0] = DM_REFUSED;
-        wipe();                 /* refused, it may still carry a password */
-        return 1;
-    }
+    if (!hidAllowed() || (f != DM_FUNC_UNLOCK && !hidUnlocked()))
+        goto refuse;            /* refused, it may still carry a password */
 
-    switch (v[0]) {
+    switch (f) {
     case DM_FUNC_UPDATE:
         /* Somebody at the board, with the password: the core may take
            pages for the next six seconds. */
@@ -280,45 +360,46 @@ uint8_t app_request(uint8_t *v)
         uint8_t r = hidUnlock(d, n);
         if (r == DM_PASS_RIGHT) {
             if (hidPassSet()) hidPassRight();
-        } else {
-            if (r == DM_PASS_WRONG) hidPassWrong();
-            v[0] = DM_REFUSED;
+            goto done;
         }
-        wipe();
-        break;
+        if (r == DM_PASS_WRONG) hidPassWrong();
+        goto refuse;
     }
 
     case DM_FUNC_SETPASS:
         /* Zero bytes clears it. Reaching here at all meant getting past both
            gates; the new one is then given to the core, so the session goes
            on under it. */
-        if (n > DM_PASS_LEN) {
-            v[0] = DM_REFUSED;
-        } else {
-            for (uint8_t i = 0; i < DM_PASS_LEN; i++)
-                eeprom_update_byte((uint8_t *)(DM_PASS_ADDR + i),
-                                   n == 0 ? 0xFF : (i < n ? d[i] : 0));
-            hidPassChanged();
-            hidUnlock(d, n);
-        }
-        wipe();
-        break;
+        if (n > DM_PASS_LEN) goto refuse;
+        for (uint8_t i = 0; i < DM_PASS_LEN; i++)
+            eeprom_update_byte((uint8_t *)(DM_PASS_ADDR + i),
+                               n == 0 ? 0xFF : (i < n ? d[i] : 0));
+        hidPassChanged();
+        hidUnlock(d, n);
+        goto done;
 
     case DM_FUNC_READ:
-        for (uint8_t i = 0; i < n; i++)
-            d[i] = (addr + i) <= E2END
-                 ? eeprom_read_byte((const uint8_t *)(addr + i)) : 0xFF;
+        for (; n; n--, addr++)
+            *d++ = IN_EEPROM(addr) ? eeprom_read_byte((const uint8_t *)addr)
+                                   : 0xFF;
         break;
 
     case DM_FUNC_WRITE:
-        for (uint8_t i = 0; i < n; i++) {
-            if ((addr + i) > E2END) break;
-            eeprom_update_byte((uint8_t *)(addr + i), d[i]);
-        }
+        for (; n && IN_EEPROM(addr); n--, addr++)
+            eeprom_update_byte((uint8_t *)addr, *d++);
         hidKeyForget();         /* the secrets, or their check value, may
                                    not be what the key was for any more */
-        wipe();                 /* it might have been the password */
-        break;
+        goto done;              /* it might have been the password */
     }
+    return 1;
+
+    /* The ways out that wipe what the request carried, refused or not */
+refuse:
+    wipe();
+refuseKept:                     /* PROVE's: it carried nothing secret */
+    v[0] = DM_REFUSED;
+    return 1;
+done:
+    wipe();
     return 1;
 }

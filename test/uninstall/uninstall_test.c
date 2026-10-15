@@ -91,11 +91,11 @@ static uint16_t crc16(const uint8_t *p, unsigned n)
 
 /* A board as DigiMacro leaves it: a core below, a table and a password in
    the EEPROM, and this image written over the app region. */
-static uint8_t image[8192], core[0x1000];
+static uint8_t image[8192], core[APP_START];
 static void board(int password)
 {
     memset(FL, 0xFF, sizeof FL);
-    for (int i = 0; i < 0x1000; i++) FL[i] = core[i] = (uint8_t)(i * 7 + 1);
+    for (int i = 0; i < APP_START; i++) FL[i] = core[i] = (uint8_t)(i * 7 + 1);
     memcpy(FL + APP_START, image + APP_START, sizeof FL - APP_START);
     /* the table, and the reserved top; a password fills its last bytes */
     for (int i = 0; i < 512; i++) EE[i] = i < 0x1E4 ? (uint8_t)(i ^ 0x5A) : 0xFF;
@@ -147,7 +147,7 @@ int main(int argc, char **argv)
           ((1 + (w0 & 0x0FFF)) & 0x0FFF) * 2);
     int rest = 1, others = 1;
     for (int a = 2; a < 64; a++) if (FL[a] != 0xFF) rest = 0;
-    for (int a = 64; a < 0x1000; a++) if (FL[a] != core[a]) others = 0;
+    for (int a = 64; a < APP_START; a++) if (FL[a] != core[a]) others = 0;
     for (unsigned a = APP_START; a < sizeof FL; a++) if (FL[a] != image[a]) others = 0;
     check(rest, "the rest of page 0 is not blank");
     check(others, "flash outside page 0 changed");
@@ -159,7 +159,7 @@ int main(int argc, char **argv)
     if (!setjmp(reset)) app_setup(); else check(0, "it reset with no Micronucleus to go to");
     int untouched = !page0;
     for (int i = 0; i < 0x1E4; i++) if (EE[i] != (uint8_t)(i ^ 0x5A)) untouched = 0;
-    for (int a = 0; a < 0x1000; a++) if (FL[a] != core[a]) untouched = 0;
+    for (int a = 0; a < APP_START; a++) if (FL[a] != core[a]) untouched = 0;
     check(untouched, "the board was changed anyway");
 
     printf(fails ? "\nSOME CHECKS FAILED\n" : "\nall checks passed\n");

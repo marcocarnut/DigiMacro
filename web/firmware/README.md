@@ -10,6 +10,13 @@ For v2 boards, written by `make release`:
 - `digimacro-v2.json`: the firmware's version, the core's, and the core API
   the firmware was built for. The app offers the firmware only to a board
   whose core speaks that API.
+- `digimacro-uninstall.hex`: the uninstaller, for **Back to a plain
+  Digispark**: it wipes the EEPROM and puts Micronucleus 2.6 back.
+- `digimacro-coreupdate.hex`: the core updater, for a board on core 3 or 4
+  (API 1, the boundary at `0x1000`): it puts the core above in place of
+  theirs, and the board then asks for the firmware.
+- `digimacro-uninstall-api1.hex`: the uninstaller for such a board, byte for
+  byte v3.0's.
 
 v1 boards get nothing of their own: the page moves them to v2, writing
 `digimacro-v2-core.hex` through their Micronucleus as it does for a new

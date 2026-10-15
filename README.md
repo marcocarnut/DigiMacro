@@ -68,10 +68,10 @@ v2 is better in every way. The page still offers to move a v1 board to v2.
   WebUSB, to reach Micronucleus when a board is set up — are not in Firefox
   or Safari, and every browser on an iPhone or iPad is Safari underneath.
   Chrome on Android has WebUSB but no WebHID, so there the page reaches the
-  board through WebUSB alone, over a USB OTG adapter; that needs core 4 (*It
-  never stops being a keyboard*, below). A board set up before core 4 keeps
-  its older core, which only a programmer rewrites (*With a programmer*):
-  save a backup first, since that erases the EEPROM. Tested on Linux, on
+  board through WebUSB alone, over a USB OTG adapter; that needs core 4 or
+  later (*It never stops being a keyboard*, below). A board set up with v2.0
+  has core 3: update it once from a computer (*A board on an older core*,
+  below), and Android reaches it from then on. Tested on Linux, on
   Windows 10 in a virtual machine and on Android, setting a board up
   included; macOS should work the same way in Chrome or Edge, needing
   nothing installed, but nobody has tried it yet. Android puts its own on-screen keyboard away while the board
@@ -205,7 +205,22 @@ A macro is text, with braces for what text cannot say:
  {goto .-}                    carry on with another macro, and never come back
  {secret}  {secret!}          the rest is encrypted, and needs this computer's key
  {IR 00 45}                   where the remote's button 00 45 starts typing
+ {40,90}  {40*1.75,90*1.75}   the mouse pointer, in percent of the screen
+ {click}  {right-click}       ...and its buttons; {hold}, {release} and the
+                              right-hand ones are there too
+ {clear}                      forget the lockout's wrong codes
 ```
+
+The board is also a mouse, for TVs and apps that a keyboard cannot fully
+drive. A mouse only ever says "move this far", so the board keeps track of
+where it put the pointer, and anything else that moves it — your hand, a TV
+remote — leaves it wrong: `{0,0}` drives the pointer hard into the top-left
+corner, wherever it was, so a macro that starts there is always right. The
+distance a move covers is up to the computer, which speeds up fast moves and
+scales for the display. On a TV or a phone `{x,y}` lands close to where it
+says; elsewhere, `*a` multiplies a move's speed by a, from 0.75 to 3.75 in
+quarters, and is tuned by trial — on one 2880×1800 laptop,
+`{40*1.75,90*1.75}` lands at about 47%, 81%. It applies to that move only.
 
 `{11}` means eleven in all, as a quantifier does in a regular expression, and a
 count counts whatever precedes it: one keystroke, one accented letter, or a
@@ -218,8 +233,9 @@ is written until every macro is valid.
 
 **Accented characters are the host's business, not the board's.** The board
 sends key presses, so what appears depends on the keyboard layout of the
-computer it is plugged into. Pick that layout beside the Macros heading and
-`coração` is accepted and expanded into the accent and then the letter. Leave
+computer it is plugged into. Pick that layout beside the Macros heading — US,
+US International or Brazil's ABNT2 — and `coração` is accepted and expanded
+into the accent and then the letter (on ABNT2, `ç` is a key of its own). Leave
 it at plain US, where there is no way to type one, and the editor says so
 rather than typing something else.
 
@@ -321,21 +337,30 @@ the app:
 
 - **Soft lock.** After a set number of wrong codes, the board ignores every
   tap, right or wrong, for a set time: a minute by default, up to forty.
-- **Hard lock.** After a set number of soft locks in a row, it ignores taps
-  until the password is given in the app. The power-on macro stops too, or a
-  thief would only have to plug the board in again.
+- **Hard lock.** After a set number of soft locks, it ignores taps until the
+  password is given in the app. The power-on macro stops too, or a thief
+  would only have to plug the board in again.
 
-A macro that actually plays clears both counts. So someone guessing gets at
-most *wrong codes × soft locks* tries before the board stops listening, which
-at 1 and 3 is three, out of 62 codes. The app works out those odds for the
-settings you choose.
+Only the password clears the counts. A code that works does not: anyone who
+knew a single code — and anyone who has watched you use the board does —
+could otherwise guess up to the lock, play it, and go on guessing for ever.
+So someone guessing gets at most *wrong codes × soft locks* tries before the
+board stops listening, which at 1 and 3 is three, out of 62 codes. The app
+works out those odds for the settings you choose.
+
+The price is that your own slips add up too, until you next give the
+password. If you would rather they did not, put `{clear}` in a macro: it
+clears both counts, as the password does. Give it a long code that nobody
+sees you tap, since whoever learns it can clear the lockout as often as you
+can — and keep it out of the power-on macro, which anybody can play by
+plugging the board in.
 
 Everything is kept in EEPROM, so unplugging the board gets nobody anywhere.
 The board has no clock to tell it how long it was unplugged, so a soft lock
 found at power-up starts its whole wait again. A wrong code is counted
 *before* the three blinks that report it, so pulling the plug as soon as the
-blinks start saves nothing. A code that plays writes nothing unless there is
-a count to clear, so ordinary use causes no EEPROM wear.
+blinks start saves nothing. A code that plays writes nothing, so ordinary use
+causes no EEPROM wear.
 
 ### Secrets
 
@@ -530,6 +555,31 @@ value and the serial number all live in EEPROM, which an update leaves alone.
   harm: the page only trusts an answer to its own question, and checks every
   page it writes by reading it back.
 
+### A board on an older core
+
+Firmware 17 needs core 5, which leaves the firmware 128 bytes more than
+earlier cores did: it starts at `0x0F80`, where they start it at `0x1000`
+(core API 2, where theirs is 1). A board set up before firmware 17 — core 3
+or 4 — shows **(a new core, and firmware 17…)** in the status line, and the
+dialog offers **Update the core**. It goes in two steps, each behind the
+hold and the password as any update is:
+
+1. The page installs the **core updater** as it would firmware, through the
+   old core (`app/coreupdate.S`, `make coreupdate`). It carries the new core
+   in its own image, and the old core checks its CRC before running any of
+   it. Started, it writes the new core in place of the old in half a second,
+   before USB connects, erases its own header, and restarts the board.
+2. The board comes back as DigiMacro with only its core — the new one — and
+   the page offers DigiMacro 17, as it does after a cut-off update.
+
+The EEPROM is not touched: the macros, the password, the secrets' check value
+and the serial number come through. An upload of the updater cut off half way
+is any update cut off half way: the old core is still there, and the page
+offers the update again. Power lost during the half second the core is being
+written is another matter: the board then needs a programmer, as with any
+upload through Micronucleus. **Back to a plain Digispark** works on the old
+core too; it uses the uninstaller built for that core's layout.
+
 ### Setting a board up
 
 **Set up a new board**, beside Connect, puts v2 on a Digispark as it comes.
@@ -617,9 +667,11 @@ JavaScript in `web/micronucleus.js`.
 A new firmware reaches the page through `make release`, which copies the
 build into `web/firmware/` with a json naming its version and the core it is
 for: `digimacro-v2.hex` for updates, `digimacro-v2-core.hex` for setting a
-board up, `digimacro-v2-full.hex` for a programmer. Commit them, and the page
-offers the update to every board running something older — only if its core
-speaks the same API. The page carries the files itself, so serving it needs
+board up, `digimacro-v2-full.hex` for a programmer, `digimacro-uninstall.hex`
+for **Back to a plain Digispark**, and for boards on an older core
+`digimacro-coreupdate.hex` and `digimacro-uninstall-api1.hex`. Commit them,
+and the page offers the update to every board running something older whose
+core speaks the same API, and the core updater to one whose core is older. The page carries the files itself, so serving it needs
 no AVR toolchain.
 
 What gets published goes into `build/release/`: `make site` builds the page
@@ -646,6 +698,10 @@ WebUSB device, not a HID one. An earlier version re-enumerated as a WebUSB
 device after the hold, and back again afterwards; v1's design record tells
 that story (`git show v1.0:PLAN.md`).
 
+The mouse, from firmware 17, is a third collection on the same interface,
+report ID 3, so it costs no endpoint: a relative mouse, which is what a TV
+takes. It has three buttons; macros use the left and the right.
+
 Chrome on Android has no WebHID at all, and WebUSB will not claim a HID
 interface, nor take a request addressed to the device in its stead. So
 core 4 adds a second interface, vendor class and no endpoints, which WebUSB
@@ -657,7 +713,8 @@ the board with a yellow mark; the keyboard and the page carry on regardless.
 
 ### The core and the firmware
 
-The flash is split at `0x1000`. Below it, the **core**: V-USB and the
+The flash is split at `0x0F80`, two pages below half way. Below it, the
+**core**: V-USB and the
 descriptors, the feature report, the password check, and the page writer
 that takes new firmware and refuses any address below the boundary. It is
 never rewritten from USB, so it is kept small and dull, and tested on the
@@ -668,7 +725,9 @@ They call each other through two tables of jumps at fixed addresses — the
 core's just below the boundary, the firmware's header at it — and agree on
 nothing else; `core/layout.h` is the whole contract. The firmware's header
 carries a magic, its length, its version and the core API it was built for,
-and a CRC follows it: the core runs only firmware that checks out. Every
+and a CRC follows it: the core runs only firmware that checks out. Cores 3
+and 4 split it at `0x1000`, as API 1; core 5's API 2 is the split two pages
+lower, so firmware built for one does not run on the other. Every
 interrupt but V-USB's is passed on to the firmware, and the watchdog watches
 it. v2's design record tells how it was decided and why: it was retired once
 everything in it was built, and `git show 5890dee:PLAN-v2.md` has it.
@@ -780,7 +839,8 @@ taken:
 | `0x81 hh` | carry on with the macro whose header is `hh-1` |
 | `0x81 FE` | `{secret}`: what follows is encrypted (below); `0x81 FF` is `{secret!}` |
 | `0x82` | mark: what follows repeats as a group, not as one keystroke |
-| `0x83 nn` | `{host}`, before firmware 16; now always refused: quietly if `nn` is 1, as an empty code if 2 |
+| `0x83 nn` | the mouse, for `nn` from 3 on: `1xxxxxxx` sets where x goes, 0–127 across, and `01yyyyyy` y, 0–63 down, and moves there — 0 drives into that edge; `001c00bb` presses buttons `bb` (bit 0 left, bit 1 right; none is a release), and `c` lets them up again, a click. Anything below `0x20` sets the next move's speed: bit 4 picks y, and the low four bits are counts a report, 4 if not set, so `{x*a}` is `4a`. `nn` 1 and 2 were `{host}`, before firmware 16; now always refused, quietly if 1, as an empty code if 2 |
+| `0x81 F7` | `{clear}`: the lockout's counts back to zero. `F7` cannot be a header: `F6` would be seven symbols |
 | `0x80 a c x` | where the remote's button `a`/`c` starts this macro: `a` and `c` with bit 7 forced on, `x` = `0x80` plus their own top bits (`a`'s in bit 0, `c`'s in bit 1). Played through, it does nothing |
 
 No argument may be zero, since a zero byte ends the macro. `0x03` is
@@ -822,10 +882,10 @@ the block (0, 0), which no secret's nonce can be.
 | `0x1E0`–`0x1E3` | the serial number |
 | `0x1E4`–`0x1EB` | the secrets' check value; all `0xFF` for none. Before firmware 16, the host key |
 | `0x1EC` | lockout: wrong codes before a soft lock; 0 or `0xFF` for no lockout |
-| `0x1ED` | ...soft locks in a row before a hard lock; 0 or `0xFF` for never |
+| `0x1ED` | ...soft locks before a hard lock; 0 or `0xFF` for never |
 | `0x1EE` | ...a soft lock's length in tens of seconds, 1–240; anything else is 6 |
 | `0x1EF` | ...wrong codes so far |
-| `0x1F0` | ...soft locks in a row so far |
+| `0x1F0` | ...soft locks so far |
 | `0x1F1` | ...hard locks lifted with the password, ever |
 | `0x1F2` | how long the key is held, in tens of seconds, 1–240; anything else is 6 |
 | `0x1F3` | the power-on macro's header; anything impossible as one means none |
@@ -840,7 +900,7 @@ table.
 ```
 make                            # the core and DigiMacro, into build/v2/
 make release                    # ...and into web/firmware/, for the page
-make test                       # the core's own tests
+make test                       # the core's own tests, and the uninstallers'
 ```
 
 `make` writes `digimacro.hex`, the firmware for updates, and
@@ -868,9 +928,17 @@ through that spike page's file picker (the board keeps its table), or
 page puts DigiMacro back with no hold.
 
 `make uninstall` builds the uninstaller the page installs for **Back to a
-plain Digispark**: the app at 0x1000, a blank gap, and Micronucleus 2.6 as
-released (`app/micronucleus/`) at 0x1A00, with the core's CRC over all of it.
-`make release` copies it to `web/firmware/digimacro-uninstall.hex`.
+plain Digispark**: the app at the boundary, a blank gap, and Micronucleus 2.6
+as released (`app/micronucleus/`) at 0x1A00, with the core's CRC over all of
+it — once for core 5, at `0x0F80`, and once for older cores, at `0x1000`
+(`uninstall1.hex`, byte for byte v3.0's). `make release` copies them to
+`web/firmware/digimacro-uninstall.hex` and `digimacro-uninstall-api1.hex`.
+
+`make coreupdate` builds the core updater, for boards on an older core: an
+app at `0x1000` that carries the core just built (*A board on an older
+core*). `make simcoreupdate` runs it on a simulated board, from v2.0's core
+and from v3.0's, and checks that the new core is in place byte for byte and
+enumerates. `make release` copies it to `web/firmware/digimacro-coreupdate.hex`.
 
 ## Testing
 
@@ -882,7 +950,8 @@ compiles the real `DigiMacro.ino` for the host against stub hardware and
 exercises the table walk, every escape, the bounds that keep a malformed table
 from reaching the reserved bytes, the morse decoding from the input pin, the
 password, the lockout and the secrets, and both ways of reading the pad.
-Then the app's macro language on its own; the two languages against each
+Then the mouse, `app/hidusb.c`'s own code cut out of it and run, the
+reports added up; the app's macro language on its own; the two languages against each
 other; v2's core laid out for Micronucleus, with both jumps decoded and
 followed to where they land; the page's updates against a fake v2 board that
 halts, reads back old pages, is interrupted by another program and is
@@ -890,30 +959,33 @@ unplugged half way; WebUSB standing in for WebHID, against another; the page's
 own keyboard, every key held to what the board can type; the core itself,
 compiled for the host with the firmware's library and asked everything a host
 can ask, twice — with the firmware's region to the end of the chip and
-stopping below Micronucleus; the backups, with scrypt checked against node's
+stopping below Micronucleus; the uninstallers, built for the chip and run on
+the host, for core 5's layout and for the older one; the backups, with scrypt checked against node's
 own and a file that opens only for its password; the published page, one file
 with the firmware in it; and last, across the language boundary, a table
 encoded by `web/table.js` played through the firmware, secrets sealed by the
 page among them. Then the secrets end to end on a simulated board — the real
 firmware, `xtea.S` and all, which nothing compiled for the PC runs, enumerated
-by a simulated USB host and tapped by a simulated finger — when
+by a simulated USB host and tapped by a simulated finger — and the core
+updater, from v2.0's core and from v3.0's, both when
 `../simavr-softusb` is built beside this repository (`make simtest` runs it on
 its own); and `digimacro-host`'s own code against a fake board, a copy of it
-and an old one. Fifteen suites, a few seconds and the simulated minute.
-Without `node`, the ten that need it are skipped.
+and an old one. Seventeen suites, a few seconds and the simulated minute.
+Without `node`, the ten that need it are skipped, and without avr-gcc the
+uninstallers'.
 
 ## Layout
 
 | | |
 |---|---|
 | `DigiMacro.ino` | the firmware: touch, morse, the table walk, playback, the lockout, the secrets |
-| `app/` | what every firmware links: its header, the calls into the core, and `hidusb.c` — the clock, the window, typing and the protocol's verbs; `xtea.S`, the cipher. Also the spike's apps, `spikectl.py` and its page |
+| `app/` | what every firmware links: its header, the calls into the core, and `hidusb.c` — the clock, the window, typing, the mouse and the protocol's verbs; `xtea.S`, the cipher; `uninstall.c` and `coreupdate.S`. Also the spike's apps, `spikectl.py` and its page |
 | `core/` | the core: V-USB with its configuration, the descriptors, the password check and the page writer; `layout.h`, the contract with the firmware; and its host tests |
 | `Makefile` | builds all of it |
 | `test/` | host build of the real sketch against stub hardware, and the web side's tests |
 | `tools/hostauth/` | the client that sends the key, for Linux and Windows, and `xtea.h`, the C reference the tests share |
 | `web/` | `index.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `webusb.js` reaches the board without WebHID, `vkbd.js` the on-screen keyboard, `backup.js` the backups, `60-digimacro.rules` the udev rule |
-| `web/firmware/` | what the page installs: v2's firmware, core and full image |
+| `web/firmware/` | what the page installs: v2's firmware, core and full image, the uninstallers, and the core updater |
 | `docs/` | the photos above |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |
 | `*.pt-BR.md` | this README and HARDENED_MODE.md in Brazilian Portuguese |

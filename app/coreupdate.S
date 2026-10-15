@@ -1,18 +1,19 @@
 /*
- * Spike: the core updater -- an app that carries a core and puts it in
- * place of the one below it, in one step (make coreupdate).
+ * The core updater -- an app for a core with the boundary at 0x1000 (API
+ * 1), that carries this one, with the boundary at NEW_START, and puts it in
+ * place of the old in one step (make coreupdate).
  *
  * It runs from setup, before USB, with interrupts off and nothing of the
- * old core used again: pages 0 to NCORE-1 from the image, the core's table
- * into the top half of page 63, every other page below the boundary erased.
- * Then its own header page, so that after the reset the new core finds no
- * app, does not run this again, and the page puts DigiMacro back. The
- * EEPROM is not touched.
+ * old core used again: pages 0 to NCORE-1 from the image, the new core's
+ * table into the top half of the page below NEW_START, every other page
+ * below 0x1000 erased -- the old core's tail and table included, which are
+ * the new app's first pages. Then its own header page, so that after the
+ * reset the new core finds no app, the old boundary's or its own, and the
+ * page puts DigiMacro back. The EEPROM is not touched.
  *
- * In assembler because it has to be: the image is 61 pages and the table,
- * and the app region holds 64 pages less a header and a CRC. In C the same
- * loop is 108 bytes over. So a core of more than 61 pages cannot be carried
- * this way at all.
+ * In assembler because it has to be: the image is NCORE pages and the
+ * table, and the app region holds 64 pages less a header and a CRC. In C
+ * the same loop was 108 bytes more.
  *
  * Power lost in the half second of it leaves a board for a programmer, as
  * with any Micronucleus upload.
@@ -21,7 +22,7 @@
 #include "layout.h"
 #include "coreimg.h"                    /* NCORE: the build works it out */
 
-#define LAST    (APP_START - PAGE)      /* the page that ends in the table */
+#define LAST    (NEW_START - PAGE)      /* the page that ends in the new table */
 
     .text
     .global app_setup, app_loop, app_request
@@ -64,7 +65,7 @@ next:
     inc     r18
     adiw    r26, 32
     adiw    r26, 32
-    cpi     r27, hi8(APP_START)
+    cpi     r27, hi8(APP_START)             ; the old boundary: 0x1000
     brne    pages
     movw    r30, r26                    ; the header: no app after the reset
     ldi     r16, (1 << PGERS) | (1 << SPMEN)

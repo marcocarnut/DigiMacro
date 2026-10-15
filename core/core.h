@@ -12,6 +12,7 @@
 
 #define HID_REPORT_KBD      1       /* the keyboard's reports */
 #define HID_REPORT_VND      2       /* the feature report */
+#define HID_REPORT_PTR      3       /* the mouse's: id, buttons, dx, dy */
 #define HID_KBD_LEN         6       /* id, modifier, reserved, three keys */
 
 /*   [0] command   [1] address low   [2] address high   [3] count   [4..] data */
@@ -23,10 +24,12 @@
 #define DM_MAGIC0           'D'
 #define DM_MAGIC1           'M'
 #define DM_PROTOCOL_VERSION 3       /* 2 was v1's, with Micronucleus */
-#define DM_CORE_VERSION     4       /* 2: ends the session by itself when no
+#define DM_CORE_VERSION     5       /* 2: ends the session by itself when no
                                        firmware runs; 3: installs through
                                        Micronucleus 1.x as well; 4: a vendor
-                                       interface, for WebUSB */
+                                       interface, for WebUSB; 5: a mouse, the
+                                       boundary at 0x0F80 (API 2), and
+                                       writes only when armed */
 
 /* The password: twelve bytes at the top of the EEPROM, zero-padded, the
    first 0xFF for none. The core checks it; the app sets it. */

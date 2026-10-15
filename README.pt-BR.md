@@ -71,10 +71,10 @@ v2.
   Firefox nem no Safari, e todo navegador de iPhone ou iPad é Safari por
   baixo. O Chrome do Android tem WebUSB mas não WebHID, então lá a página
   chega à placa só por WebUSB, com um adaptador USB OTG; isso precisa do
-  núcleo 4 (*Ele nunca deixa de ser um teclado*, abaixo). Uma placa
-  preparada antes do núcleo 4 fica com o núcleo antigo, que só um gravador
-  regrava (*Com um gravador*): salve uma cópia de segurança antes, porque
-  isso apaga a EEPROM. Testado no Linux, no Windows 10 numa máquina virtual
+  núcleo 4 ou posterior (*Ele nunca deixa de ser um teclado*, abaixo). Uma
+  placa preparada com a v2.0 tem o núcleo 3: atualize-o uma vez de um
+  computador (*Uma placa num núcleo mais antigo*, abaixo), e daí em diante
+  o Android chega a ela. Testado no Linux, no Windows 10 numa máquina virtual
   e no Android, inclusive preparando uma placa; o macOS deve funcionar do
   mesmo jeito no Chrome ou no Edge, sem instalar nada, mas ninguém testou
   ainda. O Android guarda o
@@ -209,7 +209,23 @@ Uma macro é texto, com chaves para o que o texto não consegue dizer:
  {goto .-}                    carry on with another macro, and never come back
  {secret}  {secret!}          the rest is encrypted, and needs this computer's key
  {IR 00 45}                   where the remote's button 00 45 starts typing
+ {40,90}  {40*1.75,90*1.75}   the mouse pointer, in percent of the screen
+ {click}  {right-click}       ...and its buttons; {hold}, {release} and the
+                              right-hand ones are there too
+ {clear}                      forget the lockout's wrong codes
 ```
+
+A placa também é um mouse, para TVs e aplicativos que um teclado não consegue
+comandar por inteiro. Um mouse só diz "mova tanto", então a placa guarda onde
+deixou o ponteiro, e qualquer outra coisa que o mova — a sua mão, o controle
+da TV — deixa essa conta errada: `{0,0}` empurra o ponteiro com força para o
+canto superior esquerdo, onde quer que ele esteja, então uma macro que começa
+por ali sempre acerta. A distância que um movimento percorre é decisão do
+computador, que acelera movimentos rápidos e ajusta à tela. Numa TV ou num
+celular, `{x,y}` cai perto de onde diz; nos outros, `*a` multiplica a
+velocidade de um movimento por a, de 0,75 a 3,75 em quartos, e se acerta por
+tentativa — num notebook de 2880×1800, `{40*1.75,90*1.75}` cai em cerca de
+47%, 81%. Vale só para aquele movimento.
 
 `{11}` significa onze ao todo, como um quantificador numa expressão regular,
 e uma contagem conta o que vier antes dela: uma tecla, uma letra acentuada ou
@@ -332,23 +348,32 @@ do aplicativo:
 - **Bloqueio leve.** Depois de um número definido de códigos errados, a placa
   ignora todo toque, certo ou errado, por um tempo definido: um minuto por
   padrão, até quarenta.
-- **Bloqueio forte.** Depois de um número definido de bloqueios leves
-  seguidos, ela ignora os toques até a senha ser dada no aplicativo. A macro
-  de inicialização também para, senão bastaria a um ladrão conectar a placa
-  de novo.
+- **Bloqueio forte.** Depois de um número definido de bloqueios leves, ela
+  ignora os toques até a senha ser dada no aplicativo. A macro de
+  inicialização também para, senão bastaria a um ladrão conectar a placa de
+  novo.
 
-Uma macro que de fato é executada zera as duas contagens. Assim, quem tenta
-adivinhar tem no máximo *códigos errados × bloqueios leves* tentativas antes
-de a placa parar de ouvir, o que, com 1 e 3, dá três, de 62 códigos. O
-aplicativo calcula essas chances para a configuração que você escolher.
+Só a senha zera as contagens. Um código que funciona não zera: quem
+soubesse um único código — e quem já viu você usar a placa sabe — poderia,
+do contrário, tentar até o bloqueio, tocá-lo e seguir tentando para sempre.
+Assim, quem tenta adivinhar tem no máximo *códigos errados × bloqueios
+leves* tentativas antes de a placa parar de ouvir, o que, com 1 e 3, dá
+três, de 62 códigos. O aplicativo calcula essas chances para a configuração
+que você escolher.
+
+O preço é que os seus próprios erros também se acumulam, até a próxima vez
+que você der a senha. Se preferir que não, ponha `{clear}` numa macro: ele
+zera as duas contagens, como a senha faz. Dê a ela um código longo que
+ninguém veja você tocar, já que quem o descobrir pode zerar o bloqueio
+tantas vezes quanto você — e deixe-o fora da macro de inicialização, que
+qualquer um executa só de conectar a placa.
 
 Tudo fica na EEPROM, então desconectar a placa não leva ninguém a lugar
 nenhum. A placa não tem relógio para saber quanto tempo ficou desconectada,
 então um bloqueio leve encontrado ao ligar recomeça a espera inteira. Um
 código errado é contado *antes* das três piscadas que o informam, então puxar
 o cabo assim que as piscadas começam não adianta nada. Um código que é
-executado não grava nada, a menos que haja uma contagem a zerar, então o uso
-normal não desgasta a EEPROM.
+executado não grava nada, então o uso normal não desgasta a EEPROM.
 
 ### Segredos
 
@@ -554,6 +579,33 @@ atualização não toca.
   estrago: a página só confia numa resposta à sua própria pergunta, e confere
   cada página que grava lendo-a de volta.
 
+### Uma placa num núcleo mais antigo
+
+O firmware 17 precisa do núcleo 5, que deixa ao firmware 128 bytes a mais
+que os núcleos anteriores: ele começa em `0x0F80`, onde aqueles o começam em
+`0x1000` (API de núcleo 2, onde a deles é 1). Uma placa preparada antes do
+firmware 17 — núcleo 3 ou 4 — mostra **(um novo núcleo, e o firmware 17…)**
+na linha de status, e o diálogo oferece **Atualizar o núcleo**. São dois
+passos, cada um atrás do toque longo e da senha, como qualquer atualização:
+
+1. A página grava o **atualizador do núcleo** como gravaria um firmware,
+   pelo núcleo antigo (`app/coreupdate.S`, `make coreupdate`). Ele traz o
+   núcleo novo na própria imagem, e o núcleo antigo confere o CRC dela antes
+   de executar qualquer parte. Ao iniciar, ele grava o núcleo novo no lugar
+   do antigo em meio segundo, antes de o USB conectar, apaga o próprio
+   cabeçalho e reinicia a placa.
+2. A placa volta como DigiMacro só com o núcleo — o novo — e a página
+   oferece o DigiMacro 17, como faz depois de uma atualização interrompida.
+
+A EEPROM não é tocada: as macros, a senha, o valor de conferência dos
+segredos e o número de série passam intactos. Uma gravação do atualizador
+interrompida no meio é como qualquer atualização interrompida: o núcleo
+antigo continua lá, e a página oferece a atualização de novo. Perder a
+energia no meio segundo em que o núcleo está sendo gravado é outra história:
+a placa passa a precisar de um gravador, como em qualquer gravação pelo
+Micronucleus. **De volta a um Digispark comum** também funciona no núcleo
+antigo; usa o desinstalador feito para o layout daquele núcleo.
+
 ### Preparando uma placa
 
 **Preparar uma placa nova**, ao lado de Conectar, grava a v2 num Digispark do
@@ -644,9 +696,12 @@ JavaScript puro em `web/micronucleus.js`.
 Um firmware novo chega à página por `make release`, que copia o build para
 `web/firmware/` com um json informando a versão e o núcleo a que ele se
 destina: `digimacro-v2.hex` para atualizações, `digimacro-v2-core.hex` para
-preparar uma placa, `digimacro-v2-full.hex` para um gravador. Faça o commit
-deles, e a página oferece a atualização a toda placa que rode algo mais
-antigo — só se o núcleo dela falar a mesma API. A página carrega os próprios
+preparar uma placa, `digimacro-v2-full.hex` para um gravador,
+`digimacro-uninstall.hex` para **De volta a um Digispark comum**, e, para
+placas num núcleo mais antigo, `digimacro-coreupdate.hex` e
+`digimacro-uninstall-api1.hex`. Faça o commit deles, e a página oferece a
+atualização a toda placa que rode algo mais antigo cujo núcleo fale a mesma
+API, e o atualizador do núcleo a uma cujo núcleo seja mais antigo. A página carrega os próprios
 arquivos, então servi-la não exige toolchain AVR.
 
 O que é publicado vai para `build/release/`: `make site` gera a página como
@@ -675,6 +730,10 @@ anterior se reenumerava como dispositivo WebUSB depois do toque longo, e
 voltava depois; o registro de projeto da v1 conta essa história (`git show
 v1.0:PLAN.md`).
 
+O mouse, desde o firmware 17, é uma terceira coleção na mesma interface,
+report ID 3, então não custa nenhum endpoint: um mouse relativo, que é o
+que uma TV aceita. Ele tem três botões; as macros usam o esquerdo e o direito.
+
 O Chrome do Android não tem WebHID nenhum, e o WebUSB não reivindica uma
 interface HID, nem aceita no lugar dela um pedido endereçado ao dispositivo.
 Então o núcleo 4 acrescenta uma segunda interface, de classe de fabricante e
@@ -687,7 +746,8 @@ a página funcionam do mesmo jeito.
 
 ### O núcleo e o firmware
 
-A flash é dividida em `0x1000`. Abaixo, o **núcleo**: o V-USB e os
+A flash é dividida em `0x0F80`, duas páginas abaixo da metade. Abaixo, o
+**núcleo**: o V-USB e os
 descritores, o feature report, a verificação da senha e o gravador de
 páginas, que recebe firmware novo e recusa qualquer endereço abaixo da
 divisa. Ele nunca é regravado por USB, então é mantido pequeno e sem graça,
@@ -699,7 +759,9 @@ Os dois se chamam por duas tabelas de saltos em endereços fixos — a do
 núcleo logo abaixo da divisa, o cabeçalho do firmware nela — e não combinam
 mais nada; `core/layout.h` é o contrato inteiro. O cabeçalho do firmware traz
 um número mágico, o tamanho, a versão e a API de núcleo para a qual ele foi
-compilado, seguido de um CRC: o núcleo só roda firmware que confere. Toda
+compilado, seguido de um CRC: o núcleo só roda firmware que confere. Os
+núcleos 3 e 4 a dividem em `0x1000`, como API 1; a API 2 do núcleo 5 é a
+divisa duas páginas abaixo, então firmware feito para uma não roda na outra. Toda
 interrupção, exceto a do V-USB, é repassada ao firmware, e o watchdog o
 vigia. O registro de projeto da v2 conta como e por que isso foi decidido:
 ele foi aposentado quando tudo o que havia nele estava construído, e `git
@@ -816,7 +878,8 @@ menores que quatro. Os sete estão ocupados:
 | `0x81 hh` | continua na macro cujo cabeçalho é `hh-1` |
 | `0x81 FE` | `{secret}`: o que vem depois é cifrado (abaixo); `0x81 FF` é `{secret!}` |
 | `0x82` | marca: o que vem depois se repete como grupo, não como uma tecla só |
-| `0x83 nn` | `{host}`, antes do firmware 16; agora sempre recusado: em silêncio se `nn` for 1, como um código vazio se for 2 |
+| `0x83 nn` | o mouse, para `nn` de 3 em diante: `1xxxxxxx` define para onde x vai, 0–127 na horizontal, e `01yyyyyy` y, 0–63 na vertical, e move até lá — 0 empurra contra aquela borda; `001c00bb` pressiona os botões `bb` (bit 0 o esquerdo, bit 1 o direito; nenhum é soltar), e `c` os solta de novo, um clique. Qualquer coisa abaixo de `0x20` define a velocidade do próximo movimento: o bit 4 escolhe y, e os quatro bits baixos são contagens por relatório, 4 se não definido, então `{x*a}` é `4a`. `nn` 1 e 2 eram `{host}`, antes do firmware 16; agora sempre recusado, em silêncio se 1, como um código vazio se 2 |
+| `0x81 F7` | `{clear}`: as contagens do bloqueio de volta a zero. `F7` não pode ser um cabeçalho: `F6` seriam sete símbolos |
 | `0x80 a c x` | onde o botão `a`/`c` do controle remoto inicia esta macro: `a` e `c` com o bit 7 forçado para 1, `x` = `0x80` mais os bits altos originais deles (o de `a` no bit 0, o de `c` no bit 1). Na execução normal, não faz nada |
 
 Nenhum argumento pode ser zero, já que um byte zero encerra a macro. `0x03` é
@@ -861,10 +924,10 @@ segredo pode ser.
 | `0x1E0`–`0x1E3` | o número de série |
 | `0x1E4`–`0x1EB` | o valor de verificação dos segredos; tudo `0xFF` se não houver. Antes do firmware 16, a chave de computador |
 | `0x1EC` | bloqueio: códigos errados antes de um bloqueio leve; 0 ou `0xFF` para sem bloqueio |
-| `0x1ED` | ...bloqueios leves seguidos antes de um bloqueio forte; 0 ou `0xFF` para nunca |
+| `0x1ED` | ...bloqueios leves antes de um bloqueio forte; 0 ou `0xFF` para nunca |
 | `0x1EE` | ...duração de um bloqueio leve em dezenas de segundos, 1–240; qualquer outro valor vale 6 |
 | `0x1EF` | ...códigos errados até agora |
-| `0x1F0` | ...bloqueios leves seguidos até agora |
+| `0x1F0` | ...bloqueios leves até agora |
 | `0x1F1` | ...bloqueios fortes desfeitos com a senha, desde sempre |
 | `0x1F2` | por quanto tempo a placa guarda a chave, em dezenas de segundos, 1–240; qualquer outro valor vale 6 |
 | `0x1F3` | o cabeçalho da macro de inicialização; qualquer valor impossível como cabeçalho significa nenhuma |
@@ -879,7 +942,7 @@ mais vai ter que sair da tabela.
 ```
 make                            # the core and DigiMacro, into build/v2/
 make release                    # ...and into web/firmware/, for the page
-make test                       # the core's own tests
+make test                       # the core's own tests, and the uninstallers'
 ```
 
 `make` gera `digimacro.hex`, o firmware para atualizações, e
@@ -908,10 +971,19 @@ placa mantém a tabela), ou o `irspike-full.hex` por um gravador; ele deixa
 a janela aberta, então a página põe o DigiMacro de volta sem toque longo.
 
 `make uninstall` gera o desinstalador que a página grava em **De volta a um
-Digispark comum**: o aplicativo em 0x1000, um intervalo em branco e o
+Digispark comum**: o aplicativo na divisa, um intervalo em branco e o
 Micronucleus 2.6 como foi lançado (`app/micronucleus/`) em 0x1A00, com o CRC
-do núcleo cobrindo tudo. O `make release` o copia para
-`web/firmware/digimacro-uninstall.hex`.
+do núcleo cobrindo tudo — uma vez para o núcleo 5, em `0x0F80`, e outra
+para os núcleos mais antigos, em `0x1000` (`uninstall1.hex`, byte a byte o
+da v3.0). O `make release` os copia para
+`web/firmware/digimacro-uninstall.hex` e `digimacro-uninstall-api1.hex`.
+
+`make coreupdate` gera o atualizador do núcleo, para placas num núcleo mais
+antigo: um aplicativo em `0x1000` que traz o núcleo recém-compilado (*Uma
+placa num núcleo mais antigo*). `make simcoreupdate` o executa numa placa
+simulada, a partir do núcleo da v2.0 e do da v3.0, e confere que o núcleo
+novo está no lugar byte a byte e enumera. O `make release` o copia para
+`web/firmware/digimacro-coreupdate.hex`.
 
 ## Testes
 
@@ -923,8 +995,9 @@ compila o `DigiMacro.ino` de verdade para o computador contra um hardware
 simulado e exercita o percurso da tabela, cada escape, os limites que impedem
 uma tabela malformada de chegar aos bytes reservados, a decodificação do morse
 a partir do pino de entrada, a senha, o bloqueio e os segredos, e os dois
-jeitos de ler o sensor. Depois, a linguagem de macros do
-aplicativo sozinha; as duas linguagens uma contra a outra; o núcleo da v2
+jeitos de ler o sensor. Depois, o mouse, o próprio código do
+`app/hidusb.c` recortado dele e executado, os relatórios somados; a
+linguagem de macros do aplicativo sozinha; as duas linguagens uma contra a outra; o núcleo da v2
 montado para o Micronucleus, com os dois saltos decodificados e seguidos até
 onde vão parar; as atualizações da página contra uma placa v2 simulada que
 trava, devolve páginas antigas, é interrompida por outro programa e é
@@ -932,7 +1005,8 @@ desconectada no meio; o WebUSB no lugar do WebHID, contra outra; o teclado da
 própria página, cada tecla conferida contra o que a placa consegue digitar; o
 próprio núcleo, compilado para o computador com a biblioteca do firmware e
 submetido a tudo o que um computador pode perguntar, duas vezes — com a região
-do firmware indo até o fim do chip e parando abaixo do Micronucleus; as cópias
+do firmware indo até o fim do chip e parando abaixo do Micronucleus; os desinstaladores, compilados para o chip e
+executados no computador, para o layout do núcleo 5 e para o antigo; as cópias
 de segurança, com o scrypt conferido contra o do próprio node e um arquivo que
 só abre com a sua senha; a página publicada, um arquivo só com o firmware
 dentro; e, por último, atravessando a fronteira entre as linguagens, uma
@@ -940,24 +1014,25 @@ tabela codificada pelo `web/table.js` executada no firmware, com segredos
 cifrados pela página entre elas. Depois, os segredos de ponta a ponta numa
 placa simulada — o firmware de verdade, `xtea.S` e tudo, que nada compilado
 para o PC executa, enumerada por um host USB simulado e tocada por um dedo
-simulado — quando o `../simavr-softusb` está compilado ao lado deste
+simulado — e o atualizador do núcleo, a partir do núcleo da v2.0 e do da
+v3.0, ambos quando o `../simavr-softusb` está compilado ao lado deste
 repositório (`make simtest` roda só ele); e o código do próprio
 `digimacro-host` contra uma placa simulada, uma cópia dela e uma antiga.
-Quinze suítes, poucos segundos e o minuto simulado. Sem `node`, as dez que
-precisam dele são puladas.
+Dezessete suítes, poucos segundos e o minuto simulado. Sem `node`, as dez que
+precisam dele são puladas, e sem o avr-gcc, a dos desinstaladores.
 
 ## Organização
 
 | | |
 |---|---|
 | `DigiMacro.ino` | o firmware: toque, morse, o percurso da tabela, a execução, o bloqueio, os segredos |
-| `app/` | o que todo firmware linka: o cabeçalho, as chamadas ao núcleo e o `hidusb.c` — o relógio, a janela, a digitação e os verbos do protocolo; `xtea.S`, a cifra. Também os aplicativos do spike, o `spikectl.py` e a página dele |
+| `app/` | o que todo firmware linka: o cabeçalho, as chamadas ao núcleo e o `hidusb.c` — o relógio, a janela, a digitação, o mouse e os verbos do protocolo; `xtea.S`, a cifra; `uninstall.c` e `coreupdate.S`. Também os aplicativos do spike, o `spikectl.py` e a página dele |
 | `core/` | o núcleo: o V-USB com sua configuração, os descritores, a verificação da senha e o gravador de páginas; `layout.h`, o contrato com o firmware; e os testes dele no computador |
 | `Makefile` | compila tudo isso |
 | `test/` | o build no computador do sketch de verdade contra hardware simulado, e os testes do lado web |
 | `tools/hostauth/` | o cliente que manda a chave, para Linux e Windows, e o `xtea.h`, a referência em C que os testes compartilham |
 | `web/` | `index.html` é o aplicativo, `hid.html` uma página de protocolo cru para desenvolvedores, `table.js` e `i18n.js` o que eles compartilham, `coreupdate.js` atualiza placas v2, `micronucleus.js` acessa o Micronucleus, `webusb.js` acessa a placa sem WebHID, `vkbd.js` o teclado na tela, `backup.js` as cópias de segurança, `60-digimacro.rules` a regra do udev |
-| `web/firmware/` | o que a página instala: o firmware, o núcleo e a imagem completa da v2 |
+| `web/firmware/` | o que a página instala: o firmware, o núcleo e a imagem completa da v2, os desinstaladores e o atualizador do núcleo |
 | `docs/` | as fotos lá de cima |
 | `HARDENED_MODE.md` | como deixar uma placa apta a guardar segredos, e o que isso ainda não protege |
 | `*.pt-BR.md` | este README e o HARDENED_MODE.md em português do Brasil |

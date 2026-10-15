@@ -95,15 +95,16 @@ en: {
   'lock-why':       'Wrong codes count. After too many the board ignores every '
                   + 'tap, right or wrong, for a while — a soft lock, which ends '
                   + 'by itself and which unplugging does not shorten. After too '
-                  + 'many soft locks in a row it ignores taps until the password '
-                  + 'is given here — a hard lock. A code that works clears both '
-                  + 'counts, so a slip of the finger costs a pause, not a trip to '
-                  + 'the app. A wrong password counts as a wrong code, but the '
-                  + 'password itself is never shut out.',
+                  + 'many soft locks it ignores taps until the password is given '
+                  + 'here — a hard lock. Only the password clears the counts, or '
+                  + 'a macro with {clear} in it: a code that works does not, or '
+                  + 'anyone who knew one could guess for ever. A wrong password '
+                  + 'counts as a wrong code, but the password itself is never '
+                  + 'shut out.',
   'lock-enable':    'Lock out wrong codes',
   'lock-soft':      'wrong codes before a pause',
   'lock-wait':      'pause, in seconds',
-  'lock-hard':      'pauses in a row before a hard lock (0: never)',
+  'lock-hard':      'pauses before a hard lock (0: never)',
   'lock-needs-password': 'The lockout needs a password, since giving it is the '
                   + 'only way to lift a hard lock. Set one above first.',
   'lock-state-soft': 'The board is pausing after too many wrong codes. It '
@@ -123,10 +124,10 @@ en: {
                   + `${p.soft == 1 ? 'each wrong code' : `every ${p.soft} wrong codes`}, `
                   + `for as long as they keep at it. With ${p.n} of the 62 codes `
                   + `in use, each guess has about a ${p.pct}% chance.`,
-  'lock-bad':       'Wrong codes before a pause must be 1 to 254, pauses in a '
-                  + 'row 0 to 254, and the pause 10 to 2400 seconds in steps '
+  'lock-bad':       'Wrong codes before a pause must be 1 to 254, pauses before '
+                  + 'a hard lock 0 to 254, and the pause 10 to 2400 seconds in steps '
                   + 'of ten.',
-  'lock-counts':    'Wrong codes now: {misses}. Pauses in a row: {softs}. Hard '
+  'lock-counts':    'Wrong codes now: {misses}. Pauses: {softs}. Hard '
                   + 'locks lifted with the password, ever: {cleared}.',
   'lock-saved':     'Lockout saved. Its counts start again from zero.',
   'lock-off-saved': 'Lockout off. Wrong codes cost nothing now.',
@@ -282,6 +283,13 @@ en: {
                   + 'first.',
   'ref-ir':         'where the IR remote\'s button 00 45 starts typing, on to '
                   + 'the end of the macro; typed from the code, it is nothing',
+  'ref-point':      'the mouse pointer, in percent of the screen; {0,0} drives '
+                  + 'it into the corner, wherever it was',
+  'ref-point-scale': '...that move a times faster, 0.75 to 3.75, for a '
+                  + 'computer that scales the pointer',
+  'ref-click':      'a mouse click',
+  'ref-hold':       'a button held down, and let up again; {right-hold} too',
+  'ref-clear':      'forget the lockout\'s wrong codes, as the password does',
   'ir-learn':       'remote button',
   'ir-title':       'A remote\'s button',
   'ir-how':         'Point the remote at the board and press the button within '
@@ -389,8 +397,9 @@ en: {
                   + 'is decided by the keyboard layout of the machine it is '
                   + 'plugged into — which is what the keyboard setting beside '
                   + 'Macros says. '
-                  + 'On US International an accented character is two presses, '
-                  + 'the accent and then the letter, and a bare accent mark is '
+                  + 'On US International and on Brazil\'s ABNT2 an accented '
+                  + 'character is two presses, the accent and then the letter '
+                  + '(ç has a key of its own on ABNT2), and a bare accent mark is '
                   + 'that key followed by a space. On a plain US keyboard there is '
                   + 'no way to type one at all, so the editor says so rather '
                   + 'than typing something else.',
@@ -408,6 +417,7 @@ en: {
   'connect-failed': 'could not connect: {msg}',
   connected:        'connected — firmware {fw}{state}, protocol {proto}',
   'fw-link-update': '(update…)',
+  'fw-link-core':   '(a new core, and firmware {fw}…)',
   'fw-link-available': '(update available)',
   'fw-link-latest': '(latest)',
   'fw-link-noboot': '(hardened: no bootloader)',
@@ -434,6 +444,26 @@ en: {
                   + 'all stay as they are.',
   'fw-api-other':   'This page\'s firmware is for core API {app}, and the board\'s '
                   + 'core speaks {core}: it cannot go on this board.',
+  'fw-core-update': 'Update the core',
+  'fw-core-old':    'The board runs firmware {on} on an older core, API {core}. '
+                  + 'DigiMacro {fw} needs the new one, which has room for the '
+                  + 'mouse and for fixes. So the core goes first: the board '
+                  + 'writes it itself, in about half a second, and comes back '
+                  + 'with no firmware, and then this page installs DigiMacro '
+                  + '{fw}. It needs the hold, and the password if there is one. '
+                  + 'Do not unplug the board while it writes the core: cut off in '
+                  + 'that half second, it needs a programmer to come back. The '
+                  + 'macros, the password, the lockout, the key check and the '
+                  + 'serial number all stay as they are.',
+  'cu-what':        'the new core',
+  'fw-core-done':   'The new core is in place. The board is coming back with no '
+                  + 'firmware: install DigiMacro {fw} to finish.',
+  'rec-core-moved': 'The new core is in place, with no DigiMacro on top of it '
+                  + 'yet: install it to finish.',
+  'rec-core-old':   'Its core is an older one, API {core}, and DigiMacro {fw} '
+                  + 'needs the new one first. The board writes it itself, in '
+                  + 'about half a second -- do not unplug it then, or it needs a '
+                  + 'programmer -- and then this page installs DigiMacro {fw}.',
   'cu-crowded':     'something else keeps asking the board at the same time -- '
                   + 'another tab with this page, or another program. Close it '
                   + 'and try again.',
@@ -528,6 +558,8 @@ en: {
   unclosed:         'a { with no }',
   'empty-braces':   '{} is empty',
   'pause-range':    '{{what}}: a pause runs from 0.1 to 25.5 seconds',
+  'point-range':    '{{what}}: the pointer goes from 0 to 100, in percent of the screen',
+  'point-scale':    '{{what}}: a scale runs from 0.75 to 3.75, in quarters',
   'repeat-range':   '{{what}}: a repeat runs from 1 to 256',
   'group-empty':    '() has nothing in it',
   'nested-repeat':  'a count inside a group: the firmware has one mark, so the '
@@ -653,16 +685,16 @@ pt: {
   'lock-why':       'Códigos errados contam. Depois de muitos, a placa ignora '
                   + 'todo toque, certo ou errado, por um tempo — um bloqueio '
                   + 'leve, que acaba sozinho e que desconectar não encurta. '
-                  + 'Depois de muitos bloqueios leves seguidos, ela ignora os '
-                  + 'toques até a senha ser dada aqui — um bloqueio forte. Um '
-                  + 'código que funciona zera as duas contagens, então um '
-                  + 'deslize do dedo custa uma pausa, não uma ida ao aplicativo. '
-                  + 'Uma senha errada conta como código errado, mas a senha em '
-                  + 'si nunca fica bloqueada.',
+                  + 'Depois de muitos bloqueios leves, ela ignora os toques até '
+                  + 'a senha ser dada aqui — um bloqueio forte. Só a senha zera '
+                  + 'as contagens, ou uma macro com {clear}: um código que '
+                  + 'funciona não zera, senão quem conhecesse um poderia tentar '
+                  + 'para sempre. Uma senha errada conta como código errado, mas '
+                  + 'a senha em si nunca fica bloqueada.',
   'lock-enable':    'Bloquear códigos errados',
   'lock-soft':      'códigos errados antes de uma pausa',
   'lock-wait':      'pausa, em segundos',
-  'lock-hard':      'pausas seguidas antes do bloqueio forte (0: nunca)',
+  'lock-hard':      'pausas antes do bloqueio forte (0: nunca)',
   'lock-needs-password': 'O bloqueio precisa de uma senha, porque dá-la é o '
                   + 'único jeito de desfazer um bloqueio forte. Defina uma acima '
                   + 'primeiro.',
@@ -684,9 +716,9 @@ pt: {
                   + `pelo tempo que insistir. Com ${p.n} dos 62 códigos em uso, `
                   + `cada tentativa tem cerca de ${p.pct}% de chance.`,
   'lock-bad':       'Códigos errados antes de uma pausa devem ser de 1 a 254, '
-                  + 'pausas seguidas de 0 a 254, e a pausa de 10 a 2400 '
+                  + 'pausas antes do bloqueio forte de 0 a 254, e a pausa de 10 a 2400 '
                   + 'segundos, de dez em dez.',
-  'lock-counts':    'Códigos errados agora: {misses}. Pausas seguidas: '
+  'lock-counts':    'Códigos errados agora: {misses}. Pausas: '
                   + '{softs}. Bloqueios fortes desfeitos com a senha, desde '
                   + 'sempre: {cleared}.',
   'lock-saved':     'Bloqueio salvo. As contagens recomeçam do zero.',
@@ -845,6 +877,13 @@ pt: {
                   + 'existe. Ponha o segredo primeiro.',
   'ref-ir':         'onde o botão 00 45 do controle remoto começa a digitar, até '
                   + 'o fim da macro; digitada pelo código, não faz nada',
+  'ref-point':      'o ponteiro do mouse, em porcentagem da tela; {0,0} o '
+                  + 'empurra para o canto, onde quer que esteja',
+  'ref-point-scale': '...aquele movimento a vezes mais rápido, de 0,75 a 3,75, '
+                  + 'para um computador que muda a escala do ponteiro',
+  'ref-click':      'um clique do mouse',
+  'ref-hold':       'um botão pressionado, e solto de novo; {right-hold} também',
+  'ref-clear':      'esquece os códigos errados do bloqueio, como a senha faz',
   'ir-learn':       'botão do controle',
   'ir-title':       'Um botão do controle',
   'ir-how':         'Aponte o controle para a placa e aperte o botão em até dez '
@@ -955,10 +994,11 @@ pt: {
   'ref-layout':     'A placa envia pressionamentos de tecla, não letras, então '
                   + 'o que aparece é decidido pelo layout de teclado da '
                   + 'máquina em que ela está ligada — que é o que a opção de '
-                  + 'teclado ao lado de Macros informa. No US International um '
-                  + 'caractere '
+                  + 'teclado ao lado de Macros informa. No US International e '
+                  + 'no ABNT2 um caractere '
                   + 'acentuado são dois pressionamentos, o acento e depois a '
-                  + 'letra, e um acento sozinho é a tecla dele seguida de espaço. '
+                  + 'letra (no ABNT2, o ç tem tecla própria), e um acento '
+                  + 'sozinho é a tecla dele seguida de espaço. '
                   + 'Num teclado US puro não há como digitar um acento, então '
                   + 'o editor avisa em vez de digitar outra coisa.',
 
@@ -976,6 +1016,7 @@ pt: {
   'connect-failed': 'não foi possível conectar: {msg}',
   connected:        'conectada — firmware {fw}{state}, protocolo {proto}',
   'fw-link-update': '(atualizar…)',
+  'fw-link-core':   '(um novo núcleo, e o firmware {fw}…)',
   'fw-link-available': '(atualização disponível)',
   'fw-link-latest': '(o mais recente)',
   'fw-link-noboot': '(protegida: sem bootloader)',
@@ -1001,6 +1042,27 @@ pt: {
                   + 'como estão.',
   'fw-api-other':   'O firmware desta página é para a API de núcleo {app}, e o '
                   + 'núcleo da placa fala {core}: não pode ir nesta placa.',
+  'fw-core-update': 'Atualizar o núcleo',
+  'fw-core-old':    'A placa roda o firmware {on} sobre um núcleo mais antigo, '
+                  + 'API {core}. O DigiMacro {fw} precisa do novo, que tem espaço '
+                  + 'para o mouse e para correções. Então o núcleo vai primeiro: '
+                  + 'a placa o grava ela mesma, em cerca de meio segundo, e volta '
+                  + 'sem firmware, e então esta página instala o DigiMacro {fw}. '
+                  + 'É preciso segurar o sensor, e dar a senha se houver uma. Não '
+                  + 'desconecte a placa enquanto ela grava o núcleo: interrompida '
+                  + 'nesse meio segundo, ela precisa de um gravador para voltar. '
+                  + 'As macros, a senha, o bloqueio, a verificação da chave e o '
+                  + 'número de série ficam como estão.',
+  'cu-what':        'o novo núcleo',
+  'fw-core-done':   'O novo núcleo está no lugar. A placa está voltando sem '
+                  + 'firmware: instale o DigiMacro {fw} para terminar.',
+  'rec-core-moved': 'O novo núcleo está no lugar, ainda sem o DigiMacro em cima '
+                  + 'dele: instale-o para terminar.',
+  'rec-core-old':   'O núcleo dela é mais antigo, API {core}, e o DigiMacro {fw} '
+                  + 'precisa do novo antes. A placa o grava ela mesma, em cerca de '
+                  + 'meio segundo -- não a desconecte nesse momento, ou ela vai '
+                  + 'precisar de um gravador -- e então esta página instala o '
+                  + 'DigiMacro {fw}.',
   'cu-crowded':     'outra coisa está falando com a placa ao mesmo tempo -- outra '
                   + 'aba com esta página, ou outro programa. Feche-a e tente de '
                   + 'novo.',
@@ -1094,6 +1156,8 @@ pt: {
   unclosed:         'um { sem }',
   'empty-braces':   '{} está vazio',
   'pause-range':    '{{what}}: uma pausa vai de 0,1 a 25,5 segundos',
+  'point-range':    '{{what}}: o ponteiro vai de 0 a 100, em porcentagem da tela',
+  'point-scale':    '{{what}}: a escala vai de 0,75 a 3,75, em quartos',
   'repeat-range':   '{{what}}: uma repetição vai de 1 a 256',
   'group-empty':    '() não tem nada dentro',
   'nested-repeat':  'uma contagem dentro de um grupo: o firmware tem uma marca '

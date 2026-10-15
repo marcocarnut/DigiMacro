@@ -360,6 +360,110 @@ check(['Digit0', 'Numpad7', 'KeyA', 'KeyF', 'Space'].map(t.irKeyChar).join('') =
 check(t.irKeyChar('KeyG') === null && t.irKeyChar('Enter') === null,
       'irKeyChar ignores other keys');
 
+console.log('6b. ABNT2, Brazil\'s');
+/* Its accents are keys of their own, ç is a key, and its apostrophe and
+   quote are not dead. "/" is the keypad's and "?" is AltGr+W: the board
+   cannot send ABNT2's own key for them, usage 0x87. */
+t.setLayout('abnt2');
+const bytesOf = s => JSON.stringify(t.encodeMacro(s));
+const want = (s, b, what) => check(bytesOf(s) === JSON.stringify(b),
+                                   `abnt2: ${what}, got ${bytesOf(s)}`);
+want('ç', [0x33], 'ç is its own key');
+want('Ç', [0xB3], 'Ç is Shift and that key');
+want('á', [0x2F, 0x04], 'á is the acute key and then a');
+want('à', [0xAF, 0x04], 'à is Shift and the acute key, then a');
+want('ã', [0x34, 0x04], 'ã is the tilde key and then a');
+want('ô', [0xB4, 0x12], 'ô is Shift and the tilde key, then o');
+want('ü', [0xA3, 0x18], 'ü is Shift and 6, then u');
+want(APOS + '"', [0x35, 0xB5], 'the apostrophe and the quote are plain keys');
+want('~', [0x34, 0x2C], 'a bare tilde is the key and a space');
+want('/', [0x54], '/ is the keypad\'s');
+want('?', [t.ESC_MOD, 0x40, 0x1A], '? is AltGr+W');
+want('º', [t.ESC_MOD, 0x40, 0x32], 'º is AltGr and the key beside Enter');
+want(']}\\\\|;:', [0x32, 0xB2, 0x64, 0xE4, 0x38, 0xB8], 'the keys that moved');
+want('{Ctrl+ç}', [t.ESC_MOD, 0x01, 0x33], 'ç takes a modifier');
+check(t.decodeMacro([t.ESC_MOD, 0x40, 0x1A]) === '?', 'AltGr+W reads back as ?');
+check(t.decodeMacro([0x2F, 0x17]) === '{´}t', 'the acute then t reads back as {´}t');
+msg = null;
+try { t.encodeMacro('ń'); } catch (e) { msg = e.message; }
+check(msg !== null && /no key/.test(msg), `ń has no key on ABNT2: ${msg}`);
+for (const text of ['Ação, você? Até já!', 'nº 1, 2ª via, 30°C, §3', 'pão{Enter}',
+                    '(a/b?){2}', '?{3}', 'lingüiça', '~^´`¨ ' + APOS + '"',
+                    '{Ctrl+c}á', 'ÀÉÎÕÜ', 'x{´}t']) {
+  const bytes = t.encodeMacro(text);
+  const back = t.decodeMacro(bytes);
+  check(JSON.stringify(t.encodeMacro(back)) === JSON.stringify(bytes),
+        `abnt2: ${JSON.stringify(text)} drifts: ${JSON.stringify(back)}`);
+}
+/* Every character a layout has a key for reads back as itself */
+for (const name of Object.keys(t.LAYOUTS)) {
+  t.setLayout(name);
+  const l = t.LAYOUTS[name];
+  for (const ch of [...Object.keys(l.plain), ...Object.keys(l.shifted),
+                    ...Object.keys(l.altgr)]) {
+    if (l.dead && ch in l.dead) continue;       /* the mark and a space */
+    const back = t.decodeMacro(t.usages(ch));
+    check(back === ch || back === { '\n': '\\n', '\t': '\\t', '\b': '\\b',
+                                    '\\': '\\\\', '{': '{{' }[ch],
+          `${name}: ${JSON.stringify(ch)} reads back as ${JSON.stringify(back)}`);
+  }
+}
+t.setLayout('us-intl');
+
+console.log('6c. the pointer: {x,y} and {click}');
+/* {host}'s other arguments: x in 128 steps, y in 64, then a click */
+const hexs = s => t.encodeMacro(s).map(v => v.toString(16)).join(' ');
+check(hexs('{0,0}') === '83 80 83 40', `the corner: ${hexs('{0,0}')}`);
+check(hexs('{100,100}') === '83 ff 83 7f', `the far corner: ${hexs('{100,100}')}`);
+check(hexs('{click}') === '83 31', `a click: ${hexs('{click}')}`);
+check(hexs('{right-click}{hold}{right-hold}{release}') === '83 32 83 21 83 22 83 20',
+      `the other buttons: ${hexs('{right-click}{hold}{right-hold}{release}')}`);
+check(t.decodeMacro(t.encodeMacro('{Right-Click}{right-release}')) === '{right-click}{release}',
+      'any case; a release lets every button up');
+check(t.decodeMacro(t.encodeMacro('{25,75}{click}')) === '{25,75}{click}',
+      'a point in whole percents reads back as itself');
+let drifts = 0;
+for (let x = 0; x <= 100; x += 0.5)
+  for (let y = 0; y <= 100; y += 0.5) {
+    const b = t.encodeMacro(`{${x},${y}}`);
+    if (JSON.stringify(t.encodeMacro(t.decodeMacro(b))) !== JSON.stringify(b)) drifts++;
+  }
+check(drifts === 0, `${drifts} points drift when read back`);
+const unround = [];
+for (let p = 0; p <= 100; p += 5)
+  if (t.decodeMacro(t.encodeMacro(`{${p},${p}}`)) !== `{${p},${p}}`) unround.push(p);
+check(!unround.length, `round percents read back as typed, though y has 64 steps: ${unround}`);
+check(hexs('{50,50}{click}{3}') === '83 c0 83 60 82 83 31 3 2',
+      `three clicks are a group: ${hexs('{50,50}{click}{3}')}`);
+msg = null;
+try { t.encodeMacro('{100.5,0}'); } catch (e) { msg = e.message; }
+check(msg !== null && /percent/.test(msg), `past the edge: ${msg}`);
+check(t.decodeMacro([0x83, 0x01]) === '{host}', '{host} still reads as itself');
+/* {x*a,y*b}: the move's counts a report, 4a, ahead of it -- only where not 1 */
+check(hexs('{40*2,90*2.75}') === '83 8 83 1b 83 b3 83 79',
+      `a scaled move: ${hexs('{40*2,90*2.75}')}`);
+check(hexs('{40*1,90}') === hexs('{40,90}'), 'a scale of 1 is no scale');
+check(hexs('{40,90 * 3.75}') === '83 1f 83 b3 83 79', `y alone: ${hexs('{40,90 * 3.75}')}`);
+for (const s of ['{40*2,90*2.75}{click}', '{40,90*0.75}', '{12*3.5,25}'])
+  check(t.decodeMacro(t.encodeMacro(s)) === s, `${s} reads back as itself: ${t.decodeMacro(t.encodeMacro(s))}`);
+check(t.decodeMacro(t.encodeMacro('{40*2.1,90}')) === '{40*2,90}', 'a scale goes in quarters');
+msg = null;
+try { t.encodeMacro('{40/2,90}'); } catch (e) { msg = e.message; }
+check(msg !== null, 'the spike\'s slash is not a scale any more');
+for (const bad of ['{40*0.5,90}', '{40*4,90}', '{40,90*0}']) {
+  msg = null;
+  try { t.encodeMacro(bad); } catch (e) { msg = e.message; }
+  check(msg !== null && /scale/.test(msg), `${bad}: ${msg}`);
+}
+
+console.log('6d. {clear}: the lockout forgotten, by the owner\'s choice');
+check(hexs('{clear}') === '81 f7', `{clear}: ${hexs('{clear}')}`);
+check(t.decodeMacro(t.encodeMacro('ab{Clear}c')) === 'ab{clear}c', 'reads back, any case');
+msg = null;
+try { t.encodeTable([{ code: '.-', text: 'a{clear}b' }, { code: '..', text: '{clear}{goto .-}' }]); }
+catch (e) { msg = e.message; }
+check(msg === null, `not a jump to nowhere, nor a loop: ${msg}`);
+
 console.log('7. secrets');
 const hex = b => [...b].map(v => v.toString(16).padStart(2, '0')).join('');
 const unhex = h => Uint8Array.from(h.match(/../g).map(x => parseInt(x, 16)));
@@ -486,6 +590,10 @@ check(t.macroWarnings(t.encodeMacro('x{secret!}y', sealer)).includes('secret-lat
       t.macroWarnings(t.encodeMacro('{secret!}y', sealer)).length === 0 &&
       t.macroWarnings(t.encodeMacro('x{secret}y', sealer)).length === 0,
       'something before {secret!} is a warning, before {secret} not');
+check(t.macroWarnings(t.encodeMacro('{40,40}{secret!}y', sealer)).includes('secret-late') &&
+      t.macroWarnings(t.encodeMacro('{click}{secret!}y', sealer)).includes('secret-late') &&
+      t.macroWarnings(t.encodeMacro('{clear}{secret!}y', sealer)).length === 0,
+      'the mouse shows, as typing does; {clear} does not');
 /* What a secret holds is never walked for jumps: its bytes would read as
    gotos to codes that are not there */
 let spurious = 0;

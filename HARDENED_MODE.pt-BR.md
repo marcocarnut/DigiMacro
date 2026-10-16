@@ -1,4 +1,4 @@
-# Modo reforçado
+# Modo Reforçado
 
 [English](HARDENED_MODE.md) · **Português**
 
@@ -7,10 +7,10 @@ coisa secreta numa placa DigiMacro.
 
 ## Visão geral
 
-Sem uma série de precauções, uma placa DigiMacro **não** é um lugar seguro
+Sem uma série de precauções, uma placa DigiMacro **NÃO** é um lugar seguro
 para senhas nem para nenhum tipo de material secreto. Só existem 62 códigos
-morse possíveis, e bastam alguns minutos para testar todos; e a placa
-conversa com qualquer computador: basta conectá-la em outro lugar e abrir a
+morse possíveis, e bastam alguns minutos para testar todos; além disso, a placa
+conversa com qualquer computador: basta conectá-la em outro e abrir a
 página de configuração para ver todas as macros dela.
 
 Daqui em diante, vamos usar a palavra "segredos" para senhas, nomes de
@@ -25,8 +25,8 @@ com calma, se precisa mesmo disso. Quase sempre existe um jeito mais seguro e
 melhor de fazer a mesma coisa -- a maioria dos sistemas tem os seus próprios
 meios de automatizar ações privilegiadas. Estude-os e use-os.
 
-Mas é verdade que há situações em que não existe alternativa melhor e o risco
-ou pode ser atenuado, ou é simplesmente aceitável. Depende das suas
+Mas também é verdade que há situações em que não existe alternativa melhor e
+o risco ou pode ser atenuado, ou é simplesmente aceitável. Depende das suas
 circunstâncias, e a decisão é sua. Então, se você quer mesmo fazer isso, eis
 o que fazer, nesta ordem:
 
@@ -43,8 +43,8 @@ o que fazer, nesta ordem:
    Veja *Gravando os bits de trava*.
 
    A senha e a trava do chip dependem uma da outra: qualquer um dos dois sozinho
-   é fácil de contornar. É por isso que toda placa que eu pessoalmente
-   entreguei aos usuários finais saiu com a trava ativada -- para que ela se
+   é fácil de contornar. É por isso que quando eu pessoalmente envio uma placa
+   para um usuário final, eu já a entrego com a trava ativada -- para que ela se
    torne "totalmente reforçada" assim que o usuário definir sua senha (dá para
    fazer em qualquer ordem: 1 e depois 2, ou 2 e depois 1, desde que você faça
    os dois).

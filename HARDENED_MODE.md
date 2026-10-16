@@ -7,7 +7,7 @@ secret on a DigiMacro board.
 
 ## Overview
 
-Without several precautions, a DigiMacro board is **not** a safe place for
+Without several precautions, a DigiMacro board is **NOT** a safe place for
 passwords or any kind of secret material. There are only 62 possible morse
 codes, and it only takes a few minutes to try them all; and the board talks
 to any computer: simply plugging it in elsewhere and opening the
@@ -25,7 +25,7 @@ whether you really need to. There is usually a safer, better way to do it --
 most systems have their own ways to automate privileged actions. Study and
 use them.
 
-But it is true that there are some occasions where there's no better
+But it is also true that there are some occasions where there's no better
 alternative and the risk can either be mitigated or is outright acceptable.
 It depends on your own circumstances and it's your call. So if you really
 want to do it, here is what to do, in this order:

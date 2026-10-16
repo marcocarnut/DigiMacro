@@ -104,8 +104,8 @@ looks like an empty chip, as it comes from the factory: every byte reads
 `0xFF`.
 
 The chip can still be reused -- anyone can erase it and install other
-programs on it. But a full chip erase also erases the macros (the high fuse
-value above sees to that), so the secrets are safe.
+programs on it. But a full chip erase also erases the macros, so the
+secrets are safe.
 
 When the lock bits are set, the configuration page says your board is
 **(hardened)**. The board works exactly as before, firmware updates

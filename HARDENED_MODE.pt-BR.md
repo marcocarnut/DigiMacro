@@ -37,19 +37,19 @@ o que fazer, nesta ordem:
 
 2. **Trave o chip,** imediatamente, antes de colocar qualquer segredo na
    placa. Com um gravador ISP (In-System Programming), grave os bits de
-   trava do chip. Isso impede que alguém leia a memória da placa, onde os
-   segredos vão ficar, com um gravador próprio, o que passaria por cima da
-   senha. A página de configuração então diz que a sua placa está reforçada.
+   trava do chip. Isso impede que alguém com um gravador ("programador")
+   próprio leia a memória da placa, o que lhe permitiria contornar por completo
+   a senha. A página de configuração então diz que a sua placa está reforçada.
    Veja *Gravando os bits de trava*.
 
-   A senha e os bits de trava dependem um do outro: qualquer um dos dois
-   sozinho é fácil de contornar. É por isso que toda placa que eu mesmo já
-   entreguei a usuários finais saiu com os bits de trava gravados -- para
-   que ela fique "totalmente reforçada" assim que o usuário definir a senha
-   (dá para fazer em qualquer ordem: 1 e depois 2, ou 2 e depois 1, desde que
-   você faça os dois).
+   A senha e a trava do chip dependem uma da outra: qualquer um dos dois sozinho
+   é fácil de contornar. É por isso que toda placa que eu pessoalmente
+   entreguei aos usuários finais saiu com a trava ativada -- para que ela se
+   torne "totalmente reforçada" assim que o usuário definir sua senha (dá para
+   fazer em qualquer ordem: 1 e depois 2, ou 2 e depois 1, desde que você faça
+   os dois).
 
-3. **Ligue o bloqueio,** faça o que fizer além disso. A placa então para de
+3. **Ative o bloqueio,** faça o que fizer além disso. A placa então para de
    responder quando alguém toca códigos errados demais. Sozinho, ele é a
    forma mais fraca de proteção, já que só há 62 códigos para testar, mas é
    melhor que nada, e funciona junto com a chave. Veja *O bloqueio*.
@@ -102,8 +102,8 @@ por cima da verificação da senha. Com os bits de trava gravados, o que se lê
 parece um chip vazio, como sai da fábrica: todo byte vem como `0xFF`.
 
 O chip ainda pode ser reaproveitado -- qualquer um pode apagá-lo e instalar
-outros programas nele. Mas apagar o chip inteiro apaga também as macros (o
-valor do fuse alto acima garante isso), então os segredos ficam a salvo.
+outros programas nele. Mas apagar o chip inteiro apaga também as macros,
+então os segredos ficam a salvo.
 
 Com os bits de trava gravados, a página de configuração diz que a sua placa
 está **(reforçada)**. A placa funciona exatamente como antes, inclusive as

@@ -2,18 +2,20 @@
 
 [English](README.md) · **Português**
 
-Um teclado de macros acionado por código morse, num Digispark ATtiny85,
-configurado por uma página web.
+Um teclado/mouse de macros acionado por código morse, num Digispark ATtiny85,
+configurado por uma página web:
 
-Aplicativo web de configuração: https://digimacro.postcogito.org
+- https://digimacro.postcogito.org
 
-Para o PC ou o celular, ele se apresenta como um teclado USB. Tocando um
-sensor em código morse, ele digita uma de 62 sequências de teclas possíveis,
-que você programa antes pela página web que o acompanha (precisa do Chrome ou
+Para o PC ou o celular, ele se apresenta como um teclado e mouse USB. Usando
+código morse em um sensor de toque, você seleciona uma entre 62 possíveis
+sequências de teclas e movimentos de mouse para serem executadas, pré-programadas
+pela página web que o acompanha (precisa do Chrome ou
 do Edge num computador, ou do Chrome no Android: não do Safari, e não num
-iPhone ou iPad). Ele também pode ser acionado por um controle remoto
-infravermelho, se você acrescentar um sensor de infravermelho (TSOP4838 ou
-similar).
+iPhone ou iPad).
+
+Também pode ser acionado por um controle remoto compatível com o protocolo NEC,
+se você acrescentar um sensor de infravermelho (TSOP4838 ou similar).
 
 Ele também pode digitar sozinho ao ser ligado (esse foi, aliás, o uso
 original da primeiríssima versão, muitos anos atrás: fazer uma TV LG abrir o
@@ -302,7 +304,7 @@ placa que digita onze setas para a direita numa televisão não deveria pedir
 nada a ninguém. Sem senha, nada disso protege a EEPROM de alguém com a placa
 e um notebook, já que a placa aceita firmware novo de qualquer um nos
 segundos depois de reconectada. Com senha, uma atualização também a exige; um
-gravador ainda lê o chip, a menos que ele esteja protegido. O
+gravador ainda lê o chip, a menos que ele esteja reforçado. O
 [HARDENED_MODE.pt-BR.md](HARDENED_MODE.pt-BR.md) explica o que cada camada
 impede e o que não impede.
 
@@ -647,7 +649,7 @@ uma cópia antes se puder querer algo disso de volta. **Preparar uma placa
 nova** traz o DigiMacro de volta.
 
 Os fuses e os bits de trava ficam como estavam: só um gravador os escreve.
-Numa placa protegida a página avisa depois e aponta o caminho de volta em
+Numa placa reforçada a página avisa depois e aponta o caminho de volta em
 [HARDENED_MODE.pt-BR.md](HARDENED_MODE.pt-BR.md#mudando-as-coisas-depois); a
 placa funciona como Digispark enquanto isso.
 
@@ -683,9 +685,9 @@ lista, uma classe de fabricante simples por WebUSB.
   do núcleo gravado à mão: `micronucleus --run
   web/firmware/digimacro-v2-core.hex`. Conecte a placa, e a página instala o
   firmware.
-- **Uma placa v1 protegida** não tem bootloader, e mostra **(protegida)** em
-  vez disso, ou **(não totalmente protegida…)** com uma lista do que falta —
-  *(protegida: sem bootloader)* em firmware anterior ao 8.
+- **Uma placa v1 reforçada** não tem bootloader, e mostra **(reforçada)** em
+  vez disso, ou **(não totalmente reforçada…)** com uma lista do que falta —
+  *(reforçada: sem bootloader)* em firmware anterior ao 8.
 - O comando REBOOT da v1 fica por trás da janela e da senha: uma placa no
   bootloader pode ser gravada com qualquer coisa.
 
@@ -1042,7 +1044,7 @@ precisam dele são puladas, e sem o avr-gcc, a dos desinstaladores.
 ## Relacionados
 
 - O [DigiISP](https://digiisp.postcogito.org) transforma um Digispark num
-  gravador AVR pelo navegador. É com ele que se configura o modo protegido, e
+  gravador AVR pelo navegador. É com ele que se configura o modo reforçado, e
   de onde vieram o uploader do Micronucleus e o truque do número de série.
 - O [V-USB](https://www.obdev.at/products/vusb/) é a pilha USB, e o
   [Micronucleus](https://github.com/micronucleus/micronucleus) o bootloader

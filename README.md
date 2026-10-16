@@ -2,17 +2,18 @@
 
 **English** · [Português](README.pt-BR.md)
 
-A morse-activated macro keyboard on an ATtiny85 Digispark, configured from a
-web page.
+A morse-activated macro keyboard/mouse on an ATtiny85 Digispark,
+configured from a web page:
 
-Web configuration app: https://digimacro.postcogito.org
+- https://digimacro.postcogito.org
 
-Presents itself to the host PC or smartphone as a USB keyboard. By tapping
-on a touch pad in morse code, it types one of 62 possible keystroke sequences
-you pre-program via the accompanying web page (requires Chrome or Edge on a
-computer, or Chrome on Android: not Safari, and not an iPhone or iPad).
-It can also be triggered by an infrared remote control if you add an infrared
-sensor (TSOP4838 or similar).
+Presents itself to the host PC or smartphone as a USB keyboard/mouse combo.
+By tapping on a touch pad in morse code, it types one of 62 possible keystroke
+sequences you pre-program via the accompanying web page (requires Chrome or Edge
+on a computer, or Chrome on Android: not Safari, and not an iPhone or iPad).
+
+It can also be triggered by a NEC-protocol compatible remote control if you
+add an infrared sensor (TSOP4838 or similar).
 
 It can also automatically type on power-up (that was actually the original
 use case of the very first version many years ago: having an LG TV start

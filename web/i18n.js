@@ -181,7 +181,7 @@ en: {
   'bk-plain':       'This board has no password, so the backup would hold every '
                   + 'macro in the clear. Press Save a backup again to save it '
                   + 'anyway, or set a password first.',
-  'bk-deriving':    'Working out the key from the password — a second or two, '
+  'bk-deriving':    'Working out the encryption from the password — a second or two, '
                   + 'on purpose…',
   'bk-saved':       'Saved as {file}, encrypted with the board\'s password.',
   'bk-saved-plain': 'Saved as {file}, in the clear. Keep it somewhere you would '
@@ -777,7 +777,7 @@ pt: {
   'bk-plain':       'Esta placa não tem senha, então a cópia teria todas as '
                   + 'macros às claras. Clique em Salvar uma cópia de novo para '
                   + 'salvar assim mesmo, ou defina uma senha antes.',
-  'bk-deriving':    'Calculando a chave a partir da senha — um ou dois segundos, '
+  'bk-deriving':    'Calculando a cifra a partir da senha — um ou dois segundos, '
                   + 'de propósito…',
   'bk-saved':       'Salva como {file}, cifrada com a senha da placa.',
   'bk-saved-plain': 'Salva como {file}, às claras. Guarde-a onde você guardaria '
@@ -1023,13 +1023,13 @@ pt: {
   'fw-link-core':   '(um novo núcleo, e o firmware {fw}…)',
   'fw-link-available': '(atualização disponível)',
   'fw-link-latest': '(o mais recente)',
-  'fw-link-noboot': '(protegida: sem bootloader)',
-  'hd-ok':          '(protegida)',
-  'hd-not':         '(não totalmente protegida…)',
-  'hd-summary':     'Proteção',
+  'fw-link-noboot': '(reforçada: sem bootloader)',
+  'hd-ok':          '(reforçada)',
+  'hd-not':         '(não totalmente reforçada…)',
+  'hd-summary':     'Reforço',
   'hd-why':         'Esta placa foi gravada sem bootloader, para o modo '
-                  + 'protegido, e o chip diz que falta algo de que o modo '
-                  + 'protegido precisa. O HARDENED_MODE.md da v1.0 explica cada '
+                  + 'reforçado, e o chip diz que falta algo de que o modo '
+                  + 'reforçado precisa. O HARDENED_MODE.md da v1.0 explica cada '
                   + 'item (git show v1.0:HARDENED_MODE.md). Antes do passo 6 dele é normal faltarem os bits de trava; depois '
                   + 'dele, nada aqui deveria faltar.',
   'hd-boot':        'sem bootloader',
@@ -1100,7 +1100,7 @@ pt: {
   'hd-pass':        'uma senha definida: sem ela, qualquer um pode gravar na '
                   + 'placa um firmware que a lê inteira',
   'hd-why-v2':      'Uma placa guarda seus segredos só na medida em que está '
-                  + 'protegida: a senha protege a tabela da página, e os bits de '
+                  + 'reforçada: a senha protege a tabela da página, e os bits de '
                   + 'trava e os fuses abaixo a protegem de um gravador. O '
                   + 'HARDENED_MODE.md explica cada item.',
   'hd-nag':         'Esta placa tem senha, então guarda algo que vale proteger '

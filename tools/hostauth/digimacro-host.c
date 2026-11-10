@@ -35,6 +35,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <time.h>
 #include <sys/stat.h>
 
 #ifdef _WIN32
@@ -58,6 +60,9 @@
 #define VND_LEN     36
 #define KEYAUTH     0x6A
 #define PROVE       0x6B
+#define INFO        0x40
+#define INFO_APP    13              /* INFO's [13]: the firmware's version */
+#define FW_CLOCK    18              /* the first that keeps a clock */
 #define KEY_LEN     16
 #define MAX_BOARDS  16
 
@@ -198,11 +203,12 @@ static int ask(port *p, int cmd, const unsigned char *data, int n,
 
 static int random_bytes(unsigned char *b, int n);
 
-/* PROVE, and only then KEYAUTH. */
+/* PROVE, and only then KEYAUTH -- with the time after the key, for a
+   firmware that keeps a clock: the board takes it only if the key is right. */
 static int give_key(port *p, const unsigned char *key)
 {
-    unsigned char c[8], want[8], k2[KEY_LEN], a[VND_LEN];
-    int r = UNREACHED;
+    unsigned char c[8], want[8], k2[KEY_LEN], a[VND_LEN], ka[KEY_LEN + 4];
+    int r = UNREACHED, n = KEY_LEN;
 
     if (random_bytes(c, sizeof c) < 0) return UNREACHED;
     memset(k2, 0, 8);
@@ -214,10 +220,20 @@ static int give_key(port *p, const unsigned char *key)
     if (ask(p, PROVE, c, 8, a) < 0) goto out;
     if (a[0] != PROVE) { r = TOO_OLD; goto out; }
     if (memcmp(a + 4, want, 8)) { r = IMPOSTOR; goto out; }
-    if (ask(p, KEYAUTH, key, KEY_LEN, a) < 0) goto out;
+    if (ask(p, INFO, (const unsigned char *)"", 0, a) == 0 && a[0] == INFO && a[INFO_APP] >= FW_CLOCK) {
+        uint32_t now = (uint32_t)time(NULL);
+        ka[KEY_LEN] = now;
+        ka[KEY_LEN + 1] = now >> 8;
+        ka[KEY_LEN + 2] = now >> 16;
+        ka[KEY_LEN + 3] = now >> 24;
+        n = KEY_LEN + 4;
+    }
+    memcpy(ka, key, KEY_LEN);
+    if (ask(p, KEYAUTH, ka, n, a) < 0) goto out;
     r = a[0] == KEYAUTH ? TRUSTED : REFUSED;
 out:
     memset(k2, 0, sizeof k2);
+    memset(ka, 0, sizeof ka);
     return r;
 }
 

@@ -1,0 +1,93 @@
+tap: dash threshold 250 -> 300                          caught     p12_slow_press
+tap: debounce 25 -> 60                                  caught     p12_slow_press
+tap: silence 700 -> 900                                 caught     p12_slow_press
+tap: five symbols -> four                               caught     p12_slow_press
+tap: hold 4000 -> 3000                                  caught     c08_window_clock_wipes
+tap: dash and dot swapped in the code                   caught     p12_slow_press
+touch: threshold +2 -> +4                               caught     p06_threshold
+touch: hysteresis lost                                  caught     p12_slow_press
+touch: average every 100 -> 200 ms                      caught     p05_finger_at_power_up
+touch: stuck 10001 -> 3001 ms                           caught     p09_stuck_touch
+touch: lowest reading wins                              caught     p01_reading_is_max_of_groups
+playback: shift bit ignored                             caught     t04_shift
+playback: modifier sticks                               caught     t04_shift
+playback: table top not checked                         caught     t11_play_bounded
+playback: last-byte escape takes its argument           caught     t11b_escape_last_byte
+playback: pause of tenths is 50 ms                      caught     t07_pause
+playback: {IR} tag not skipped                          caught     t24_remote
+playback: LED not lit by a keystroke                    caught     t02_length_is_part_of_code
+walk: end-of-table test off                             caught     t10b_end_of_table_byte  (survived the first run; caught after a scenario or the timing check was added)
+walk: an escape's argument not stepped over             caught     t24_ir_walk_knows_args
+repeat: one short                                       caught     t06_repeat
+repeat: loses the modifier                              caught     t06_repeat
+repeat: not stoppable                                   caught     t18h_repeat_stoppable
+group: mark forgotten at the end                        caught     t16e_mark_forgotten_after_group  (survived the first run; caught after a scenario or the timing check was added)
+group: one round too few                                caught     t16_groups
+goto: jump limit 100 -> 5                               caught     t18f3_long_chain_is_allowed  (survived the first run; caught after a scenario or the timing check was added)
+goto: jump does not reset the modifier                  caught     t18i_jump_clears_group_mod
+goto: header off by one                                 caught     t18_jump
+stop: touch not marked consumed                         caught     t18c_self_jump_touch_stops
+lockout: wrong code not counted                         caught     t21_miss_before_blink
+lockout: counts with no password                        caught     t21_no_lockout_erased
+lockout: hard threshold ignored                         caught     t21e_hard_lock
+lockout: wait default 6 -> 3                            caught     t21i_wait_nonsense_0
+lockout: ten seconds -> eight                           caught     t21b_soft_lock
+lockout: right password does not count a lifted hard lock caught     t21e_hard_lock
+lockout: soft lock not counted                          caught     t21b_soft_lock
+lockout: remote plays while locked                      caught     t24b_remote_and_lockout
+lockout: power-on plays through a hard lock             caught     t21f_hard_stops_power_on
+{clear}: does nothing                                   caught     t21j2_clear
+{Gui}: modifier dropped                                 caught     t06b_gui_alone
+{Gui}: types a key                                      caught     t06b_gui_alone
+secret: refused quiet is loud                           caught     t22_no_key
+secret: counter byte wrong                              caught     t22b_right_key
+secret: key not forgotten when it lapses                caught     t22b_right_key
+secret: jump stays in the secret                        caught     t22g_jumps_and_secrets
+secret: wrong key costs no second                       caught     t22d_wrong_key
+secret: key compare stops at 7 bytes                    caught     t22_no_check_value
+xtea: 31 cycles                                         caught     t22b_right_key
+xtea: wrong delta                                       caught     t22b_right_key
+xtea: shift by 3                                        caught     t22b_right_key
+mouse: x and y swapped                                  caught     m01_edges_diagonal_scale
+mouse: one report per step                              caught     m01_edges_diagonal_scale
+mouse: no slam to the edge                              caught     m01_edges_diagonal_scale
+mouse: scale survives the move                          caught     m01_edges_diagonal_scale
+mouse: click not released                               caught     m02_buttons
+mouse: steps backwards                                  caught     m01_edges_diagonal_scale
+IR: leader window too narrow                            caught     t24_lg_remote
+IR: bit threshold moved                                 caught     t24_timing_edges
+IR: complement not checked                              caught     t24_remote_noise
+IR: bit max 45 -> 60                                    caught     t24_timing_edges  (survived the first run; caught after a scenario or the timing check was added)
+IR: overflow not treated as a gap                       caught     t24_timing_edges  (survived the first run; caught after a scenario or the timing check was added)
+IR: high bit of a button lost                           caught     t24_remote
+IR: learn window 10 s -> 5 s                            caught     t24c_learn
+IR: learn types no space                                caught     t24c_hex_digits
+hex: letters off by one                                 caught     t24c_hex_digits
+INFO: wrong EEPROM size                                 caught     c01_info
+INFO: key bit never set                                 caught     c07_restart
+gates: window not checked                               caught     c05_refused_wipes
+gates: password not checked                             caught     c02_read_write_gates
+READ: past the EEPROM reads it                          caught     c03_read_clamps
+READ: count not clamped                                 caught     c03_read_clamps  (survived the first run; caught after a scenario or the timing check was added)
+WRITE: past the end allowed                             caught     c04_write_clamps
+WRITE: key not forgotten                                caught     t22c_forget_on_write
+UNLOCK: wrong one not counted                           caught     t21h_wrong_password_counts
+SETPASS: over-long allowed                              caught     t19b_setpass_gates
+SETPASS: not zero-padded                                caught     c09_setpass_session
+SETPASS: clears no counts                               caught     t21k_new_password_clean_slate
+UPDATE: window not reopened                             caught     c06_update
+RESTART: key kept                                       caught     c07_restart
+LEARN: forgets the flag                                 caught     t24c_hex_digits
+KEYAUTH: key not wiped from the report                  caught     c07_restart
+PROVE: seven bytes pass                                 caught     t22j_prove
+refusal does not wipe                                   caught     c02_read_write_gates
+window: thirty seconds -> ten                           caught     c08_window_clock_wipes
+window: session survives its end                        caught     c08_window_clock_wipes
+LED: blink pattern                                      caught     c08_window_clock_wipes
+LED: soft-lock blip 60 -> 120 ms                        caught     t21_count_saturates
+LED: three blinks -> two                                caught     t21_miss_before_blink
+power-on: settle 250 -> 500                             caught     t17_power_on  (survived the first run; caught after a scenario or the timing check was added)
+power-on: wait 1500 -> 800                              caught     t17b_never_says_hello  (survived the first run; caught after a scenario or the timing check was added)
+clock: window tenths off                                caught     c06_update
+serial: made every boot                                 caught     c12_serial_kept
+92 mutations, 0 not caught (first run: 8 not caught, then fixed; rerun of those 8: all caught)

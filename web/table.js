@@ -54,6 +54,9 @@ const ESC_IR     = 0x80;    /* where the remote's button starts: a, c, x --
                                three bytes, each with bit 7 set, since the
                                button's address and command may be zero */
 const SHIFT      = 0x80;    /* in a stored keystroke */
+const TOTP_MARK  = 0x7F;    /* {totp}: 0x80 then this, which no {IR} byte can be */
+const TOTP_BYTES = 40;      /* ...then the HMAC midstates, see totpBlob() */
+const FW_TOTP    = 18;      /* the firmware that knows them */
 
 /* {IR a c} as the table holds it, and back */
 const irBytes = (a, c) => [ESC_IR, a | 0x80, c | 0x80,
@@ -78,8 +81,9 @@ const irHeard = text => {
 /* How many bytes the thing at b[i] takes: a keystroke or a mark one, an
    {IR} four, any other escape two. Everything that walks a macro walks it
    with this, since an argument can be any byte at all. */
-const escStep = (b, i) => b[i] === ESC_IR ? 4
+const escStep = (b, i) => b[i] === ESC_IR ? (b[i + 1] === TOTP_MARK ? 2 + TOTP_BYTES : 4)
                      : (b[i] & 0x7F) < 0x04 && b[i] !== ESC_MARK ? 2 : 1;
+const isTotp = (b, i) => b[i] === ESC_IR && b[i + 1] === TOTP_MARK;
 
 /* ==================================================================== */
 /* Secrets                                                              */
@@ -187,7 +191,10 @@ function sealSecret(key, plain, random = randomBytes) {
    zero, which a wrong key almost never gives. */
 function openSecret(key, blob) {
   const p = secretXor(key, blob.slice(0, 4), blob.slice(4));
-  return p.indexOf(0) === p.length - 1 ? [...p.slice(0, -1)] : null;
+  /* its own zero is the first one a walk meets: not any in a {totp}'s forty */
+  let i = 0;
+  while (i < p.length && p[i]) i += escStep(p, i);
+  return i === p.length - 1 ? [...p.slice(0, -1)] : null;
 }
 
 const AUTO_ADDR  = 0x1F3;   /* the macro to type when the board is plugged
@@ -316,9 +323,65 @@ const MSG = {
                          + 'rest of the macro is encrypted as well as guarded',
   'secret-wrong-key':() => 'this is not the key these secrets were sealed with',
   'secret-no-nonce': () => 'no nonce would seal this secret -- try again',
+  'totp-blob':       () => 'a {totp @...} must be 80 hex digits: it was changed '
+                         + 'since it was read from the board',
+  'totp-base32':     p => `{totp ${p.what}}: a secret is base32, letters A-Z and `
+                         + 'digits 2-7, as an authenticator app shows it',
+  'totp-empty':      () => '{totp} needs the secret: {totp ABCD EFGH ...}',
 };
 
 let translate = null;
+/* base32, as authenticator apps give it: any case, spaces and padding ignored */
+function base32(text) {
+  const clean = text.replace(/[\s=]/g, '').toUpperCase();
+  if (!clean) fail('totp-empty');
+  if (!/^[A-Z2-7]+$/.test(clean)) fail('totp-base32', { what: text });
+  const out = [];
+  let bits = 0, have = 0;
+  for (const c of clean) {
+    bits = (bits << 5) | 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(c);
+    have += 5;
+    if (have >= 8) { out.push((bits >>> (have - 8)) & 0xFF); have -= 8; bits &= (1 << have) - 1; }
+  }
+  return out;
+}
+
+/* SHA-1's compression of one 64-byte block onto h (five big-endian words) */
+function sha1Block(h, block) {
+  const rol = (x, n) => ((x << n) | (x >>> (32 - n))) >>> 0;
+  const w = [];
+  for (let t = 0; t < 16; t++)
+    w[t] = ((block[t * 4] << 24) | (block[t * 4 + 1] << 16) | (block[t * 4 + 2] << 8) | block[t * 4 + 3]) >>> 0;
+  for (let t = 16; t < 80; t++) w[t] = rol(w[t - 3] ^ w[t - 8] ^ w[t - 14] ^ w[t - 16], 1);
+  let [a, b, c, d, e] = h;
+  for (let t = 0; t < 80; t++) {
+    const f = t < 20 ? (b & c) | (~b & d) : t < 40 ? b ^ c ^ d : t < 60 ? (b & c) | (b & d) | (c & d) : b ^ c ^ d;
+    const k = [0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6][Math.floor(t / 20)];
+    const n = (rol(a, 5) + (f >>> 0) + e + k + w[t]) >>> 0;
+    e = d; d = c; c = rol(b, 30); b = a; a = n;
+  }
+  return [a, b, c, d, e].map((v, i) => (h[i] + v) >>> 0);
+}
+
+/* What the table holds for a {totp}: the midstates after the key's ipad and
+   opad blocks (RFC 2104's precomputation), each reversed byte for byte, inner
+   first. A key longer than a block is hashed first, as HMAC says. */
+function totpBlob(keyBytes) {
+  const IV = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
+  let key = [...keyBytes];
+  if (key.length > 64) {                /* one or more blocks of SHA-1 */
+    const msg = [...key, 0x80, ...new Array(((55 - key.length) % 64 + 64) % 64).fill(0)];
+    const bits = key.length * 8;
+    for (let i = 7; i >= 0; i--) msg.push(i > 3 ? 0 : (bits >>> (8 * i)) & 0xFF);
+    let h = IV;
+    for (let i = 0; i < msg.length; i += 64) h = sha1Block(h, msg.slice(i, i + 64));
+    key = h.flatMap(v => [v >>> 24, (v >> 16) & 255, (v >> 8) & 255, v & 255]);
+  }
+  const pad = x => Array.from({ length: 64 }, (_, i) => (key[i] ?? 0) ^ x);
+  const bytesOf = h => h.flatMap(v => [v >>> 24, (v >> 16) & 255, (v >> 8) & 255, v & 255]).reverse();
+  return [...bytesOf(sha1Block(IV, pad(0x36))), ...bytesOf(sha1Block(IV, pad(0x5C)))];
+}
+
 function setMessages(fn) { translate = fn; }
 function fail(key, params = {}) {
   const s = translate && translate(key, params);
@@ -615,11 +678,28 @@ function encodeMacro(text, seal = null) {
           if (!seal) fail('secret-no-key');
           const rest = encodeMacro(text.slice(i), () => fail('secret-twice'));
           for (let j = 0; j < rest.length; j += escStep(rest, j))
-            if (rest[j] === ESC_IR) fail('secret-ir');
+            if (rest[j] === ESC_IR && !isTotp(rest, j)) fail('secret-ir');
           blob = seal(rest);
         }
         push(ESC_JUMP, secret[1] ? SECRET_LOUD : SECRET_QUIET, ...blob);
         return out;
+      }
+
+      /* {totp SECRET}: the six digits an authenticator app shows for that
+         base32 secret. A blob read back off a board comes back as {totp @hex}
+         and goes back as it came: the secret itself cannot be recovered. */
+      const totp = /^totp(?:\s+([^]*))?$/i.exec(body);
+      if (totp) {
+        const arg = (totp[1] ?? '').trim();
+        if (arg[0] === '@') {
+          const h = arg.slice(1);
+          if (!/^[0-9a-f]{80}$/i.test(h)) fail('totp-blob');
+          push(ESC_IR, TOTP_MARK, ...h.match(/../g).map(x => parseInt(x, 16)));
+        } else {
+          push(ESC_IR, TOTP_MARK, ...totpBlob(base32(arg)));
+        }
+        unitAt = -1;                            /* a repeat of it makes no sense */
+        continue;
       }
 
       /* {IR a c}: the remote's button a c starts typing from here. Played
@@ -769,6 +849,12 @@ function decodeMacro(bytes, open = null) {
       }
     }
 
+    if (isTotp(bytes, i)) {             /* the secret is not recoverable */
+      out += `{totp @${[...bytes.slice(i + 2, i + 2 + TOTP_BYTES)].map(irHex).join('')}}`;
+      i += 1 + TOTP_BYTES;
+      continue;
+    }
+
     if (b === ESC_IR) {
       const [a, c] = irButton(bytes, i + 1);
       out += `{IR ${irHex(a)} ${irHex(c)}}`;
@@ -906,6 +992,7 @@ function entryFate(bytes) {
     const b = bytes[i];
     /* what a secret does is not known here: count it as doing something */
     if (isSecret(bytes, i)) return { acts: true, goes: null };
+    if (isTotp(bytes, i)) { acts = true; continue; }
     if (b === ESC_JUMP && bytes[i + 1] === JUMP_CLEAR) continue;   /* nothing shows */
     if (b === ESC_JUMP && bytes[i + 1] === JUMP_ALONE) { acts = true; continue; }
     if (b === ESC_JUMP)  return { acts, goes: bytes[i + 1] - 1 };
@@ -960,6 +1047,7 @@ function macroWarnings(bytes) {
     }
     if (b === ESC_HOST && bytes[i + 1] === HOST_LOUD && shown)
       warn.push('host-late');
+    if (isTotp(bytes, i)) { warn.push('totp-opaque'); shown = true; continue; }
     if (b === ESC_MARK || b === ESC_IR || b === ESC_MOD ||
         b === ESC_JUMP && bytes[i + 1] !== JUMP_ALONE ||
         b === ESC_HOST && bytes[i + 1] <= HOST_LOUD) continue;
@@ -985,8 +1073,9 @@ function packTable(entries) {
     seen.add(h);
     if (body.some(b => !(b >= 0 && b <= 255)))
       fail('not-a-byte', { what: code });
-    if (body.includes(0))
-      fail('has-a-zero', { what: code });
+    for (let j = 0; j < body.length; j += escStep(body, j))
+      if (!isTotp(body, j) && body[j] === 0)    /* a {totp}'s forty may be anything */
+        fail('has-a-zero', { what: code });
     out.push(h, ...body, 0);
   }
   out.push(0xFF);
@@ -1016,7 +1105,11 @@ function unpackTable(bytes) {
     const h = bytes[i++];
     if ((h & 0x07) >= MAX_SYM) break;           /* 0xFF, or any impossible length */
     const body = [];
-    while (i < bytes.length && i < TABLE_TOP && bytes[i]) body.push(bytes[i++]);
+    while (i < bytes.length && i < TABLE_TOP && bytes[i]) {
+      /* step as a walk does: an argument, or a {totp}'s forty, may be anything */
+      const n = escStep(bytes, i);
+      for (let k = 0; k < n && i < bytes.length; k++) body.push(bytes[i++]);
+    }
     i++;                                        /* the terminator */
     entries.push([codeOf(h), body]);
   }
@@ -1071,4 +1164,6 @@ if (typeof module !== 'undefined') module.exports = {
   AUTO_ADDR, AUTO_NONE, LAYOUTS, setLayout, getLayout, setMessages, MSG,
   usages, header, codeOf, tappable, IR_CODES, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows,
-  irKeyChar, irHeard };
+  irKeyChar, irHeard,
+  base32, totpBlob, TOTP_MARK, TOTP_BYTES, FW_TOTP,
+};

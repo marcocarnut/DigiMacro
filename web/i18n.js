@@ -603,6 +603,12 @@ en: {
                   + 'the macro is encrypted as well as guarded',
   'secret-wrong-key':'this is not the key these secrets were sealed with',
   'secret-no-nonce':'no nonce would seal this secret — try again',
+  'totp-blob':      'a {totp @...} must be 80 hex digits: it was changed since it was read from the board',
+  'totp-base32':    '{totp {what}}: a secret is base32, letters A-Z and digits 2-7, as an authenticator app shows it',
+  'totp-empty':     '{totp} needs the secret: {totp ABCD EFGH ...}',
+  'totp-opaque':    'Holds a {totp}: what is stored cannot be turned back into the secret. Keep it, or type a new secret to change it.',
+  'clock-failed':   'The board refused the time, so a {totp} will type 000000 until it is set.',
+  'totp-old-firmware': 'A {totp} needs firmware 18 or newer, and this board has {fw}.',
 },
 
 pt: {
@@ -1203,6 +1209,12 @@ pt: {
                   + 'resto da macro fica cifrado além de protegido',
   'secret-wrong-key':'esta não é a chave com que estes segredos foram cifrados',
   'secret-no-nonce':'nenhum nonce conseguiu cifrar este segredo — tente de novo',
+  'totp-blob':      'um {totp @...} precisa ter 80 dígitos hexadecimais: foi alterado depois de lido do dispositivo',
+  'totp-base32':    '{totp {what}}: um segredo é base32, letras A-Z e dígitos 2-7, como o aplicativo autenticador mostra',
+  'totp-empty':     '{totp} precisa do segredo: {totp ABCD EFGH ...}',
+  'totp-opaque':    'Guarda um {totp}: o que está armazenado não pode ser convertido de volta no segredo. Mantenha-o, ou digite um novo segredo para alterá-lo.',
+  'clock-failed':   'O dispositivo recusou o horário, então um {totp} vai digitar 000000 até que ele seja acertado.',
+  'totp-old-firmware': 'Um {totp} precisa do firmware 18 ou mais novo, e este dispositivo tem o {fw}.',
 },
 
 };

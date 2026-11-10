@@ -600,6 +600,7 @@ const F_UNLOCK = 0x62, F_SETPASS = 0x63, F_REFUSED = 0xEE;
 const F_REBOOT = 0x41, F_RESTART = 0x42;
 const F_UPDATE = 0x68;           /* v2: the firmware opens the update window */
 const F_LEARN = 0x69;            /* ...types the remote's next button */
+const F_CLOCK = 0x6C;            /* firmware 18: four bytes set the clock */
 const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
 const ST_SOFTLOCK = 0x08, ST_HARDLOCK = 0x10;
 const ST_KEY = 0x80;            /* v2: the secrets' key is held */
@@ -1261,14 +1262,28 @@ async function readTable() {
   return got.length;
 }
 
-/* Everything at once: the table, the power-on macro, the lockout and the
-   key check. */
+/* Firmware 18's clock, which {totp} needs and every replug loses: set on the
+   way in, while the hold and the password that got us here still count. A
+   clock left unset is not silent either: a {totp} would type 000000. */
+async function setClock() {
+  if (fwOnBoard < FW_TOTP) return;
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    await ask(F_CLOCK, 0, 4, new Uint8Array([now, now >>> 8, now >>> 16, now >>> 24]));
+  } catch (e) {
+    note('table-note', t('clock-failed'), 'bad');
+  }
+}
+
+/* Everything at once: the clock, the table, the power-on macro, the lockout
+   and the key check. */
 async function enterBoard() {
   note('gate-note', t('gate-reading'), 'dim');
   for (const id of ['table-note', 'auto-note', 'write-note', 'pass-note',
                     'lock-note', 'key-note', 'bk-save-note', 'bk-note']) note(id, '');
   disarm();
   show('board');
+  await setClock();
   await keyRead();              /* the serial: a key is this board's or not */
   const got = await readTable();
   lockRead(await eeRead(LOCK_ADDR, LOCK_LEN));
@@ -1379,6 +1394,11 @@ $('write').onclick = () => {
   let bytes;
   try { bytes = tableBytes(); }
   catch (e) { note('write-note', e.message, 'bad'); return; }
+  /* an older firmware's walk would lose its place in a {totp}'s forty bytes */
+  if (macros.some(r => /\{\s*totp\b/i.test(full(r))) && fwOnBoard < FW_TOTP) {
+    note('write-note', t('totp-old-firmware', { fw: fwOnBoard }), 'bad');
+    return;
+  }
 
   run('write-note', async () => {
     await writeTable(bytes, 'write-note');

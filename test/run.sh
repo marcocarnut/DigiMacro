@@ -65,9 +65,16 @@ else
 fi
 
 echo
-echo "== v2 updates: the page's side, against a fake board =="
+echo "== v2 updates: the page's side, against a fake board (the assembly app's image) =="
 if command -v node >/dev/null 2>&1; then
-    node coreupdate.js
+    # The published firmware directory, with the assembly app in the C app's place
+    make -s -C .. build/v2/digimacro-asm.hex >/dev/null
+    FWA="$OUT"_fw
+    mkdir -p "$FWA"
+    cp ../web/firmware/* "$FWA"/
+    cp ../build/v2/digimacro-asm.hex "$FWA"/digimacro-v2.hex
+    sed -i 's/"app": *[0-9]*/"app": 18/' "$FWA"/digimacro-v2.json   # its version, for the check
+    DM_FW="$FWA" node coreupdate.js
 else
     echo "node not found, skipped"
 fi
@@ -174,6 +181,22 @@ if [ -n "$SIMLIB" ] && command -v node >/dev/null 2>&1; then
         echo "the core updater fails on the simulated board"
         exit 1
     fi
+else
+    echo "../simavr-softusb not built (see its PLAN.md), skipped"
+fi
+
+echo
+echo "== assembly against C on the simulated board: a sample (make difftest has them all) =="
+SIMLIB=$(ls ../../simavr-softusb/simavr/simavr/obj-*/libsimavr.a 2>/dev/null | head -1)
+if [ -n "$SIMLIB" ] && command -v node >/dev/null 2>&1; then
+    make -s -C .. build/v2/sim_diff build/v2/digimacro.hex build/v2/digimacro-asm.hex >/dev/null
+    python3 diff/run.py ../build/v2/digimacro.hex ../build/v2/digimacro-asm.hex \
+        -n t02_length_is_part_of_code,t06_repeat,t06b_gui_alone,t13_tapping,t16_groups,t18_jump,t22_no_key,t22j_prove,t24_remote,m02_buttons,c01_info,c03_read_clamps,p04_average_settles
+    echo
+    echo "== {totp}: the page's table, typed by the board, checked with Python's hmac =="
+    python3 diff/totp_e2e.py ../build/v2/digimacro-asm.hex
+    python3 diff/run.py ../build/v2/digimacro-asm.hex \
+        -n z01_rfc6238_sha1,z04_leading_zeros,z20_sealed_code,z30_unset_types_zeros_and_stops,z33_write_with_window_no_password,z35_keyauth_time_wrong_key,z40_half_page_refuses_the_macro,z50_residue_plain
 else
     echo "../simavr-softusb not built (see its PLAN.md), skipped"
 fi

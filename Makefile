@@ -115,6 +115,7 @@ $(O)/core.elf: $(CORE_OBJ)
 	     $$end $(CORE_TABLE) $$ram $(APP_RAM); \
 	 [ $$end -le $(CORE_TABLE) ] || { echo "core overruns its table"; exit 1; }; \
 	 [ $$ram -le $(APP_RAM) ] || { echo "core RAM overruns the app's"; exit 1; }
+	python3 tools/checkcore.py $@ $(AVR)avr-objdump $(NM)
 
 $(O)/core.hex: $(O)/core.elf
 	$(OBJCOPY) -O ihex -R .eeprom $< $@
@@ -152,10 +153,23 @@ SIMLIB   = $(SOFTUSB)/simavr/simavr/obj-$(shell cc -dumpmachine)/libsimavr.a
 $(O)/sim_secret: test/sim/secret.c tools/hostauth/xtea.h $(SIMLIB) | $(O)
 	cc -O2 -g -Wall -I$(SOFTUSB)/simavr/simavr/sim -I$(SOFTUSB)/harness -o $@ $< \
 	    $(addprefix $(SOFTUSB)/harness/,board.c softusb.c dm.c touchpad.c) $(SIMLIB) -lelf -lm
-simtest: $(O)/sim_secret $(O)/sim_hang $(O)/core.elf $(O)/digimacro.hex $(O)/hangapp.hex
+# This tree's simulated-board suites run the assembly app: make IMAGE=digimacro
+# for the C one.
+IMAGE ?= digimacro-asm
+simtest: $(O)/sim_secret $(O)/sim_hang $(O)/core.elf $(O)/$(IMAGE).hex $(O)/hangapp.hex
 	node test/webtable.js --emit-secret > $(O)/sealed.txt
-	$(O)/sim_secret $(O)/core.elf $(O)/digimacro.hex $(O)/sealed.txt
+	$(O)/sim_secret $(O)/core.elf $(O)/$(IMAGE).hex $(O)/sealed.txt
 	$(O)/sim_hang $(O)/core.elf $(O)/hangapp.hex
+
+# Every differential scenario, the assembly app against the C one
+difftest: $(O)/sim_diff $(O)/core.elf $(O)/digimacro.hex $(O)/digimacro-asm.hex
+	python3 test/diff/run.py $(O)/digimacro.hex $(O)/digimacro-asm.hex
+
+# The differential test's runner: one scenario, one image, on the simulated
+# board (test/sim/difftest.c); test/diff/run.py compares the traces.
+$(O)/sim_diff: test/sim/difftest.c $(SIMLIB) | $(O)
+	cc -O2 -g -Wall -I$(SOFTUSB)/simavr/simavr/sim -I$(SOFTUSB)/harness -o $@ $< \
+	    $(addprefix $(SOFTUSB)/harness/,board.c softusb.c dm.c touchpad.c) $(SIMLIB) -lelf -lm
 
 # ...and the core's watchdog, which only a chip has: an app that hangs.
 APPVER_HG = 1
@@ -224,6 +238,42 @@ hosts:
 	$(MAKE) -C tools/hostauth static windows
 	mkdir -p build/release
 	cp tools/hostauth/digimacro-host-linux-x86_64 tools/hostauth/digimacro-host.exe build/release/
+
+# ---- the assembly versions (app/asm): same header, same CRC, same checks -
+
+# straight.S is the straightforward translation, digimacro.S the tuned one:
+# make build/v2/asm-straight.hex, build/v2/digimacro-asm.hex
+APPVER_ASM := $(APPVER_DM)
+$(O)/apphdrASM.o: app/hidusb.h
+$(O)/asm-straight.o: app/asm/straight.S core/layout.h | $(O)
+	$(CC) $(ASFLAGS) -c -o $@ $<
+$(O)/asm-straight.elf: $(O)/apphdrASM.o $(O)/asm-straight.o $(O)/coreapi.o $(O)/xtea.o
+	$(CC) $(CFLAGS) $(APPLINK) -Wl,-u,__do_clear_bss -o $@ $^
+	@printf 'asm-straight: %d bytes of %d\n' $$(( 0x$$($(NM) $@ | awk '$$3=="__data_load_end"{print $$1}') - $(APP_START) )) $$(( $(APP_END) - $(APP_START) ))
+$(O)/asm-straight.hex: $(O)/asm-straight.elf app/apphex.py
+	$(apphex)
+
+# The tuned one carries its own header, and no C runtime at all.
+ASMDEFS = -DAPP_VER=18 $(if $(CLK_FRAC),-DCLK_FRAC=$(CLK_FRAC))
+$(O)/digimacro-asm.o: app/asm/digimacro.S core/layout.h app/hidusb.h | $(O)
+	$(CC) $(ASFLAGS) $(ASMDEFS) -c -o $@ $<
+$(O)/digimacro-asm.elf: $(O)/digimacro-asm.o $(O)/coreapi.o
+	$(CC) $(CFLAGS) $(APPLINK) -o $@ $^
+	@printf 'digimacro-asm: %d bytes of %d\n' $$(( 0x$$($(NM) $@ | awk '$$3=="__data_load_end"{print $$1}') - $(APP_START) )) $$(( $(APP_END) - $(APP_START) ))
+$(O)/digimacro-asm.hex: $(O)/digimacro-asm.elf app/apphex.py
+	$(apphex)
+$(O)/digimacro-asm-full.hex: $(O)/core.hex $(O)/digimacro-asm.hex
+	python3 app/apphex.py join $@ $^
+
+# The page with the assembly app as the firmware it installs, to serve locally:
+# cd build/v2/asm-web && python3 -m http.server. Nothing in web/ is touched.
+asmweb: $(O)/digimacro-asm.hex
+	mkdir -p $(O)/asm-web
+	cp -r web/* $(O)/asm-web/
+	cp $(O)/digimacro-asm.hex $(O)/asm-web/firmware/digimacro-v2.hex
+	printf '{ "app": 18, "core": %s, "api": %s }\n' $(CORE_VER) $(CORE_API) > $(O)/asm-web/firmware/digimacro-v2.json
+	@echo "$(O)/asm-web: serve it (python3 -m http.server there) and open it in Chrome"
+.PHONY: asmweb
 
 # ---- the spike's apps --------------------------------------------------
 
@@ -368,5 +418,5 @@ clean:
 	rm -rf $(O)
 	$(MAKE) -C core/test clean
 
-.PHONY: all release site hosts spike page irspike uninstall coreupdate size test uninstalltest simtest simcoreupdate clean
+.PHONY: all release site hosts spike page irspike uninstall coreupdate size test uninstalltest simtest simcoreupdate difftest clean
 .SECONDARY:

@@ -22,6 +22,8 @@ static int fake_ioctl(int fd, unsigned long req, ...);
 static enum { REAL, COPY, OLD } kind;
 static unsigned char check[8], board_key[16], last[1 + VND_LEN];
 static int keyauths;                    /* KEYAUTHs the fake was sent */
+static int fw = 18, lastn;              /* its firmware, and KEYAUTH's count */
+static unsigned char lasttime[4];
 
 static int fake_ioctl(int fd, unsigned long req, ...)
 {
@@ -32,13 +34,14 @@ static int fake_ioctl(int fd, unsigned long req, ...)
     (void)fd;
     if (req == HIDIOCSFEATURE(1 + VND_LEN)) {
         memcpy(last, buf, sizeof last);
-        if (last[1] == KEYAUTH) keyauths++;
+        if (last[1] == KEYAUTH) { keyauths++; lastn = last[4]; memcpy(lasttime, last + 21, 4); }
         return 1 + VND_LEN;
     }
     if (req != HIDIOCGFEATURE(1 + VND_LEN)) return -1;
     unsigned char *a = buf + 1;        /* answers come back with the ID, as
                                            Linux gives them */
     memcpy(buf, last, sizeof last);
+    if (last[1] == INFO) { a[INFO_APP] = fw; return 1 + VND_LEN; }
     if (kind == OLD || (last[1] != PROVE && last[1] != KEYAUTH)) {
         a[0] = 0xEE;
     } else if (last[1] == PROVE) {
@@ -48,6 +51,7 @@ static int fake_ioctl(int fd, unsigned long req, ...)
     } else {
         unsigned char b[8] = { 0 };
         xtea(b, a + 4);
+        if (lastn == 20) { /* the key is first; the time is not its business */ }
         if (memcmp(b, check, 8)) a[0] = 0xEE;
         memset(a + 4, 0, 32);           /* wiped */
     }
@@ -72,6 +76,17 @@ int main(void)
     kind = REAL; keyauths = 0;
     ok(give_key(&p, board_key) == TRUSTED, "it holds the key");
     ok(keyauths == 1, "KEYAUTH sent once, after PROVE");
+    ok(lastn == 20, "with the time, to firmware 18");
+    {
+        uint32_t t = lasttime[0] | lasttime[1] << 8 | lasttime[2] << 16 | (uint32_t)lasttime[3] << 24;
+        uint32_t now = (uint32_t)time(NULL);
+        ok(t <= now && now - t < 10, "and the time is this computer's");
+    }
+
+    printf("1b. firmware 17 is sent the key alone\n");
+    fw = 17; keyauths = 0;
+    ok(give_key(&p, board_key) == TRUSTED && lastn == 16, "16 bytes, as it expects");
+    fw = 18;
 
     printf("2. a copy with the serial number is not\n");
     kind = COPY; keyauths = 0;

@@ -300,7 +300,7 @@ async function main() {
 
   console.log('7. the shipped v2 app, if built, fits the core it is for');
   {
-    const FW = path.join(__dirname, '../web/firmware');
+    const FW = process.env.DM_FW || path.join(__dirname, '../web/firmware');  /* run.sh: the asm image's */
     if (fs.existsSync(path.join(FW, 'digimacro-v2.hex'))) {
       const meta = JSON.parse(fs.readFileSync(path.join(FW, 'digimacro-v2.json'), 'utf8'));
       const img = parseIntelHex(fs.readFileSync(path.join(FW, 'digimacro-v2.hex'), 'utf8'), 8192);
@@ -317,7 +317,7 @@ async function main() {
     /* API 1: the boundary at 0x1000, the cores already out there. The core
        updater and that core's uninstaller go on them, and on nothing else;
        this page's own app goes on them never. */
-    const FW = path.join(__dirname, '../web/firmware');
+    const FW = process.env.DM_FW || path.join(__dirname, '../web/firmware');
     const old = { start: 0x1000, end: APP_END, page: PAGE, api: 1 };
     const now = { start: APP_START, end: APP_END, page: PAGE, api: API };
     const read = f => parseIntelHex(fs.readFileSync(path.join(FW, f), 'utf8'), 8192);

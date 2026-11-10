@@ -101,6 +101,28 @@
  * that it ends below this. */
 #define APP_RAM         0x0150
 
+/* ---- what an app may rely on, beyond the C ABI -----------------------
+ *
+ * Part of CORE_API, checked by tools/checkcore.py when the core is built, so
+ * that a core which breaks it fails its own build: changing any of this
+ * means a new CORE_API.
+ *
+ *   - r2 to r11 are never touched: an app may keep state there, its
+ *     interrupts included. The core's code and V-USB's interrupt leave
+ *     them alone.
+ *   - neither are OCR0A, OCR0B, OCR1B, USIDR or GPIOR1 (the app's).
+ *   - main() holds nothing in r2-r17 or r28-r29 across APP_SETUP and
+ *     APP_LOOP.
+ *   - hidPassSet, hidUnlocked, hidReport, hidLock, hidReady and hidAwake
+ *     change only r24, r25 and the flags.
+ *   - the page buffer is at 0x62, 64 bytes, and GPIOR0's bit 5 is set while
+ *     half a page sits in it: an app may use it as scratch whenever that
+ *     bit is clear and it does not call corePoll while it does (an update
+ *     never returns to the app).
+ */
+#define CORE_SPARE_RAM  0x0062
+#define CORE_SPARE_LEN  64
+
 /* ---- the update window ----------------------------------------------
  *
  * Micronucleus takes an update only in the seconds after a board is

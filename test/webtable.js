@@ -64,6 +64,23 @@ if (process.argv.includes('--emit-secret') || process.argv.includes('--emit-clea
   process.exit(0);
 }
 
+if (process.argv.includes('--emit-totp')) {
+  /* What the simulated board plays: a plain {totp}, a sealed one, the page's
+     own base32 and midstates, RFC 6238's secret */
+  const SECRET = 'GEZD GNBV GY3T QOJQ GEZD GNBV GY3T QOJQ';
+  let s = 7;
+  const random = n => Uint8Array.from({ length: n }, () => (s = (s * 69069 + 1) >>> 0) >>> 24);
+  const seal = plain => t.sealSecret(EMIT_KEY, plain, random);
+  const rows = [{ code: '.', text: `ab{totp ${SECRET}}c` },
+                { code: '-', text: `{secret!}{totp ${SECRET}}d` }];
+  const table = t.packTable(rows.map(r => [r.code, t.encodeMacro(r.text, seal)]));
+  const e = new Uint8Array(512).fill(0xFF);
+  e.set(table, 0);
+  e.set(t.keyCheck(EMIT_KEY), t.CHECK_ADDR);
+  process.stdout.write(hexOf(e) + '\nkey=' + hexOf(EMIT_KEY).replace(/ /g, ''));
+  process.exit(0);
+}
+
 if (process.argv.includes('--emit')) {
   process.stdout.write([...t.encodeTable(ROWS)]
     .map(v => v.toString(16).padStart(2, '0')).join(' '));
@@ -615,6 +632,41 @@ for (let n = 0; n < 300; n++)
                        { code: '-', text: '{goto .}' }], { key: KEY }); }
   catch (e) { spurious++; }
 check(spurious === 0, `a secret's bytes never read as jumps (${spurious} of 300 did)`);
+
+console.log('8. {totp}: base32, midstates, and a blob read back unchanged');
+{
+  const bytesOfAscii = s => [...s].map(c => c.charCodeAt(0));
+  check(JSON.stringify(t.base32('gezd gnbv gy3t qojq gezd gnbv gy3t qojq=='))
+        === JSON.stringify(bytesOfAscii('12345678901234567890')), 'base32, any case, spaces, padding');
+  const blob = t.totpBlob(bytesOfAscii('12345678901234567890'));
+  const hex = [...blob].map(v => v.toString(16).padStart(2, '0')).join('');
+  /* made by test/diff/scenarios.py, with Python's arithmetic */
+  check(hex === '253068f8c3c195da32c8b8bdace299f58c0cc8cb256810fe0b43c03aeadd5cadfe7be058cdbdbd98',
+        `midstates: ${hex}`);
+  check(t.totpBlob(new Array(70).fill(1)).length === 40, 'a key longer than a block is hashed first');
+  const body = t.encodeMacro(`x{totp ${'gezdgnbv'}}y`);
+  check(body[1] === 0x80 && body[2] === t.TOTP_MARK && body.length === 1 + 2 + 40 + 1, 'encoded');
+  const shown = t.decodeMacro(body);
+  check(/^x\{totp @[0-9a-f]{80}\}y$/.test(shown), `read back as a blob: ${shown.slice(0, 16)}`);
+  check(JSON.stringify(t.encodeMacro(shown)) === JSON.stringify(body), 'saved unchanged, the same bytes');
+  check(t.macroWarnings(body).includes('totp-opaque'), 'and says the secret is not recoverable');
+  /* a table with one in it: unpacked and repacked, past a zero in the blob */
+  const zero = [0x00, ...new Array(39).fill(0)];
+  const withZero = [0x80, t.TOTP_MARK, ...zero];
+  const packed = t.packTable([['.', withZero], ['-', [0x04]]]);
+  check(packed.length === 1 + 42 + 1 + 1 + 1 + 1 + 1, 'a blob of zeros packs');
+  const un = t.unpackTable(packed);
+  check(un.length === 2 && un[1][1][0] === 0x04, 'and is walked past');
+  for (const [text, key] of [['{totp}', 'totp-empty'], ['{totp 111}', 'totp-base32'],
+                             ['{totp @ab}', 'totp-blob']]) {
+    let err = '';
+    try { t.encodeMacro(text); } catch (e) { err = e.message; }
+    check(err && /totp|secret/.test(err), `${text}: ${key}, not garbage`);
+  }
+  /* inside a secret, the blob is sealed like anything else */
+  const sealed = t.encodeMacro('{secret}{totp gezdgnbv}x', p => t.sealSecret(EMIT_KEY, p));
+  check(sealed[0] === 0x81 && sealed[1] === 0xFE, 'a {totp} after {secret} seals');
+}
 
 console.log(fails ? '\nSOME CHECKS FAILED' : '\nall checks passed');
 process.exit(fails ? 1 : 0);

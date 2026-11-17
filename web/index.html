@@ -574,6 +574,19 @@
     <button id="fwclose" data-t="close">Close</button>
   </div>
   <p class="note" id="fw-note"></p>
+  <!-- ?advanced=true: this page's firmware whatever the board runs, its
+       clock trimmed on the way (coreupdate.js, tools/settrim.py) -->
+  <div id="fwadv" hidden>
+    <h3 data-t="fw-adv">Advanced</h3>
+    <p class="dim prose" data-t="fw-adv-why"></p>
+    <p class="prose" id="fwadvnow"></p>
+    <div class="bar">
+      <label><span data-t="fw-trim">Clock trim, ppm</span>
+        <input id="fwtrim" type="number" step="1" min="-1000" max="1000" value="0"
+               style="width: 6rem"></label>
+      <button id="fwforce"></button>
+    </div>
+  </div>
 </dialog>
 
 <div id="vkbd" class="vk" hidden></div>
@@ -599,6 +612,7 @@ const F_INFO = 0x40, F_READ = 0x60, F_WRITE = 0x61;
 const F_UNLOCK = 0x62, F_SETPASS = 0x63, F_REFUSED = 0xEE;
 const F_REBOOT = 0x41, F_RESTART = 0x42;
 const F_UPDATE = 0x68;           /* v2: the firmware opens the update window */
+const F_FREAD = 0x66;            /* v2: the core reads its flash, ungated */
 const F_LEARN = 0x69;            /* ...types the remote's next button */
 const F_CLOCK = 0x6C;            /* firmware 18: four bytes set the clock */
 const ST_OPEN = 0x01, ST_PASSWORD = 0x02, ST_UNLOCKED = 0x04;
@@ -1264,10 +1278,12 @@ async function readTable() {
 
 /* Firmware 18's clock, which {totp} needs and every replug loses: set on the
    way in, while the hold and the password that got us here still count. A
-   clock left unset is not silent either: a {totp} would type 000000. */
+   clock left unset is not silent either: a {totp} would type 000000. Sent
+   as a second begins (nextSecond(), table.js), so as not to start it up to a
+   second behind. */
 async function setClock() {
   if (fwOnBoard < FW_TOTP) return;
-  const now = Math.floor(Date.now() / 1000);
+  const now = await nextSecond(sleep);
   try {
     await ask(F_CLOCK, 0, 4, new Uint8Array([now, now >>> 8, now >>> 16, now >>> 24]));
   } catch (e) {
@@ -1325,7 +1341,7 @@ async function access(noteId) {
 /* An action: one at a time, its buttons quiet while it runs, and whatever
    happens said beside the button that started it. */
 const ACTION_BUTTONS = ['write', 'sample', 'setpass', 'clearpass', 'locksave',
-                        'fwupdate', 'fwclose', 'keynew', 'keyload', 'keydel', 'keysave',
+                        'fwupdate', 'fwforce', 'fwclose', 'keynew', 'keyload', 'keydel', 'keysave',
                         'bksave', 'bkrestore', 'bkfile', 'recinstall',
                         'autosave', 'newboard', 'ungo'];
 
@@ -1338,7 +1354,7 @@ function setBusy() {
 function idle() {
   busy = false;
   runDev = null;
-  for (const id of ['sample', 'clearpass', 'fwupdate', 'fwclose', 'keynew', 'keyload',
+  for (const id of ['sample', 'clearpass', 'fwupdate', 'fwforce', 'fwclose', 'keynew', 'keyload',
                     'keydel', 'bksave', 'bkfile', 'newboard']) $(id).disabled = false;
   $('bkrestore').disabled = bkText === null;
   $('ungo').disabled = !$('unsure').checked;
@@ -1918,7 +1934,45 @@ function fwLatest() {
   return fwHereV2 && fwHereV2.api === core.api ? fwHereV2.app : null;
 }
 
+/* ?advanced=true: the firmware dialog also installs this page's firmware
+   whatever the board runs -- older, the same, newer -- with its clock
+   trimmed by what the field says. Only on a v2 board whose core takes it. */
+const ADVANCED = new URLSearchParams(location.search).get('advanced') === 'true';
+let boardTrim = null;           /* what the board's firmware says: text */
+
+function drawAdvanced() {
+  const can = ADVANCED && !!core && !coreBehind() && fwLatest() !== null;
+  $('fwadv').hidden = !can;
+  if (!can) return;
+  $('fwadvnow').textContent = boardTrim || '';
+  $('fwforce').textContent = t('fw-force', { fw: fwHereV2.app });
+  $('fwforce').disabled = busy;
+}
+
+/* The board's own trim, from its flash: FREAD needs no gate */
+async function readBoardTrim() {
+  boardTrim = null;
+  if (!ADVANCED || !core || !dev || busy) return;
+  try {
+    const b = await ask(F_FREAD, core.start + CU_MAGIC_AT, 10);
+    const d = b.subarray(4, 14);
+    if (d[0] !== 0x44 || d[1] !== 0x4D) boardTrim = t('fw-board-none');
+    else if (d[4] < 19) boardTrim = t('fw-board-old', { on: d[4] });
+    else {
+      const ppm = trimPpm(d.subarray(6, 10));
+      if (ppm === null) boardTrim = t('fw-board-odd', { on: d[4] });
+      else {
+        boardTrim = t(ppm ? 'fw-board-trim' : 'fw-board-untrimmed',
+                      { on: d[4], ppm: (ppm > 0 ? '+' : '') + ppm.toFixed(1) });
+        $('fwtrim').value = trimField(ppm);
+      }
+    }
+  } catch (e) { boardTrim = null; }
+  drawAdvanced();
+}
+
 function drawFirmware() {
+  drawAdvanced();
   $('fwhow').textContent = t(core ? 'fw-how-v2' : 'fw-how');
   $('fwupdate').textContent = t(coreBehind() ? 'fw-core-update' : 'fw-update');
   if (coreBehind()) {
@@ -2016,6 +2070,7 @@ function openFirmware() {
   note('fw-note', '');
   drawFirmware();
   $('fwdialog').showModal();
+  readBoardTrim();
 }
 $('fwclose').onclick = () => $('fwdialog').close();
 /* Not while an update runs: the board is half way to somewhere. */
@@ -2043,6 +2098,13 @@ async function writeVia(m, app, what, noteId = 'fw-note', bar = $('fwbar')) {
   bar.hidden = true;
   await m.run();
 }
+
+$('fwforce').onclick = () => {
+  const v = $('fwtrim').value.trim(), ppm = Number(v);
+  try { trimBytes(ppm); if (v === '') throw new Error(); }
+  catch (e) { note('fw-note', t('cu-trim-range'), 'bad'); return; }
+  updateV2('fw-note', $('fwbar'), false, false, false, ppm);
+};
 
 $('fwupdate').onclick = async () => {
   if (core) { updateV2('fw-note', $('fwbar'), false, false, coreBehind()); return; }
@@ -2215,7 +2277,8 @@ async function unSeen() {
  * the password -- and opens six seconds for the first page; with none, as
  * after an update cut off, the core alone asks for the password.
  */
-async function updateV2(noteId, bar, recovering, uninstall = false, moveCore = false) {
+async function updateV2(noteId, bar, recovering, uninstall = false, moveCore = false,
+                        trim = null) {
   if (busy || !dev || (!uninstall && !moveCore && fwLatest() === null)) return;
   setBusy();
   runDev = dev;
@@ -2229,7 +2292,8 @@ async function updateV2(noteId, bar, recovering, uninstall = false, moveCore = f
                : !uninstall ? fetchText('firmware/digimacro-v2.hex')
                : core.api === 1 ? fetchText('firmware/digimacro-uninstall-api1.hex')
                : fetchText('firmware/digimacro-uninstall.hex');
-    const img = parseIntelHex(await text, 8192);
+    let img = parseIntelHex(await text, 8192);
+    if (trim !== null) img = withTrim(img, trim);   /* its CRC stamped again */
     appPages(img, core);                /* refused here, before the board is
                                            asked for anything */
     if (!recovering) {
@@ -2247,6 +2311,7 @@ async function updateV2(noteId, bar, recovering, uninstall = false, moveCore = f
     bar.hidden = false; bar.value = 0;
     note(noteId, t('fw-writing', { what: uninstall ? t('un-what') : moveCore ? t('cu-what')
                                        : `DigiMacro ${fw}` }), 'dim');
+    if (trim !== null) boardTrim = null;            /* about to change */
     await writeApp(io, img, core, { onPage: (n, all) => { bar.value = n / all; } });
     done = true;
   } catch (e) {

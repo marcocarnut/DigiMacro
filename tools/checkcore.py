@@ -7,6 +7,7 @@ what holds it to these:
 
   - r2-r11 are never touched: the app keeps its clock and state there.
   - neither are the spare I/O registers the app keeps state in, and GPIOR1.
+  - nor are ADMUX and ADCSRB written, nor ACSR but to clear ACIE.
   - main() holds nothing in r2-r17, Y across APP_SETUP and APP_LOOP.
   - hidPassSet, hidUnlocked, hidReport, hidLock, hidReady, hidAwake change
     only r24, r25 and the flags.
@@ -17,7 +18,10 @@ what holds it to these:
 import re, subprocess, sys
 
 # data-space addresses of the app's registers, as lds/sts would name them
-SPARE = {'OCR0A': 0x49, 'OCR0B': 0x48, 'OCR1B': 0x4B, 'USIDR': 0x2F, 'GPIOR1': 0x32}
+SPARE = {'OCR0A': 0x49, 'OCR0B': 0x48, 'OCR1B': 0x4B, 'USIDR': 0x2F, 'GPIOR1': 0x32,
+         'DT1A': 0x45, 'DT1B': 0x44}
+# I/O addresses of the comparator's registers
+COMPARATOR = {0x03: 'ADCSRB', 0x07: 'ADMUX', 0x08: 'ACSR'}
 ACCESSORS = ('hidPassSet', 'hidUnlocked', 'hidReport', 'hidLock', 'hidReady', 'hidAwake',
              'eeprom_read_byte')
 
@@ -64,6 +68,30 @@ def main():
                      for x in re.findall(r'0x([0-9a-f]+)', m.group(2))):
             fail.append('uses a spare I/O register: %04x %s' % (a, t))
 
+    # 2b. the comparator, the app's frame lock: no write to ADMUX or ADCSRB,
+    #     and of ACSR only cbi ACIE, which quiet() does before a page or a
+    #     restart. (Stores through a pointer are not seen, as above.)
+    for a, t in code:
+        m = re.match(r'(in|out|sbi|cbi|sbis|sbic|lds|sts)\s+(\S+?),\s*(\S+)', t)
+        if not m:
+            continue
+        op, x, y = m.groups()
+        port = y if op in ('in', 'lds') else x
+        try:
+            port = int(port, 16)
+        except ValueError:
+            continue
+        if op in ('lds', 'sts'):
+            port = (port & 0xFFFF) - 0x20
+        name = COMPARATOR.get(port)
+        if not name:
+            continue
+        if name == 'ACSR':
+            if not (op == 'cbi' and y == '3'):
+                fail.append('touches ACSR other than clearing ACIE: %04x %s' % (a, t))
+        elif op in ('out', 'sbi', 'cbi', 'sts'):
+            fail.append('writes %s: %04x %s' % (name, a, t))
+
     # 3. main: nothing in the callee-saved registers after the first call out
     main_ = funcs.get('main', [])
     icalls = [a for a, t in main_ if t.startswith('icall')]
@@ -97,7 +125,7 @@ def main():
         print('checkcore: the core breaks the contract in layout.h:')
         print('\n'.join(fail[:20]))
         return 1
-    print('checkcore: contract holds (r2-r11 and the spare I/O untouched, accessors clean, pageBuf at 0x62)')
+    print('checkcore: contract holds (r2-r11, the spare I/O and the comparator untouched, accessors clean, pageBuf at 0x62)')
     return 0
 
 

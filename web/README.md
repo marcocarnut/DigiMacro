@@ -36,7 +36,7 @@ edit it. If a change seems to have no effect, hard-reload with
 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>. It cost me twenty minutes of
 looking for a bug that was not there.
 
-The board can type its pad readings twice a second (`make TOUCHDEBUG=1`),
+The board can type its pad readings twice a second (`make reference TOUCHDEBUG=1`, the C app only),
 so open a text editor first and check the numbers move when you touch it. `F8` that never changes means nothing is charging the pad;
 `00` means it charges faster than one loop pass. Only once the readings respond
 can a four-second hold mean anything.

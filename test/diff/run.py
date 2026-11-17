@@ -87,21 +87,47 @@ def compare(a, b, tol):
     return diffs
 
 
+FRAME_CYCLES = None    # the host's frame in CPU cycles; None: 1 ms
+# Against the C, the frame is the C's own tick, 16512 cycles (1.000727 ms):
+# the C has no frame lock, so at 1 ms its clock and timings drift from the
+# assembly's. Alone, the assembly gets the true 1 ms, 16500.
+FRAMES_DIFF, FRAMES_ALONE = 16512, 16500
+
+# Failures known and kept, printed as such but not counted: name -> why.
+KNOWN = {
+}
+
+
 def run1(sim, core, hexf, scen, webtable):
     text = open(scen).read()
-    tmp = None
-    if 'webtable' in text.split('\n')[0]:
+    lines = text.split('\n')
+    temps = []
+    if 'webtable' in lines[0]:
         # the page's own table: one EEPROM line from `webtable.js --emit`
-        lines = text.split('\n')
         lines[0] = open(webtable).read().strip()
-        tmp = scen + '.' + os.path.basename(hexf)
+    trim = [l for l in lines if l.startswith('image_trim ')]
+    if trim:
+        # the image under test with its clock trimmed (tools/settrim.py), so
+        # that a mutant is trimmed too; the line is the runner's, not difftest's
+        lines = [l for l in lines if not l.startswith('image_trim ')]
+        trimmed = scen + '.' + os.path.basename(hexf) + '.trim.hex'
+        subprocess.run([sys.executable, os.path.join(ROOT, 'tools/settrim.py'), hexf,
+                        trim[0].split()[1], trimmed], stdout=subprocess.DEVNULL, check=True)
+        hexf = trimmed
+        temps.append(trimmed)
+    if '\n'.join(lines) != text:
+        tmp = scen + '.' + os.path.basename(hexf) + '.txt'
         with open(tmp, 'w') as f:
             f.write('\n'.join(lines))
         scen = tmp
+        temps.append(tmp)
+    env = dict(os.environ)
+    if FRAME_CYCLES:
+        env['DIFF_FRAME_CYCLES'] = str(FRAME_CYCLES)
     r = subprocess.run([sim, core, hexf, scen], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                       universal_newlines=True, timeout=1800)
-    if tmp:
-        os.unlink(tmp)
+                       universal_newlines=True, timeout=1800, env=env)
+    for f in temps:
+        os.unlink(f)
     return r.stdout, r.returncode
 
 
@@ -118,7 +144,10 @@ def main():
     p.add_argument('--slow', action='store_true', help='include the slow scenarios')
     p.add_argument('--stop', action='store_true', help='stop at the first failing scenario')
     p.add_argument('--keep', action='store_true', help='keep the traces')
+    p.add_argument('--frame-cycles', type=int, help='the host frame in CPU cycles (default 1 ms)')
     args = p.parse_args()
+    global FRAME_CYCLES
+    FRAME_CYCLES = args.frame_cycles or (FRAMES_DIFF if len(args.images) > 1 else FRAMES_ALONE)
 
     os.makedirs(args.o, exist_ok=True)
     scen = os.path.join(args.o, 'scen')
@@ -152,7 +181,7 @@ def main():
             res.append(run1(args.sim, args.core, img, os.path.join(scen, name + '.txt'), webtable))
         return name, res
 
-    failed, n = 0, 0
+    failed, n, known = 0, 0, 0
     peaks = [(0, '') for _ in args.images]
     with ThreadPoolExecutor(args.j) as ex:
         for name, res in ex.map(job, wanted):
@@ -180,7 +209,13 @@ def main():
                 if res[1][1]:
                     problems.append('%s: exits %d' % (args.images[1], res[1][1]))
                 problems += compare(ref, other, args.t)
-            if problems:
+            if problems and name in KNOWN:
+                known += 1
+                print('KNOWN %s: %s' % (name, KNOWN[name]))
+                for q in problems[:14]:
+                    print('   ', q)
+                sys.stdout.flush()
+            elif problems:
                 failed += 1
                 print('FAIL %s' % name)
                 for q in problems[:14]:
@@ -188,11 +223,13 @@ def main():
                 sys.stdout.flush()
                 if args.stop:
                     break
-            elif not args.images[1:]:
-                pass
+            elif name in KNOWN:
+                print('NOW PASSES %s, known failing: take it out of KNOWN' % name)
     for img, (pk, where) in zip(args.images, peaks):
         print('%s: peak stack %d bytes (in %s)' % (os.path.basename(img), pk, where))
-    print('%d of %d scenarios %s' % (n - failed, n, 'pass' if not failed else 'pass, %d FAIL' % failed))
+    print('%d of %d scenarios %s%s, frames of %d cycles' % (
+        n - failed - known, n, 'pass' if not failed else 'pass, %d FAIL' % failed,
+        ', %d known failing' % known if known else '', FRAME_CYCLES))
     return 1 if failed else 0
 
 

@@ -356,6 +356,26 @@ en: {
                   + 'the board and start over.',
   'fw-done':        'Firmware {fw} written. The board is starting it now, and '
                   + 'will ask for the hold again.',
+  'fw-adv':         'Advanced',
+  'fw-adv-why':     'Installs this page\'s firmware whatever the board runs -- '
+                  + 'older, the same or newer -- with its clock trimmed: the '
+                  + 'trim makes it gain that many parts per million, or lose '
+                  + 'them if negative. It is this computer\'s crystal error, '
+                  + 'as tools/clockdrift.py measures it, with its sign turned: '
+                  + 'a board that drifts -20 ppm wants 20. 0, or 4 to 1000 '
+                  + 'either way.',
+  'fw-trim':        'Clock trim, ppm',
+  'fw-force':       'Install firmware {fw} with this trim',
+  'fw-board-none':  'The board has no firmware running.',
+  'fw-board-old':   'The board runs firmware {on}, which has no trim.',
+  'fw-board-odd':   'The board runs firmware {on}, and its trim reads as '
+                  + 'nothing this page knows.',
+  'fw-board-trim':  'The board runs firmware {on}, its clock trimmed by {ppm} ppm.',
+  'fw-board-untrimmed': 'The board runs firmware {on}, its clock untrimmed.',
+  'cu-trim-range':  'the trim is a whole number of ppm: 0, or 4 to 1000 either way',
+  'cu-trim-crc':    'the firmware\'s checksum is wrong: it is not a finished image',
+  'cu-trim-old':    'firmware {fw} has no trim: firmware {first} or later',
+  'cu-trim-bytes':  'the firmware\'s trim does not read as one: not trimmed',
   'mn-too-big':     'the firmware is {n} bytes and this bootloader leaves {max}',
   'mn-no-jump':     'the firmware does not start with a jump, so it cannot be '
                   + 'laid out for the bootloader',
@@ -608,7 +628,7 @@ en: {
   'totp-empty':     '{totp} needs the secret: {totp ABCD EFGH ...}',
   'totp-opaque':    'Holds a {totp}: what is stored cannot be turned back into the secret. Keep it, or type a new secret to change it.',
   'clock-failed':   'The board refused the time, so a {totp} will type 000000 until it is set.',
-  'totp-old-firmware': 'A {totp} needs firmware 18 or newer, and this board has {fw}.',
+  'totp-old-firmware': 'A {totp} needs firmware 19 or newer, and this board has {fw}.',
 },
 
 pt: {
@@ -959,6 +979,27 @@ pt: {
                   + 'desconecte a placa e recomece.',
   'fw-done':        'Firmware {fw} gravado. A placa está iniciando agora, e vai '
                   + 'pedir o toque longo de novo.',
+  'fw-adv':         'Avançado',
+  'fw-adv-why':     'Instala o firmware desta página seja qual for o que a '
+                  + 'placa roda -- mais antigo, o mesmo ou mais novo -- com o '
+                  + 'relógio ajustado: o ajuste o faz adiantar tantas partes '
+                  + 'por milhão, ou atrasar se negativo. É o erro do cristal '
+                  + 'deste computador, como o tools/clockdrift.py o mede, com '
+                  + 'o sinal trocado: uma placa que desvia -20 ppm pede 20. '
+                  + '0, ou de 4 a 1000 para qualquer lado.',
+  'fw-trim':        'Ajuste do relógio, ppm',
+  'fw-force':       'Instalar o firmware {fw} com este ajuste',
+  'fw-board-none':  'A placa não tem firmware rodando.',
+  'fw-board-old':   'A placa roda o firmware {on}, que não tem ajuste.',
+  'fw-board-odd':   'A placa roda o firmware {on}, e o ajuste dele não é nada '
+                  + 'que esta página conheça.',
+  'fw-board-trim':  'A placa roda o firmware {on}, com o relógio ajustado em {ppm} ppm.',
+  'fw-board-untrimmed': 'A placa roda o firmware {on}, com o relógio sem ajuste.',
+  'cu-trim-range':  'o ajuste é um número inteiro de ppm: 0, ou de 4 a 1000 para '
+                  + 'qualquer lado',
+  'cu-trim-crc':    'o checksum do firmware está errado: não é uma imagem pronta',
+  'cu-trim-old':    'o firmware {fw} não tem ajuste: só o {first} ou mais novo',
+  'cu-trim-bytes':  'o ajuste do firmware não é reconhecível: não foi ajustado',
   'mn-too-big':     'o firmware tem {n} bytes e este bootloader deixa {max}',
   'mn-no-jump':     'o firmware não começa com um salto, então não dá para '
                   + 'prepará-lo para o bootloader',
@@ -1214,7 +1255,7 @@ pt: {
   'totp-empty':     '{totp} precisa do segredo: {totp ABCD EFGH ...}',
   'totp-opaque':    'Guarda um {totp}: o que está armazenado não pode ser convertido de volta no segredo. Mantenha-o, ou digite um novo segredo para alterá-lo.',
   'clock-failed':   'O dispositivo recusou o horário, então um {totp} vai digitar 000000 até que ele seja acertado.',
-  'totp-old-firmware': 'Um {totp} precisa do firmware 18 ou mais novo, e este dispositivo tem o {fw}.',
+  'totp-old-firmware': 'Um {totp} precisa do firmware 19 ou mais novo, e este dispositivo tem o {fw}.',
 },
 
 };

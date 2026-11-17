@@ -110,7 +110,9 @@
  *   - r2 to r11 are never touched: an app may keep state there, its
  *     interrupts included. The core's code and V-USB's interrupt leave
  *     them alone.
- *   - neither are OCR0A, OCR0B, OCR1B, USIDR or GPIOR1 (the app's).
+ *   - neither are OCR0A, OCR0B, OCR1B, USIDR, GPIOR1, DT1A or DT1B (the
+ *     app's). Nor are ADMUX, ADCSRB or the comparator, but for ACSR's ACIE,
+ *     which the core clears before it writes a page or restarts.
  *   - main() holds nothing in r2-r17 or r28-r29 across APP_SETUP and
  *     APP_LOOP.
  *   - hidPassSet, hidUnlocked, hidReport, hidLock, hidReady and hidAwake

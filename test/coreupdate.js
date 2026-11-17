@@ -356,6 +356,59 @@ async function main() {
     }
   }
 
+  console.log('9. the clock trim the page writes is the one tools/settrim.py writes');
+  {
+    const f = path.join(__dirname, '../web/firmware/digimacro-v2.hex');
+    if (fs.existsSync(f)) {
+      const { execFileSync } = require('child_process');
+      const os = require('os');
+      const base = parseIntelHex(fs.readFileSync(f, 'utf8'), 8192);
+      check(cu.imageTrim(base).ppm === 0, 'the shipped firmware is trimmed');
+      check(cu.CU_TRIM_AT === 0xFA8 - APP_START, 'the trim is not at APP_CODE, 0x0FA8');
+      const tmp = path.join(os.tmpdir(), `settrim-${process.pid}.hex`);
+      for (const ppm of [0, 4, -4, 20, -20, 25, -25, 37, 500, -250, 1000, -1000]) {
+        const mine = cu.withTrim(base, ppm);
+        execFileSync('python3', [path.join(__dirname, '../tools/settrim.py'), f, String(ppm), tmp],
+                     { stdio: 'ignore' });
+        const theirs = parseIntelHex(fs.readFileSync(tmp, 'utf8'), 8192);
+        let same = mine.end === theirs.end;
+        for (let i = 0; i < 8192 && same; i++)
+          same = mine.data[i] === theirs.data[i] && mine.used[i] === theirs.used[i];
+        check(same, `trim ${ppm}: the page and settrim.py write different images`);
+        const got = cu.imageTrim(mine).ppm;
+        check(ppm === 0 ? got === 0 : Math.abs(got - ppm) / Math.abs(ppm) < 0.13 && Math.sign(got) === Math.sign(ppm),
+              `trim ${ppm} reads back as ${got}`);
+      }
+      fs.unlinkSync(tmp);
+      /* +20: one second in 50 is 999 ticks, 50 s in 49999 ms; -25: one in
+         40 is 1001, 40 s in 40001 ms */
+      check(cu.trimPpm(cu.trimBytes(20)) === 1e6 / 49999, 'a trim of 20 does not read as 1e6/49999');
+      check(cu.trimPpm(cu.trimBytes(-25)) === -1e6 / 40001, 'a trim of -25 does not read as -1e6/40001');
+      /* The field shows a board's trim as a whole number: every trim there
+         is must write the same bytes again from it */
+      let off = [];
+      for (let a = -1000; a <= 1000; a++) {
+        if (a && Math.abs(a) < 4) continue;
+        const b = cu.trimBytes(a), back = cu.trimField(cu.trimPpm(b));
+        if (cu.trimBytes(back).some((x, i) => x !== b[i])) off.push(`${a} as ${back}`);
+      }
+      check(!off.length, `trims shown as a number that writes others: ${off.slice(0, 5).join(', ')}`);
+      for (const bad of [3, -3, 1001, -1001, 2.5, NaN])
+        check((() => { try { cu.trimBytes(bad); return false; } catch (e) { return true; } })(),
+              `a trim of ${bad} ppm is taken`);
+      const broken = cu.withTrim(base, 20);
+      broken.data[APP_START + 0x100] ^= 1;
+      check((() => { try { cu.imageTrim(broken); return false; } catch (e) { return true; } })(),
+            'an image whose CRC is wrong is trimmed anyway');
+      const old = cu.withTrim(base, 0);
+      old.data[APP_START + cu.CU_MAGIC_AT + 4] = 17;
+      check((() => { try { cu.withTrim(old, 20); return false; } catch (e) { return true; } })(),
+            'firmware 17, which has code there, is trimmed');
+    } else {
+      console.log('  (not built yet: make release)');
+    }
+  }
+
   console.log(fails ? `${fails} failed` : 'all checks passed');
   process.exit(fails ? 1 : 0);
 }

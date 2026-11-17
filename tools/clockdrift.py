@@ -8,32 +8,70 @@ intervals over a few hours (or leave it looping) and watch the difference move.
 
 Read-only: it only ever asks the clock. Set the clock first with the page or
 digimacro-host. The board's seconds are its count since that set; the
-difference from wall time, and its slope, is the drift.
+difference from this computer's, and its slope, is the drift. Two of this
+computer's clocks, on each line:
 
-Not run against a board yet: written alongside the firmware, hardware untested.
+  wall  time.time(): the system clock, which NTP keeps right by slewing it.
+        The board against true time, give or take what NTP is doing now.
+  raw   CLOCK_MONOTONIC_RAW, which NTP never touches: this computer's own
+        crystal. Wobble in "wall" that "raw" does not have is NTP's.
+
+The board counts the host's USB frames, so both lines also show the USB
+controller's crystal; "raw" runs on the same crystal only on some machines.
+
+The board takes its snapshot as it handles the SET that asks the clock, so
+each read is timed around the SET: the midpoint of the clocks read just
+before it and just after. That is off by at most half the SET's time,
+shown as "set"; "rtt" is the whole question, SET to the GET's answer.
 """
 import fcntl, struct, sys, time
 
 VND_ID, VND_LEN = 2, 36
 SET = 0xC0004806 | ((1 + VND_LEN) << 16)    # HIDIOCSFEATURE(1 + VND_LEN)
 GET = 0xC0004807 | ((1 + VND_LEN) << 16)    # HIDIOCGFEATURE(1 + VND_LEN)
-TICK_MS = 129 * 128 / 16.5e6 * 1000
+TICK_MS = 1.0               # firmware 18 with the frame lock: 1000 a second
+
+
+def raw():
+    return time.clock_gettime(time.CLOCK_MONOTONIC_RAW)
 
 
 def read_clock(fd):
+    """One read: a dict of wall and raw (the SET's midpoints), set_s (the
+    SET's own time), rtt_s, and board (seconds) and isset; or, for an answer
+    that is not the clock's, board None and what came back as 'other'."""
     buf = bytearray(1 + VND_LEN)
     buf[0], buf[1] = VND_ID, 0x6C
+    w0, r0 = time.time(), raw()
     fcntl.ioctl(fd, SET, bytes(buf))
+    r1, w1 = raw(), time.time()
     buf = bytearray(1 + VND_LEN)
     buf[0] = VND_ID
-    now = time.time()
     fcntl.ioctl(fd, GET, buf)
+    r2 = raw()
+    r = {'wall': (w0 + w1) / 2, 'raw': (r0 + r1) / 2, 'set_s': r1 - r0, 'rtt_s': r2 - r0}
     a = buf[1:] if buf[0] == VND_ID else buf
-    if a[0] != 0x6C:
-        raise SystemExit('the board did not answer the clock read (firmware 18?)')
+    if a[0] != 0x6C:                    # say what came back instead, and go on
+        r.update(board=None, other=bytes(a[:12]).hex(' '))
+        return r
     secs = struct.unpack('<I', bytes(a[4:8]))[0]
     ticks = struct.unpack('<H', bytes(a[8:10]))[0]
-    return now, secs + ticks * TICK_MS / 1000, a[10]
+    r.update(board=secs + ticks * TICK_MS / 1000, isset=a[10])
+    return r
+
+
+def drift(first, now, clock):
+    """The board against one of our clocks since the first read: (s, ppm)."""
+    elapsed = now[clock] - first[clock]
+    d = (now['board'] - first['board']) - elapsed
+    return d, d / elapsed * 1e6 if elapsed > 0 else 0.0
+
+
+def line(first, r):
+    w, wp = drift(first, r, 'wall')
+    q, qp = drift(first, r, 'raw')
+    return ('%8.0f s: wall %+.3f s %+7.1f ppm, raw %+.3f s %+7.1f ppm, rtt %.1f ms, set %.1f ms'
+            % (r['raw'] - first['raw'], w, wp, q, qp, r['rtt_s'] * 1e3, r['set_s'] * 1e3))
 
 
 def main():
@@ -43,17 +81,17 @@ def main():
     first = None
     with open(sys.argv[1], 'rb+', buffering=0) as f:
         while True:
-            now, board, isset = read_clock(f.fileno())
-            if not isset:
+            r = read_clock(f.fileno())
+            if r['board'] is None:
+                print('%s: not the clock\'s answer: %s' % (time.strftime('%H:%M:%S'), r['other']))
+            elif not r['isset']:
                 print('the clock is not set: set it with the page or digimacro-host')
             elif first is None:
-                first = (now, board)
-                print('start: board %.3f, offset %.3f s' % (board, board - now))
+                first = r
+                print('start: board %.3f, offset %+.3f s, rtt %.1f ms, set %.1f ms'
+                      % (r['board'], r['board'] - r['wall'], r['rtt_s'] * 1e3, r['set_s'] * 1e3))
             else:
-                elapsed = now - first[0]
-                drift = (board - first[1]) - elapsed
-                ppm = drift / elapsed * 1e6 if elapsed > 0 else 0
-                print('%8.0f s: drift %+.3f s, %+.1f ppm' % (elapsed, drift, ppm))
+                print(line(first, r))
             sys.stdout.flush()
             time.sleep(period)
 

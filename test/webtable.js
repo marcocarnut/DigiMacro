@@ -668,5 +668,26 @@ console.log('8. {totp}: base32, midstates, and a blob read back unchanged');
   check(sealed[0] === 0x81 && sealed[1] === 0xFE, 'a {totp} after {secret} seals');
 }
 
-console.log(fails ? '\nSOME CHECKS FAILED' : '\nall checks passed');
-process.exit(fails ? 1 : 0);
+(async () => {
+  console.log('9. the clock is set as a second begins');
+  /* a fake clock: the wait asked for, and a timer that ends it early or late */
+  for (const [start, late, want, wait] of [[1700000000123, 0, 1700000001, 877],
+                                           [1700000000999, 0, 1700000001, 1],
+                                           [1700000000000, 0, 1700000000, 0],
+                                           [1700000000500, -4, 1700000001, 500],
+                                           [1700000000500, 30, 1700000001, 500]]) {
+    let clock = start, asked = -1;
+    const got = await t.nextSecond(ms => { asked = ms; clock += ms + late; }, () => clock);
+    check(asked === wait && got === want,
+          `at ...${start % 10000}, ${late} ms late: waits ${asked} ms (not ${wait}), sends ${got}`);
+  }
+  /* and for real, on this computer's timers */
+  const t0 = Date.now();
+  const s = await t.nextSecond(ms => new Promise(r => setTimeout(r, ms)));
+  const t1 = Date.now();
+  check(t1 - t0 <= 1020 && Math.abs(t1 - s * 1000) < 30,
+        `really: ${t1 - t0} ms waited, ${t1 - s * 1000} ms from the second sent`);
+
+  console.log(fails ? '\nSOME CHECKS FAILED' : '\nall checks passed');
+  process.exit(fails ? 1 : 0);
+})();

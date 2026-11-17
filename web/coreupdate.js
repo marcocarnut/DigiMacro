@@ -89,6 +89,82 @@ function appPages(img, info) {
 
 const hex4 = n => '0x' + n.toString(16).toUpperCase().padStart(4, '0');
 
+/* ---- the clock's trim, in an image -----------------------------------
+ *
+ * Firmware 19 on keeps four bytes just after the header, at APP_CODE, that
+ * say how its clock is trimmed (clock_poll in app/asm/digimacro.S): a count
+ * of seconds, the length of the odd second that ends it, the length that
+ * ends any second, low bytes of 999, 1000 or 1001 ticks; and a zero.
+ * tools/settrim.py writes the same bytes, and test/coreupdate.js holds the
+ * two to each other. The app's CRC, which the core checks before it runs
+ * the app, covers them, so it is stamped again.
+ */
+const CU_TRIM_AT = CU_MAGIC_AT + 6, CU_TRIM_FIRST = 19;
+
+/* avr-libc's _crc16_update over the app, from 0xFFFF: app/apphex.py's */
+function appCrc(d, from, len) {
+  let c = 0xFFFF;
+  for (let i = from; i < from + len; i++) {
+    c ^= d[i];
+    for (let k = 0; k < 8; k++) c = c & 1 ? (c >> 1) ^ 0xA001 : c >> 1;
+  }
+  return c;
+}
+
+/* 0, or 4 to 1000 ppm either way: the clock gains that much */
+function trimBytes(ppm) {
+  if (ppm === 0) return [0, 0xE8, 0xE8, 0];
+  const a = Math.abs(ppm);
+  if (!Number.isInteger(ppm) || a < 4 || a > 1000)
+    throw new Error(cuText('cu-trim-range'));
+  const n = Math.floor((Math.floor(2000 / a) + 1) / 2);    /* round(1000 / a) */
+  return ppm > 0 ? [n - 1, 0xE7, 0xE8, 0] : [n - 1, 0xE9, 0xE9, 0];
+}
+
+/* The ppm the bytes trim by (0 for none), or null if they are not a trim */
+function trimPpm(b) {
+  const [count, odd, roll, pad] = b;
+  if (pad !== 0) return null;
+  if (odd === 0xE8 && roll === 0xE8) return 0;
+  const n = count + 1;
+  if (odd === 0xE7 && roll === 0xE8) return 1e6 / (1000 * n - 1);
+  if (odd === 0xE9 && roll === 0xE9) return -1e6 / (1000 * n + 1);
+  return null;
+}
+
+/* The whole ppm that writes these bytes again: what a field shows for them */
+function trimField(ppm) {
+  return ppm === 0 ? 0
+       : Math.sign(ppm) * Math.min(1000, Math.max(4, Math.round(Math.abs(ppm))));
+}
+
+/* An image (parseIntelHex's) checked as one with a trim: the header, its
+   CRC right, firmware 19 or later, the bytes a trim. Its start, length,
+   version and trim in ppm. */
+function imageTrim(img) {
+  const s = img.used.indexOf(1), d = img.data, m = s + CU_MAGIC_AT;
+  if (s < 0 || d[m] !== 0x44 || d[m + 1] !== 0x4D) throw new Error(cuText('cu-no-header'));
+  const len = d[m + 2] | d[m + 3] << 8, version = d[m + 4];
+  if (appCrc(d, s, len) !== (d[s + len] | d[s + len + 1] << 8))
+    throw new Error(cuText('cu-trim-crc'));
+  if (version < CU_TRIM_FIRST)
+    throw new Error(cuText('cu-trim-old', { fw: version, first: CU_TRIM_FIRST }));
+  const ppm = trimPpm(d.subarray(s + CU_TRIM_AT, s + CU_TRIM_AT + 4));
+  if (ppm === null) throw new Error(cuText('cu-trim-bytes'));
+  return { start: s, len, version, ppm };
+}
+
+/* A copy of the image, its clock trimmed by ppm and its CRC stamped again */
+function withTrim(img, ppm) {
+  const { start, len } = imageTrim(img), b = trimBytes(ppm);
+  const out = { data: img.data.slice(), used: img.used.slice(), end: img.end };
+  out.data.set(b, start + CU_TRIM_AT);
+  const c = appCrc(out.data, start, len);
+  out.data[start + len] = c & 0xFF;
+  out.data[start + len + 1] = c >> 8;
+  return out;
+}
+
 /* Reads the page back until it holds what was sent: a request that meets a
    halt fails, and the core refuses FREAD while the page waits to be
    written -- before then the flash still holds the old page, which may be
@@ -144,4 +220,5 @@ async function writeApp(io, img, info, { onPage, pause } = {}) {
 
 if (typeof module !== 'undefined')
   module.exports = { CU, CU_CORE_APP, CU_CORE_UPDATE, CU_CORE_HALTED, CU_MAGIC_AT,
-                     isOwnAnswer, askOwn, coreInfo, appPages, writeApp };
+                     isOwnAnswer, askOwn, coreInfo, appPages, writeApp,
+                     CU_TRIM_AT, appCrc, trimBytes, trimPpm, trimField, imageTrim, withTrim };

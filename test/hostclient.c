@@ -24,6 +24,7 @@ static unsigned char check[8], board_key[16], last[1 + VND_LEN];
 static int keyauths;                    /* KEYAUTHs the fake was sent */
 static int fw = 18, lastn;              /* its firmware, and KEYAUTH's count */
 static unsigned char lasttime[4];
+static struct timespec keyauth_at;      /* when the fake took KEYAUTH */
 
 static int fake_ioctl(int fd, unsigned long req, ...)
 {
@@ -34,7 +35,8 @@ static int fake_ioctl(int fd, unsigned long req, ...)
     (void)fd;
     if (req == HIDIOCSFEATURE(1 + VND_LEN)) {
         memcpy(last, buf, sizeof last);
-        if (last[1] == KEYAUTH) { keyauths++; lastn = last[4]; memcpy(lasttime, last + 21, 4); }
+        if (last[1] == KEYAUTH) { keyauths++; lastn = last[4]; memcpy(lasttime, last + 21, 4);
+                                 clock_gettime(CLOCK_REALTIME, &keyauth_at); }
         return 1 + VND_LEN;
     }
     if (req != HIDIOCGFEATURE(1 + VND_LEN)) return -1;
@@ -79,8 +81,19 @@ int main(void)
     ok(lastn == 20, "with the time, to firmware 18");
     {
         uint32_t t = lasttime[0] | lasttime[1] << 8 | lasttime[2] << 16 | (uint32_t)lasttime[3] << 24;
-        uint32_t now = (uint32_t)time(NULL);
+        uint32_t now = (uint32_t)time(NULL) + 1;  /* time() reads a coarse
+                                           clock, a few ms behind at the turn */
         ok(t <= now && now - t < 10, "and the time is this computer's");
+        ok(t == (uint32_t)keyauth_at.tv_sec && keyauth_at.tv_nsec < 20000000L,
+           "sent as that second began: the board's count into it starts at 0");
+    }
+    {
+        struct timespec a, b;           /* the wait: up to the next second */
+        clock_gettime(CLOCK_REALTIME, &a);
+        uint32_t s = next_second();
+        clock_gettime(CLOCK_REALTIME, &b);
+        ok(s == (uint32_t)a.tv_sec + 1 && s == (uint32_t)b.tv_sec && b.tv_nsec < 20000000L,
+           "next_second() wakes as the next second begins, and gives it");
     }
 
     printf("1b. firmware 17 is sent the key alone\n");

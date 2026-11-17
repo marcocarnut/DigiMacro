@@ -1,17 +1,27 @@
-# DigiMacro v2: a core below 0x0F80, and the app above it.
+# DigiMacro: a core below 0x0F80, and the app above it. The app DigiMacro
+# ships is the assembly one, app/asm/digimacro.S. The C app (DigiMacro.ino,
+# firmware 17) is kept as the reference the differential tests compare the
+# assembly against; it is not shipped, and has no {totp} and no clock.
 #
-#   make            DigiMacro: digimacro.hex (the app, for updates over USB)
-#                   and digimacro-full.hex (core and app, for a programmer --
-#                   it runs past Micronucleus); options as v1's build.sh had
-#                   them:
-#                   make BUTTON=1 RC=1 LEDECHO=1 TOUCHDEBUG=1
+#   make            the app: digimacro-asm.hex (for updates over USB) and
+#                   digimacro-asm-full.hex (core and app, for a programmer --
+#                   it runs past Micronucleus); options:
+#                   make CLOCK_TRIM=25    the clock gains 25 ppm (see below;
+#                                         tools/settrim.py does the same
+#                                         to an image already built)
+#                   make PROBE=1          with the frame lock's readout, for
+#                                         tools/probe.py
 #   make release    DigiMacro as it ships, into web/firmware/: the app for
-#                   the page to update a v2 board with, the core alone for
+#                   the page to update a board with, the core alone for
 #                   the page to put on a board through Micronucleus, the
 #                   full image for a programmer, the uninstallers and the
 #                   core updater, and a json naming the core API the app
 #                   needs.
 #                   Commit the result: the page carries it.
+#   make reference  the C app: digimacro.hex and digimacro-full.hex, with
+#                   its own options: make reference BUTTON=1 RC=1 LEDECHO=1
+#                   TOUCHDEBUG=1
+#   make difftest   every differential scenario, the assembly against the C
 #   make spike      the core, the spike's apps A, B and C, and spikeA.hex,
 #                   all below Micronucleus, in build/v2-spike/
 #   make page       spike-page.html: the spike page with A, B and C inside --
@@ -27,13 +37,12 @@
 #                   API 1, the boundary at 0x1000 -- that puts the core just
 #                   built in place of theirs, in one step
 #                   (app/coreupdate.S); make simcoreupdate tries it on a
-#                   simulated board, from v2.0's core and from v3.0's
+#                   simulated board
 #   make test       the core's request handling, built for the host
 #   make size       what each part takes
 #
-# Everything lands in build/v2/. A board gets v2 from the page (Set up a new
-# board, or Move to v2), or digimacro-full.hex from a programmer. v1, the
-# Arduino build, lives at tag v1.0.
+# Everything lands in build/v2/. A board gets DigiMacro from the page (Set up
+# a new board), or digimacro-asm-full.hex from a programmer.
 #
 # Two links. The core's is ordinary, with its table pinned just below the
 # boundary. An app's has no C runtime, starts at the boundary, keeps its
@@ -71,7 +80,8 @@ APP_VECS   := $(call val,APP_START + 2 * APP_VECTORS)
 APP_HDR    := $(call val,APP_MAGIC - APP_START)
 hexaddr     = $$(printf 0x%x $(1))
 
-all: $(O)/digimacro.hex $(O)/digimacro-full.hex
+all: $(O)/digimacro-asm.hex $(O)/digimacro-asm-full.hex
+reference: $(O)/digimacro.hex $(O)/digimacro-full.hex
 ifdef MICRONUCLEUS_SAFE
 spike: $(O)/core.hex $(O)/appA.hex $(O)/appB.hex $(O)/appC.hex $(O)/spikeA.hex
 page: $(O)/spike-page.html
@@ -153,8 +163,8 @@ SIMLIB   = $(SOFTUSB)/simavr/simavr/obj-$(shell cc -dumpmachine)/libsimavr.a
 $(O)/sim_secret: test/sim/secret.c tools/hostauth/xtea.h $(SIMLIB) | $(O)
 	cc -O2 -g -Wall -I$(SOFTUSB)/simavr/simavr/sim -I$(SOFTUSB)/harness -o $@ $< \
 	    $(addprefix $(SOFTUSB)/harness/,board.c softusb.c dm.c touchpad.c) $(SIMLIB) -lelf -lm
-# This tree's simulated-board suites run the assembly app: make IMAGE=digimacro
-# for the C one.
+# The simulated-board suites run the assembly app: make IMAGE=digimacro for
+# the C one.
 IMAGE ?= digimacro-asm
 simtest: $(O)/sim_secret $(O)/sim_hang $(O)/core.elf $(O)/$(IMAGE).hex $(O)/hangapp.hex
 	node test/webtable.js --emit-secret > $(O)/sealed.txt
@@ -216,16 +226,15 @@ $(O)/digimacro-full.hex: $(O)/core.hex $(O)/digimacro.hex
 CORE_VER := $(shell sed -n 's/^\#define DM_CORE_VERSION *\([0-9]*\).*/\1/p' core/core.h)
 CORE_API := $(call val,CORE_API)
 
-release: $(O)/digimacro.hex $(O)/digimacro-full.hex $(O)/uninstall.hex \
+release: $(O)/digimacro-asm.hex $(O)/digimacro-asm-full.hex $(O)/uninstall.hex \
          $(O)/uninstall1.hex $(O)/coreupdate.hex
-	@[ -z "$(strip $(DMDEFS))" ] || { echo "release is the stock firmware: no options"; exit 1; }
 	cp $(O)/uninstall.hex web/firmware/digimacro-uninstall.hex
 	cp $(O)/uninstall1.hex web/firmware/digimacro-uninstall-api1.hex
 	cp $(O)/coreupdate.hex web/firmware/digimacro-coreupdate.hex
-	cp $(O)/digimacro.hex web/firmware/digimacro-v2.hex
-	cp $(O)/digimacro-full.hex web/firmware/digimacro-v2-full.hex
+	cp $(O)/digimacro-asm.hex web/firmware/digimacro-v2.hex
+	cp $(O)/digimacro-asm-full.hex web/firmware/digimacro-v2-full.hex
 	cp $(O)/core.hex web/firmware/digimacro-v2-core.hex
-	printf '{ "app": %s, "core": %s, "api": %s }\n' $(APPVER_DM) $(CORE_VER) $(CORE_API) \
+	printf '{ "app": %s, "core": %s, "api": %s }\n' $(APPVER_ASM) $(CORE_VER) $(CORE_API) \
 	    > web/firmware/digimacro-v2.json
 	@cat web/firmware/digimacro-v2.json
 
@@ -239,11 +248,12 @@ hosts:
 	mkdir -p build/release
 	cp tools/hostauth/digimacro-host-linux-x86_64 tools/hostauth/digimacro-host.exe build/release/
 
-# ---- the assembly versions (app/asm): same header, same CRC, same checks -
+# ---- the assembly app (app/asm): same header, same CRC, same checks ------
 
-# straight.S is the straightforward translation, digimacro.S the tuned one:
-# make build/v2/asm-straight.hex, build/v2/digimacro-asm.hex
-APPVER_ASM := $(APPVER_DM)
+# digimacro.S is the app DigiMacro ships; straight.S, the straightforward
+# translation of the C it was tuned from, is kept for the differential
+# tests: make build/v2/asm-straight.hex.
+APPVER_ASM = 19
 $(O)/apphdrASM.o: app/hidusb.h
 $(O)/asm-straight.o: app/asm/straight.S core/layout.h | $(O)
 	$(CC) $(ASFLAGS) -c -o $@ $<
@@ -254,8 +264,34 @@ $(O)/asm-straight.hex: $(O)/asm-straight.elf app/apphex.py
 	$(apphex)
 
 # The tuned one carries its own header, and no C runtime at all.
-ASMDEFS = -DAPP_VER=18 $(if $(CLK_FRAC),-DCLK_FRAC=$(CLK_FRAC))
-$(O)/digimacro-asm.o: app/asm/digimacro.S core/layout.h app/hidusb.h | $(O)
+# PROBE=1: with the frame lock's readout (tools/probe.py), not shipped. It
+# has no room for the trim: its bytes are there and ignored, and CLOCK_TRIM
+# with it is refused.
+# CLOCK_TRIM=n: the clock gains n ppm (negative: loses), -1000 to 1000 but
+# not -3 to 3; 0 (the default, and what ships) is the untrimmed image. The
+# clock counts the computer's USB frames, so n is that computer's crystal
+# error, as tools/clockdrift.py measures it, with its sign turned. It only
+# sets the trim's four bytes at APP_CODE, which the code reads: python3
+# tools/settrim.py IMAGE.hex n OUT.hex makes the same image from any build,
+# untrimmed or not. See clock_poll.
+PROBE ?= 0
+CLOCK_TRIM ?= 0
+ifeq ($(shell echo '$(CLOCK_TRIM)' | grep -Ex -- '-?[0-9]+'),)
+$(error CLOCK_TRIM must be a whole number of ppm, not "$(CLOCK_TRIM)")
+endif
+# Refused before anything is built, so a refused release leaves no option
+# in build/v2
+ifneq ($(filter release,$(MAKECMDGOALS)),)
+ifneq ($(PROBE)/$(CLOCK_TRIM),0/0)
+$(error release is the stock firmware: no PROBE, no CLOCK_TRIM)
+endif
+endif
+ASMDEFS = -DAPP_VER=$(APPVER_ASM) $(if $(filter 1,$(PROBE)),-DPROBE) $(if $(filter-out 0 -0,$(CLOCK_TRIM)),-DCLOCK_TRIM=$(CLOCK_TRIM))
+# The options as last built: changing PROBE or CLOCK_TRIM rebuilds the app
+$(O)/asmdefs: FORCE | $(O)
+	@echo '$(ASMDEFS)' | cmp -s - $@ || echo '$(ASMDEFS)' > $@
+FORCE:
+$(O)/digimacro-asm.o: app/asm/digimacro.S core/layout.h app/hidusb.h $(O)/asmdefs | $(O)
 	$(CC) $(ASFLAGS) $(ASMDEFS) -c -o $@ $<
 $(O)/digimacro-asm.elf: $(O)/digimacro-asm.o $(O)/coreapi.o
 	$(CC) $(CFLAGS) $(APPLINK) -o $@ $^
@@ -265,13 +301,17 @@ $(O)/digimacro-asm.hex: $(O)/digimacro-asm.elf app/apphex.py
 $(O)/digimacro-asm-full.hex: $(O)/core.hex $(O)/digimacro-asm.hex
 	python3 app/apphex.py join $@ $^
 
-# The page with the assembly app as the firmware it installs, to serve locally:
+# The page with this build as the firmware it installs, to serve locally:
 # cd build/v2/asm-web && python3 -m http.server. Nothing in web/ is touched.
+# The page offers an update only to a board on older firmware than its json
+# says (make asmweb ASMWEB_APP=20 recommends it to a board on 19), but
+# installs it on any. Its clock is trimmed on the way with ?advanced=true.
+ASMWEB_APP ?= $(APPVER_ASM)
 asmweb: $(O)/digimacro-asm.hex
 	mkdir -p $(O)/asm-web
 	cp -r web/* $(O)/asm-web/
 	cp $(O)/digimacro-asm.hex $(O)/asm-web/firmware/digimacro-v2.hex
-	printf '{ "app": 18, "core": %s, "api": %s }\n' $(CORE_VER) $(CORE_API) > $(O)/asm-web/firmware/digimacro-v2.json
+	printf '{ "app": %s, "core": %s, "api": %s }\n' $(ASMWEB_APP) $(CORE_VER) $(CORE_API) > $(O)/asm-web/firmware/digimacro-v2.json
 	@echo "$(O)/asm-web: serve it (python3 -m http.server there) and open it in Chrome"
 .PHONY: asmweb
 
@@ -418,5 +458,5 @@ clean:
 	rm -rf $(O)
 	$(MAKE) -C core/test clean
 
-.PHONY: all release site hosts spike page irspike uninstall coreupdate size test uninstalltest simtest simcoreupdate difftest clean
+.PHONY: FORCE all reference release site hosts spike page irspike uninstall coreupdate size test uninstalltest simtest simcoreupdate difftest clean
 .SECONDARY:

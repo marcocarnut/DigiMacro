@@ -2172,6 +2172,66 @@ s.w('quiesce 800 9000')
 s.w('checkclock 200')
 s.end()
 
+# ---- a host that stops asking, mid-keystroke --------------------------------
+s = asm_only('z64_no_press_lost_when_the_host_pauses', 'playback')
+# The host polls nothing for 70 ms while a macro types, as s_deep_stack's
+# host does across three commands: every press still arrives, and none is
+# let go without having been pressed.
+s.table(('.', [K(c) for c in 'abcdefghij']))
+s.eekeys()
+s.boot()
+s.w('clearkeys')
+s.w('code .')
+s.w('run 615')                       # into the macro: its second key
+s.w('poll 0')
+s.w('run 70')
+s.w('poll 1')
+s.w('quiesce 1000 20000')
+s.w('expect_keys ' + ''.join('<00/%02X>' % (4 + i) for i in range(10)))
+s.end()
+
+# ---- the frame lock, with the RC off and traffic ------------------------------
+# The board's clock off by ppm: frames and bits that many longer in CPU
+# cycles. Locked to the keep-alives, the clock moves with the host's time,
+# not the CPU's, and its ticks keep step with the frames: none slips, with
+# the host polling, asking and sending pages meanwhile.
+
+
+def lock_traffic(s, seconds, ramp=None):
+    """seconds of traffic: an INFO, a read and a half page every 500 ms;
+    ramp: (from, to) ppm, stepped through over the middle third"""
+    n = int(seconds * 2)
+    for i in range(n):
+        if ramp and n // 3 <= i < 2 * n // 3:
+            f, t = ramp
+            s.w('clock_error %d' % round(f + (t - f) * (i - n // 3 + 1) / (n // 3)))
+        s.cmd(INFO)
+        s.cmd(READ, 0x40, 16)
+        s.w('page 0 ' + '5A' * 32)
+        s.w('run 470')
+
+
+def lock_scenario(name, ppm, ramp=None, seconds=30):
+    s = asm_only(name, 'clock lock')
+    s.blank()
+    s.eekeys()
+    s.boot()
+    s.w('clock_error %d' % ppm)
+    settime(s, 1700000000)
+    s.w('run 3000')                     # lock acquired
+    s.w('watch_lock')
+    s.w('expect_hostclock 2')
+    lock_traffic(s, seconds, ramp)
+    s.w('expect_hostclock 2')
+    s.w('expect_noslip')
+    s.end()
+
+
+lock_scenario('z60_lock_holds_3600_ppm_slow', -3600)
+lock_scenario('z61_lock_holds_700_ppm_slow', -700)
+lock_scenario('z62_lock_holds_1100_ppm_fast', 1100)
+lock_scenario('z63_lock_holds_through_a_ramp', -700, ramp=(-3600, -1100), seconds=45)
+
 # ---- a half-received page ---------------------------------------------------
 
 PG = 0x1F00
@@ -2273,6 +2333,20 @@ s.w('expect_wiped')
 s.w('expect_clean ' + ' '.join(pats) + ' ' + code)
 s.end()
 
+s = asm_only('z65_wiped_with_an_interrupt_inside', 'totp')
+# as z52, with an interrupt certain to come during the stack's wipe: its
+# frame, left behind the wipe, holds main's registers and SREG, no secret
+s.table(('.', TOTP(kh) + [K('z')]))
+s.eekeys()
+s.boot()
+settime(s, 1700000000)
+s.w('watch_wipe')
+s.w('wipe_irq')
+s.play('.', None)
+s.w('expect_wipe_irq')
+s.w('expect_wiped')
+s.end()
+
 s = asm_only('z53_key_forgotten_at_the_gap', 'totp secret')
 # a sealed code whose key is forgotten by a WRITE or RESTART while it runs: the
 # outer half would read garbage, so it types nothing rather than a wrong code
@@ -2337,13 +2411,32 @@ s.w('keys')
 s.w('stack')
 s.end()
 
+# A trimmed clock (tools/settrim.py on the image under test, by run.py): the
+# clock gains what the trim says against the host's frames, 1 ms each. A
+# losing trim and a gaining one, odd seconds one in 4 and one in 2.
+for ppm, want, name in ((500, 1e6 / 1999, 'z41_trim_gains_500_ppm'),
+                        (-250, -1e6 / 4001, 'z41b_trim_loses_250_ppm')):
+    s = asm_only(name, 'clock')
+    s.w('image_trim %d' % ppm)
+    s.blank()
+    s.eekeys()
+    s.boot()
+    settime(s, 1700000000)
+    s.w('run 1500')
+    s.w('expect_hostclock 2 %.3f' % want)
+    s.w('run 40000')
+    s.w('expect_hostclock 2 %.3f' % want)
+    s.end()
+
 # ---- back to the published C app, through the core ---------------------------
 
-s = asm_only('z70_reinstall_published_c_app', 'install')
+# Back to the C app (firmware 17, the reference build: make reference), which
+# a board on the assembly app can always be given
+s = asm_only('z70_reinstall_c_app', 'install')
 s.subs = ['install', 'asmonly']
 s.table(('.', [K('a')]))
 s.boot()
-s.w('reinstall %s' % os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'web', 'firmware', 'digimacro-v2.hex'))
+s.w('reinstall %s' % os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'build', 'v2', 'digimacro.hex'))
 s.cmd(INFO)
 s.w('expect_ans 0 40')
 s.w('expect_ans 13 11')

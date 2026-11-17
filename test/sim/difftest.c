@@ -17,6 +17,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <ctype.h>
 #include <stddef.h>
@@ -137,9 +138,138 @@ static uint32_t hook_pc_gap, hook_pc_wiped, hook_end, hook_ks;
 static int gap_hit, wipe_checks, wipe_bad;
 static uint32_t gap_key;
 
+/* The host's time, when the board's clock is off: a frame is a host ms,
+   frame_cycles of the CPU's (clock_error) */
+static double host_base, host_t;	/* host ms at board_ms() host_t */
+
+static double host_ms(void)
+{
+	return host_base + (board_ms() - host_t) * (F_CPU / 1000.0) / usb.frame_cycles;
+}
+
+/* The frame lock: at each keep-alive, the app's ticks (r2:r3) less the
+   frames stay the same while it holds; a change is a tick slipped */
+static int lock_watch, lock_have;
+static uint16_t lock_d;
+static unsigned lock_frame, lock_frames, lock_slips;
+
+static void lock_check(void)
+{
+	if (usb.frame == lock_frame)
+		return;
+	lock_frame = usb.frame;
+	uint16_t d = (avr->data[2] | avr->data[3] << 8) - (uint16_t)usb.frame;
+	if (lock_watch) {
+		lock_frames++;
+		if (lock_have && d != lock_d) {
+			if (++lock_slips <= 5)
+				printf("  SLIP %+d at %.2f\n", (int16_t)(d - lock_d), board_ms());
+		}
+		lock_have = 1;
+	}
+	lock_d = d;
+}
+
+/* The interrupts taken during totpWipe: each one's frame stays below SP
+   once it returns, and the wipe, gone past those bytes, does not come back
+   for them. Such a byte is not a residue, unless it holds a secret's: the
+   frame is what main had in its registers, r16 and r17 among them. */
+static uint32_t hook_pc_wipe, hook_totp_s;
+static uint8_t secret[32];
+static int nsecret;
+static struct wipe_frame {
+	unsigned below, top, x;	/* SP's lowest in it, SP before it, the wipe's X */
+	int depth;
+} frames[64], *open_frame;
+static int nframes;
+static int wipe_irq;		/* 1: armed, 2: raised */
+
+static int is_secret(uint8_t v)
+{
+	for (int i = 0; i < nsecret; i++)
+		if (v == secret[i])
+			return 1;
+	return 0;
+}
+
+/* a byte that only an interrupt, after the wipe passed it, put there */
+static int frame_byte(unsigned a)
+{
+	for (int i = 0; i < nframes; i++)
+		if (a > frames[i].below && a <= frames[i].top && a < frames[i].x)
+			return !is_secret(avr->data[a]);
+	return 0;
+}
+
+static void wipe_frames(uint32_t pc0, unsigned sp0, unsigned x0, uint8_t depth0)
+{
+	unsigned sp = avr->data[0x5D] | avr->data[0x5E] << 8;
+	uint8_t depth = avr->interrupts.running_ptr;
+	if (pc0 == hook_pc_wipe) {		/* the wipe begins: what it hides */
+		nsecret = nframes = 0;
+		open_frame = NULL;
+		for (int i = 0; i < 29; i++) {
+			uint8_t v = avr->data[i < 21 ? hook_totp_s + i : hook_ks + i - 21];
+			if (v)
+				secret[nsecret++] = v;
+		}
+	}
+	/* wipe_irq: a comparator edge as the wipe reaches SP, the last of it,
+	   so that an interrupt's frame is surely left behind it */
+	if (wipe_irq == 1 && pc0 >= hook_pc_wipe && pc0 < hook_pc_wiped &&
+			x0 >= sp0) {
+		for (int i = 0; i < avr->interrupts.vector_count; i++)
+			if (avr->interrupts.vector[i]->raised.reg == 0x28) {	/* ACSR */
+				avr_raise_interrupt(avr, avr->interrupts.vector[i]);
+				wipe_irq = 2;
+			}
+	}
+	if (open_frame) {
+		if (depth < open_frame->depth)
+			open_frame = NULL;
+		else if (sp < open_frame->below)
+			open_frame->below = sp;
+	} else if (depth > depth0 && pc0 >= hook_pc_wipe && pc0 < hook_pc_wiped &&
+			nframes < 64) {
+		open_frame = &frames[nframes++];
+		*open_frame = (struct wipe_frame){ sp, sp0, x0, depth };
+	}
+}
+
+/* ANA_COMP taken again as it ends -- at its `sbi ACSR, ACIE`, inside
+   itself (it runs with I set), or at once after its RETI: an edge that
+   came while it ran, served late, which its `sbi ACSR, ACI` is there to
+   forget */
+static avr_cycle_count_t ac_exit;
+static unsigned ac_late, ac_runs;
+
+static void acomp_watch(uint8_t depth0)
+{
+	uint8_t depth = avr->interrupts.running_ptr;
+	if (depth > depth0 &&
+	    avr->interrupts.running[depth - 1]->raised.reg == 0x28) {	/* ACSR */
+		ac_runs++;
+		int nested = 0;
+		for (int i = 0; i + 1 < depth; i++)
+			nested |= avr->interrupts.running[i]->raised.reg == 0x28;
+		if (nested || (ac_exit && avr->cycle - ac_exit <= 12))
+			ac_late++;
+	} else if (depth < depth0 &&
+		   avr->interrupts.running[depth]->raised.reg == 0x28)
+		ac_exit = avr->cycle;
+}
+
 static void step(softusb_t *u)
 {
+	uint32_t pc0 = avr->pc;
+	unsigned sp0 = avr->data[0x5D] | avr->data[0x5E] << 8;
+	unsigned x0 = avr->data[26] | avr->data[27] << 8;
+	uint8_t depth0 = avr->interrupts.running_ptr;
 	board_step(u);
+	if (hook_pc_wipe)
+		wipe_frames(pc0, sp0, x0, depth0);
+	acomp_watch(depth0);
+	lock_check();
 	/* the deepest the stack has been: TOTP wipes what it used, so paint
 	   alone would see a stack as deep as it wiped */
 	unsigned sp = avr->data[0x5D] | avr->data[0x5E] << 8;
@@ -158,8 +288,17 @@ static void step(softusb_t *u)
 		int bad = 0;
 #define WC(lo, hi) for (uint32_t a = (lo); a <= (hi); a++) \
 			if (avr->data[a]) { bad++; printf("  residue at %03X: %02X\n", a, avr->data[a]); }
-		WC(e, sp - 2)		/* not sp or sp-1: an interrupt that just
-					   returned left its return address there */
+		/* not sp or sp-1: an interrupt that just returned left its return
+		   address there; nor what an interrupt's frame left, once the wipe
+		   had gone by (frame_byte) */
+		for (uint32_t a = e; a <= sp - 2; a++)
+			if (avr->data[a] && frame_byte(a))
+				printf("  an interrupt's frame at %03X: %02X\n", a, avr->data[a]);
+			else if (avr->data[a]) {
+				bad++;
+				printf("  residue at %03X: %02X%s\n", a, avr->data[a],
+				       is_secret(avr->data[a]) ? " (a secret's)" : "");
+			}
 		WC(hook_ks, hook_ks + 7)		/* the keystream, gone too */
 		WC(18, 27)				/* and the registers */
 		wipe_checks++;
@@ -217,9 +356,33 @@ static void log_report(const uint8_t *v, int n)
 	}
 }
 
-static void advance(double ms)
+/* The keyboard's interrupt IN, every 10 ms while polling: from advance(),
+   and between a command's transactions too (softusb's between), as a real
+   host keeps its periodic transfers going during control ones */
+static void poll_due(softusb_t *u)
 {
 	uint8_t v[64];
+	if (!polling || board_ms() < next_poll)
+		return;
+	next_poll = board_ms() + 10;
+	int n = softusb_interrupt_in(&usb, ADDR, 1, &toggle, v);
+	if (n >= 0)
+		log_report(v, n);
+	else if (n != -SOFTUSB_E_NAK)
+		tr("POLLERR %s", softusb_strerror(-n));
+}
+
+/* between a command's transactions: only once the host has it configured */
+static int host_up;
+
+static void poll_between(softusb_t *u)
+{
+	if (host_up)
+		poll_due(u);
+}
+
+static void advance(double ms)
+{
 	double end = board_ms() + ms;
 	while (board_ms() < end) {
 		double to = end;
@@ -227,14 +390,8 @@ static void advance(double ms)
 			to = next_poll;
 		if (to > board_ms())
 			board_run(NULL, to - board_ms());
-		if (polling && board_ms() >= next_poll && board_ms() < end) {
-			next_poll = board_ms() + 10;
-			int n = softusb_interrupt_in(&usb, ADDR, 1, &toggle, v);
-			if (n >= 0)
-				log_report(v, n);
-			else if (n != -SOFTUSB_E_NAK)
-				tr("POLLERR %s", softusb_strerror(-n));
-		}
+		if (board_ms() < end)
+			poll_due(&usb);
 	}
 }
 
@@ -396,6 +553,7 @@ static void board_install(char *hexfile)
 		return;
 	int resets = board_resets;
 	command(0x67, 0, 0, NULL, 0);
+	host_up = 0;
 	double t0 = board_ms();
 	while (board_ms() < t0 + 4000 && board_resets == resets)
 		board_run(NULL, 2);
@@ -409,12 +567,14 @@ static void board_install(char *hexfile)
 	fail |= board_enumerate(ADDR);
 	toggle = PID_DATA0;
 	next_poll = board_ms() + 10;
+	host_up = 1;
 	tr("REBOOT fail=%d", fail);
 }
 
 static void boot(int enumerate, int hello)
 {
 	booted = 1;
+	host_up = 0;
 	memset(avr->data + 0x60, PAINT, RAM_TOP + 1 - 0x60);
 	board_eeprom(0, ee, EE_SIZE);
 	int fail = board_bring_up();
@@ -429,6 +589,7 @@ static void boot(int enumerate, int hello)
 	usb.verbose = 0;
 	toggle = PID_DATA0;
 	next_poll = board_ms() + 10;
+	host_up = 1;
 	tr("BOOT fail=%d", fail);
 }
 
@@ -581,10 +742,62 @@ static void run(FILE *f)
 				}
 				t0 = now; c0 = c; marked = 1;
 			}
+		} else if (!strcmp(cmd, "clock_error")) {	/* "clock_error ppm": the RC's */
+			/* the CPU's cycles to a host ms and to a bit, both (1+e) more */
+			double e = atof(rest) / 1e6;
+			host_base = host_ms();
+			host_t = board_ms();
+			usb.frame_cycles = llround(F_CPU / 1000.0 * (1 + e));
+			usb.bit = F_CPU / 1.5e6 * (1 + e);
+			tr("CLOCKERR %s ppm: %llu cycles a frame", rest,
+			   (unsigned long long)usb.frame_cycles);
+		} else if (!strcmp(cmd, "expect_hostclock")) {	/* "expect_hostclock tol-ms [ppm]" */
+			/* the clock's advance against the host's time since the
+			   last one: a tick is a frame, 1 ms. With ppm, the clock
+			   is to gain that much (a trimmed image's) */
+			static double t0, c0;
+			static int marked;
+			double tol = 0, ppm = 0;
+			sscanf(rest, "%lf %lf", &tol, &ppm);
+			if (command(0x6C, 0, 0, NULL, 0) != DM_VND_LEN || answer[0] != 0x6C) {
+				expect(0, "clock read answered");
+			} else {
+				uint32_t secs = answer[4] | answer[5] << 8 | answer[6] << 16 | (uint32_t)answer[7] << 24;
+				unsigned ticks = answer[8] | answer[9] << 8;
+				double now = host_ms(), c = secs * 1000.0 + ticks;
+				tr("HOSTCLOCK %u + %u ticks", secs, ticks);
+				if (marked) {
+					char what[100];
+					double dc = c - c0, dt = (now - t0) * (1 + ppm / 1e6);
+					snprintf(what, sizeof what, "clock moved %.1f ms, %.1f wanted", dc, dt);
+					expect(dc - dt < tol && dt - dc < tol, what);
+				}
+				t0 = now; c0 = c; marked = 1;
+			}
+		} else if (!strcmp(cmd, "watch_lock")) {	/* from now: slips counted */
+			lock_watch = 1;
+			lock_have = 0;
+			lock_frames = lock_slips = 0;
+			ac_late = ac_runs = 0;
+		} else if (!strcmp(cmd, "expect_noslip")) {
+			char what[100];
+			snprintf(what, sizeof what, "%u ticks slipped in %u frames", lock_slips, lock_frames);
+			expect(lock_frames > 100 && !lock_slips, what);
+			snprintf(what, sizeof what, "%u of %u ANA_COMPs taken late, again at once",
+				 ac_late, ac_runs);
+			expect(ac_runs > 100 && !ac_late, what);
 		} else if (!strcmp(cmd, "watch_wipe")) {	/* check the stack at every wipe's end */
 			hook_pc_wiped = lookup("totp_wiped");
 			hook_end = lookup("_end");
 			hook_ks = lookup("sec_ks");
+			hook_pc_wipe = lookup("totpWipe");
+			hook_totp_s = lookup("totp_s");
+			if (hook_pc_wipe == BOARD_NO_SYMBOL || hook_totp_s == BOARD_NO_SYMBOL)
+				hook_pc_wipe = 0;	/* no frames told apart */
+		} else if (!strcmp(cmd, "wipe_irq")) {	/* an ANA_COMP inside the next wipe */
+			wipe_irq = 1;
+		} else if (!strcmp(cmd, "expect_wipe_irq")) {
+			expect(wipe_irq == 2 && nframes > 0, "an interrupt taken inside the wipe");
 		} else if (!strcmp(cmd, "expect_wiped")) {
 			char what[80];
 			snprintf(what, sizeof what, "%d wipes, %d bytes left on the stack", wipe_checks, wipe_bad);
@@ -600,6 +813,7 @@ static void run(FILE *f)
 		} else if (!strcmp(cmd, "expect_gap_hit")) {
 			expect(gap_hit == 1, "the totp reached its gap");
 		} else if (!strcmp(cmd, "powercycle")) {	/* unplugged and plugged back */
+			host_up = 0;
 			avr_reset(avr);
 			avr->data[0x54] |= 1;		/* MCUSR: power-on, as after a replug */
 			memset(avr->data + 0x60, PAINT, RAM_TOP + 1 - 0x60);
@@ -612,6 +826,7 @@ static void run(FILE *f)
 			board_ctl(ADDR, 0x21, 0x09, 0x0200 | DM_KBD_ID, 0, 2, leds);
 			toggle = PID_DATA0;
 			next_poll = board_ms() + 10;
+			host_up = 1;
 			tr("REBOOT fail=%d", fail);
 		} else if (!strcmp(cmd, "markclock")) {
 			command(0x6C, 0, 0, NULL, 0);	/* forget the mark: read again */
@@ -746,6 +961,7 @@ static void run(FILE *f)
 			/* it has dropped the bus by now, or will: wait for the
 			   pull-up to come back and take it through a new
 			   enumeration, as Linux would */
+			host_up = 0;
 			board_run(NULL, 800);
 			nmeasured = 0;		/* the harness keeps only 32 */
 			int fail = board_bus_reset();
@@ -755,6 +971,7 @@ static void run(FILE *f)
 			usb.verbose = 0;
 			toggle = PID_DATA0;
 			next_poll = board_ms() + 10;
+			host_up = 1;
 			tr("REBOOT fail=%d", fail);
 		} else if (!strcmp(cmd, "note")) {
 			tr("NOTE %s", rest);
@@ -794,6 +1011,11 @@ int main(int argc, char **argv)
 	board_load(argv[1], NULL);
 	board_load_hex(argv[2]);
 	usb.step = step;
+	usb.between = poll_between;
+	/* the host's frame, in CPU cycles: 16500 is 1 ms at 16.5 MHz */
+	if (getenv("DIFF_FRAME_CYCLES"))
+		usb.frame_cycles = strtoul(getenv("DIFF_FRAME_CYCLES"), NULL, 0);
+	host_t = board_ms();
 	pad_init();
 	/* the IR pin is driven from outside, so the app's pull-up on it and any
 	   write to PORTB (the pad's) do not overrule it in simavr */

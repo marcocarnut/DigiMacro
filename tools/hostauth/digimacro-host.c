@@ -6,7 +6,8 @@
  * every DigiMacro plugged in whose serial number has a line in the key file.
  * With -e it sends it again every so many seconds, which turns "lately" into
  * "for as long as this runs" -- run it from the session, and stop it when the
- * screen locks.
+ * screen locks. -E does the same in the background: it gives the terminal
+ * back, once the keys are read, and says what to stop.
  *
  * But first the board proves it is the board: a copy can carry the serial
  * number, and would gladly take the key. PROVE sends it eight random bytes,
@@ -202,6 +203,7 @@ static int ask(port *p, int cmd, const unsigned char *data, int n,
 }
 
 static int random_bytes(unsigned char *b, int n);
+static uint32_t next_second(void);
 
 /* PROVE, and only then KEYAUTH -- with the time after the key, for a
    firmware that keeps a clock: the board takes it only if the key is right. */
@@ -221,7 +223,8 @@ static int give_key(port *p, const unsigned char *key)
     if (a[0] != PROVE) { r = TOO_OLD; goto out; }
     if (memcmp(a + 4, want, 8)) { r = IMPOSTOR; goto out; }
     if (ask(p, INFO, (const unsigned char *)"", 0, a) == 0 && a[0] == INFO && a[INFO_APP] >= FW_CLOCK) {
-        uint32_t now = (uint32_t)time(NULL);
+        uint32_t now = next_second();   /* the board's count into the
+                                           second starts as this one does */
         ka[KEY_LEN] = now;
         ka[KEY_LEN + 1] = now >> 8;
         ka[KEY_LEN + 2] = now >> 16;
@@ -253,6 +256,19 @@ static int exchange(port *p, unsigned char *buf)
 static int random_bytes(unsigned char *b, int n)
 {
     return getrandom(b, n, 0) == n ? 0 : -1;
+}
+
+/* The time, on a whole second: waits for the next one to begin, and gives
+   it. Under a second, and woken by the system clock itself */
+static uint32_t next_second(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_REALTIME, &t);
+    t.tv_sec++;
+    t.tv_nsec = 0;
+    while (clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &t, NULL) == EINTR)
+        ;
+    return (uint32_t)t.tv_sec;
 }
 
 static int send_key(const char *dev, const unsigned char *key)
@@ -317,6 +333,27 @@ static int sweep(int verbose)
 
 static void pause_s(int s) { sleep(s); }
 
+/* -E: on in a child, out of the session and with nowhere to write; the
+   parent says which process to stop, and goes. */
+static int background(int every, const char *file)
+{
+    (void)every; (void)file;
+    pid_t pid = fork();
+    if (pid < 0) { perror("fork"); return -1; }
+    if (pid) {
+        printf("digimacro-host: running in the background, pid %d\n", (int)pid);
+        exit(0);
+    }
+    setsid();
+    if (chdir("/") < 0) { /* nothing to do about it, and nothing needs it */ }
+    int fd = open("/dev/null", O_RDWR);
+    if (fd >= 0) {
+        dup2(fd, 0); dup2(fd, 1); dup2(fd, 2);
+        if (fd > 2) close(fd);
+    }
+    return 0;
+}
+
 static const char *default_file(char *buf, size_t n)
 {
     const char *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
@@ -336,6 +373,26 @@ static int exchange(port *p, unsigned char *buf)
     memset(buf, 0, 1 + VND_LEN);
     buf[0] = VND_ID;
     return HidD_GetFeature(p->h, buf, 1 + VND_LEN) ? 0 : -1;
+}
+
+/* The time, on a whole second: waits for the next one to begin, and gives
+   it. Sleep() is only good to a tick of the scheduler (up to 16 ms), so
+   the last 20 ms are waited out with Sleep(0) */
+static uint64_t unix100ns(void)
+{
+    FILETIME f;
+    GetSystemTimePreciseAsFileTime(&f);
+    return ((uint64_t)f.dwHighDateTime << 32 | f.dwLowDateTime) - 116444736000000000ULL;
+}
+
+static uint32_t next_second(void)
+{
+    uint64_t s = unix100ns() / 10000000 + 1, t;
+    while ((t = unix100ns()) < s * 10000000) {
+        int64_t ms = (int64_t)(s * 10000000 - t) / 10000 - 20;
+        Sleep(ms > 0 ? (DWORD)ms : 0);
+    }
+    return (uint32_t)s;
 }
 
 static int random_bytes(unsigned char *b, int n)
@@ -435,6 +492,29 @@ static int sweep(int verbose)
 
 static void pause_s(int s) { Sleep(1000 * (DWORD)s); }
 
+/* -E: Windows has no fork, so this starts itself again, as -e, with no
+   console; the copy run here says which process to stop, and goes. */
+static int background(int every, const char *file)
+{
+    char exe[MAX_PATH], cmd[2 * MAX_PATH + 64];
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+
+    memset(&si, 0, sizeof si);
+    si.cb = sizeof si;
+
+    if (!GetModuleFileNameA(NULL, exe, sizeof exe)) return -1;
+    snprintf(cmd, sizeof cmd, "\"%s\" -e %d -k \"%s\"", exe, every, file);
+    if (!CreateProcessA(exe, cmd, NULL, NULL, FALSE, DETACHED_PROCESS, NULL, NULL, &si, &pi)) {
+        fprintf(stderr, "cannot start in the background: error %lu\n", GetLastError());
+        return -1;
+    }
+    printf("digimacro-host: running in the background, process %lu\n", pi.dwProcessId);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    exit(0);
+}
+
 static const char *default_file(char *buf, size_t n)
 {
     const char *app = getenv("APPDATA");
@@ -450,11 +530,12 @@ int main(int argc, char **argv)
 {
     char def[512];
     const char *file = NULL;
-    int every = 0;
+    int every = 0, detach = 0;
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-k") && i + 1 < argc) file = argv[++i];
-        else if (!strcmp(argv[i], "-e") && i + 1 < argc) {
+        else if ((!strcmp(argv[i], "-e") || !strcmp(argv[i], "-E")) && i + 1 < argc) {
+            detach = argv[i][1] == 'E';
             if ((every = atoi(argv[++i])) <= 0) goto usage;
         } else goto usage;
     }
@@ -464,12 +545,13 @@ int main(int argc, char **argv)
         return 2;
     }
     if (!every) return sweep(1);
+    if (detach && background(every, file) < 0) return 2;
     for (;;) {
         sweep(0);
         pause_s(every);
     }
 
 usage:
-    fprintf(stderr, "usage: digimacro-host [-k keyfile] [-e seconds]\n");
+    fprintf(stderr, "usage: digimacro-host [-k keyfile] [-e seconds | -E seconds]\n");
     return 2;
 }

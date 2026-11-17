@@ -142,9 +142,12 @@ M = [
  ('totp: table top not checked', 'totp', 'ldi r18, hi8(TABLE_TOP + 1)\n    cpi r24, lo8(TABLE_TOP + 1)', 'ldi r18, hi8(TABLE_TOP + 41)\n    cpi r24, lo8(TABLE_TOP + 41)'),
  ('totp: a walk steps one short', 'totp', 'adiw r26, 41\n', 'adiw r26, 40\n'),
  ('totp: forgotten key not rechecked', 'totp', 'ldd r24, Y + Q(key_left)\n    tst r24\n    brne 11f\n    rjmp totpGiveUp\n11:', 'ldd r24, Y + Q(key_left)\n    tst r24\n    rjmp 11f\n    rjmp totpGiveUp\n11:'),
- ('clock: a tick too long a second', 'clock', 'ldi r22, lo8(999)\n    ldi r23, hi8(999)', 'ldi r22, lo8(1000)\n    ldi r23, hi8(1000)'),
- ('clock: no fractional correction', 'clock', 'ldi r21, CLK_FRAC\n', 'ldi r21, 0\n'),
- ('clock: seconds do not carry past 16 bits', 'clock', 'std Y + Q(clk_secs) + 1, r25\n    brcc 1b\n    ldd r24, Y + Q(clk_secs) + 2', 'std Y + Q(clk_secs) + 1, r25\n    rjmp 1b\n    ldd r24, Y + Q(clk_secs) + 2'),
+ ('clock: a tick too long a second', 'clock', 'ldi r22, lo8(1000)          /* r23:r22', 'ldi r22, lo8(1001)          /* r23:r22'),
+ ('clock: the odd second as long as the rest', 'clock', 'mov r22, r20                /* and this', 'nop                         /* and this'),
+ ('clock: the trim\'s count not restarted', 'clock', 'mov r24, r21                /* the odd one', 'clr r24                     /* the odd one'),
+ ('clock: every second the odd one', 'clock', 'subi r24, 1\n    brcc 3f\n    mov r24, r21', 'subi r24, 1\n    nop\n    mov r24, r21'),
+ ('clock: the trim\'s bytes read one off', 'clock', 'lpm r21, Z+                 /* bytes', 'lpm r21, Z                  /* bytes'),
+ ('clock: seconds do not carry past 8 bits', 'clock', 'st Z+, r24\n    breq 4b\n    rjmp 1b', 'st Z+, r24\n    nop\n    rjmp 1b'),
  ('clock: wrong byte order set', 'clock', 'ld r24, X+\n    std Y + Q(clk_secs), r24\n    ld r24, X+\n    std Y + Q(clk_secs) + 1, r24', 'ld r24, X+\n    std Y + Q(clk_secs) + 1, r24\n    ld r24, X+\n    std Y + Q(clk_secs), r24'),
  ('clock: read gated', 'clock', 'cpi r21, 0x6C               /* the clock: read it freely, set it gated */\n    brne 51f\n    tst r20\n    brne 6f\n    rcall clock_read', 'cpi r21, 0x6C               /* the clock: read it freely, set it gated */\n    brne 51f\n    rjmp 6f\n    rcall clock_read'),
  ('clock: page write without the window', 'clock', 'tst r20\n    brne 6f\n    rcall clock_read\n    rjmp reqOk', 'tst r20\n    breq 53f\n    rcall clock_set\n53: rcall clock_read\n    rjmp reqOk'),
@@ -152,7 +155,17 @@ M = [
  ('clock: the wrong count is taken', 'clock', 'cpi r20, 4\n    brne reqRefuse', 'cpi r20, 4\n    nop'),
  ('clock: time with the wrong key', 'clock,secret', 'cpi r22, 16\n    brne no\n0:  movw r26, r24', 'cpi r22, 16\n    brne no\n0:  movw r26, r24\n    push r24\n    push r25\n    push r26\n    push r27\n    adiw r26, 16\n    rcall clock_set\n    pop r27\n    pop r26\n    pop r25\n    pop r24'),
  ('clock: accepts any key', 'clock,secret', 'or r18, r24\n    inc r19\n    dec r20\n    brne 3b\n    tst r18\n    breq 4f', 'or r18, r24\n    inc r19\n    dec r20\n    brne 3b\n    tst r18\n    rjmp 4f'),
- ('clock: replug keeps it', 'clock', 'out F2, r1\n', 'nop\n'),
+ ('clock: replug keeps it', 'clock', 'out F2, r1\n', 'nop\n',
+  'equivalent: F2 is USIDR, which every reset clears, on the chip and in simavr; '
+  'app_setup runs only after one (core.c appStart), so no replug can tell'),
+ ('lock: an edge during ANA_COMP not forgotten', 'clock', 'sbi ACSR, ACI               /* an edge that came meanwhile: forgotten. */\n', ''),
+ ('wipe: a secret in r17 while the stack is wiped', 'totp',
+  ('totpWipe:\n    ldi r30, lo8(totp_s)\n',
+   '2:  ldi r30, 18                 /* r18-r27, through the register file */'),
+  ('totpWipe:\n    push r17\n    lds r17, totp_s + 3\n    ldi r30, lo8(totp_s)\n',
+   '2:  pop r17\n    ldi r30, 18')),
+ ('send: gives a press up after 50 ms again', 'playback,totp', 'cpi r24, 251\n    cpc r25, r1\n    brcs 1b', 'cpi r24, 51\n    cpc r25, r1\n    brcs 1b'),
+ ('lock: the comparator ignored', 'clock', '#define ACSR_ON         ((1 << ACBG) | (1 << ACIE) | (1 << ACIS1) | (1 << ACIS0))', '#define ACSR_ON         ((1 << ACBG) | (1 << ACIS1) | (1 << ACIS0))'),
 ]
 
 
@@ -162,7 +175,7 @@ def sh(*a, **k):
 
 def base_flags():
     return ['-mmcu=attiny85', '-DF_CPU=16500000L', '-Icore', '-Iapp', '-Icore/vusb',
-            '-x', 'assembler-with-cpp', '-DAPP_VER=18']
+            '-x', 'assembler-with-cpp', '-DAPP_VER=19']
 
 
 def build(d, text):
@@ -190,12 +203,24 @@ def binhash(d):
     return hashlib.sha256(open(os.path.join(d, 'digimacro-asm.bin'), 'rb').read()).hexdigest()
 
 
-def one(item, baseline):
-    i, (name, subs, old, new) = item
+def pairs(old, new):
+    return list(zip(old, new)) if isinstance(old, tuple) else [(old, new)]
+
+
+def missing(items):
+    """the mutations whose texts are not found exactly once"""
     src = open(SRC).read()
-    if src.count(old) != 1:
-        return name, 'BAD (text found %d times)' % src.count(old), ''
-    text = src.replace(old, new)
+    return ['%s: %r found %d times' % (m[0], o[:60], src.count(o))
+            for _, m in items for o, _n in pairs(m[2], m[3]) if src.count(o) != 1]
+
+
+def one(item, baseline):
+    i, (name, subs, old, new, *equiv) = item
+    if equiv:
+        return name, 'EQUIVALENT', equiv[0]
+    text = open(SRC).read()
+    for o, n in pairs(old, new):
+        text = text.replace(o, n)
     d = os.path.join(ROOT, 'build/mut/%02d' % i)
     err = build(d, text)
     if err:
@@ -222,12 +247,19 @@ def main():
         return 2
     baseline = binhash(d)
     items = [x for x in enumerate(M) if not a.names or any(n in x[1][0] for n in a.names)]
+    gone = missing(items)
+    if gone:            # the source moved under a pattern: fix it, don't skip it
+        print('mutate.py: %d pattern(s) not found exactly once in %s:' % (len(gone), SRC),
+              file=sys.stderr)
+        for g in gone:
+            print('   ', g, file=sys.stderr)
+        return 2
     bad = 0
     with ThreadPoolExecutor(a.j) as ex:
         for name, res, info in ex.map(lambda it: one(it, baseline), items):
             print('%-55s %-10s %s' % (name, res, info))
             sys.stdout.flush()
-            bad += res != 'caught'
+            bad += res not in ('caught', 'EQUIVALENT')
     print('%d mutations, %d not caught' % (len(items), bad))
     return 1 if bad else 0
 

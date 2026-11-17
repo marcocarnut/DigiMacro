@@ -8,16 +8,19 @@ configured from a web page:
 - https://digimacro.postcogito.org
 
 Presents itself to the host PC or smartphone as a USB keyboard/mouse combo.
-By tapping on a touch pad in morse code, it types one of 62 possible keystroke
-sequences you pre-program via the accompanying web page (requires Chrome or Edge
+By tapping on a touch pad in morse code, it types one of 62 possible sequences
+of keystrokes and mouse movements you pre-program via the accompanying web page (requires Chrome or Edge
 on a computer, or Chrome on Android: not Safari, and not an iPhone or iPad).
 
 It can also be triggered by a NEC-protocol compatible remote control if you
 add an infrared sensor (TSOP4838 or similar).
 
 It can also automatically type on power-up (that was actually the original
-use case of the very first version many years ago: having an LG TV start
-its built-in browser automatically when turned on.)
+use case, many years ago: having an LG TV start its built-in browser
+automatically when turned on.)
+
+And it can type the six-digit code an authenticator app shows, from a clock
+it keeps in step with the computer's.
 
 <p align="center">
   <img src="docs/digimacro.jpg" width="420"
@@ -42,25 +45,23 @@ output wired to P2.*
 > firmware from anyone in the six seconds after it is plugged in, and
 > firmware that types out every macro takes seconds to write.
 
-v1 of the firmware and the page is at tag `v1.0`, kept for history. It is
-entirely deprecated, and as far as I know there are none left in the wild:
-v2 is better in every way. The page still offers to move a v1 board to v2.
-
 ## What you need
 
-- **A Digispark** (ATtiny85) or a clone, as it comes: the page puts v2 on it
-  through the Micronucleus bootloader it ships with, which v2 then replaces.
+- **A Digispark** (ATtiny85) or a clone, as it comes: the page puts DigiMacro
+  on it through the Micronucleus bootloader it ships with, which DigiMacro
+  then replaces.
   Or any ATtiny85 board and an ISP programmer. The
   [Franzininho](https://franzininho.com.br/), a Brazilian Digispark, works
   as it is, with its pin header's P0 pin as the pad.
 - **A touch pad on P0.** Any small piece of metal will do — a bare wire, a
   coin, a square of copper tape, or even the pin header that sometimes already
-  comes soldered to the board — and no other parts are needed. A pushbutton
-  from P0 to ground works too (`make BUTTON=1`), as does a pad read
-  through a bleed resistor of about 1 MΩ (`make RC=1`).
+  comes soldered to the board — and no other parts are needed. The firmware
+  the page installs reads a bare pad only; the C reference app can be built
+  for a pushbutton from P0 to ground (`make reference BUTTON=1`), or for a
+  pad read through a bleed resistor of about 1 MΩ (`make reference RC=1`).
 - **The board's LED on P1**, which is where the Digispark has it. A clone with
-  its LED on P0 needs `PIN_LED` changed in `DigiMacro.ino`, since P0 is the
-  pad.
+  its LED on P0 needs `PIN_LED` changed in `app/asm/digimacro.S`, since P0 is
+  the pad.
 - **An optional IR receiver on P2:** a TSOP4838 or any of its kind, with
   its output on P2, lets a remote control that speaks NEC — most cheap ones
   do — start macros. Nothing else is needed, and a board without one is no
@@ -69,10 +70,10 @@ v2 is better in every way. The page still offers to move a v1 board to v2.
   WebUSB, to reach Micronucleus when a board is set up — are not in Firefox
   or Safari, and every browser on an iPhone or iPad is Safari underneath.
   Chrome on Android has WebUSB but no WebHID, so there the page reaches the
-  board through WebUSB alone, over a USB OTG adapter; that needs core 4 or
-  later (*It never stops being a keyboard*, below). A board set up with v2.0
-  has core 3: update it once from a computer (*A board on an older core*,
-  below), and Android reaches it from then on. Tested on Linux, on
+  board through WebUSB alone, over a USB OTG adapter (*It never stops being
+  a keyboard*, below). A board set up long ago may have a core without the
+  interface that needs: update its core once from a computer (*A board on an
+  older core*, below), and Android reaches it from then on. Tested on Linux, on
   Windows 10 in a virtual machine and on Android, setting a board up
   included; macOS should work the same way in Chrome or Edge, needing
   nothing installed, but nobody has tried it yet. Android puts its own on-screen keyboard away while the board
@@ -123,15 +124,15 @@ header is all the pad it needs.*
 
    Then open `http://localhost:8000/`. Any https host serving
    `web/` works the same way.
-3. **Put v2 on the board.** A Digispark as it comes, unplugged: press **Set
+3. **Put DigiMacro on the board.** A Digispark as it comes, unplugged: press **Set
    up a new board**, plug the board in while the browser's list is open, and
    pick it as soon as it shows up, as *Digispark* or *Micronucleus*. After
    that the board comes back as DigiMacro but with no firmware yet, and the
    page offers to install it — see *Setting a board up* below. With a
    programmer instead: see *With a programmer*.
 4. **Connect.** Pick the board, then **hold the pad for four seconds**. The
-   page reads everything the board holds by itself; if the board has a
-   password, type it and press Unlock.
+   page reads everything the board holds by itself, and sets the board's
+   clock; if the board has a password, type it and press Unlock.
 5. **Write some macros**, press **Write to the board**, and tap a code into a
    text editor.
 
@@ -206,6 +207,7 @@ A macro is text, with braces for what text cannot say:
  (ab){3}                      ...of a whole group rather than one thing
  {goto .-}                    carry on with another macro, and never come back
  {secret}  {secret!}          the rest is encrypted, and needs this computer's key
+ {totp JBSW Y3DP EHPK 3PXP}   the six digits an authenticator app shows now
  {IR 00 45}                   where the remote's button 00 45 starts typing
  {40,90}  {40*1.75,90*1.75}   the mouse pointer, in percent of the screen
  {click}  {right-click}       ...and its buttons; {hold}, {release} and the
@@ -241,6 +243,43 @@ into the accent and then the letter (on ABNT2, `ç` is a key of its own). Leave
 it at plain US, where there is no way to type one, and the editor says so
 rather than typing something else.
 
+### One-time codes
+
+`{totp SECRET}` types the six digits an authenticator app would show at that
+moment for the same secret: the base32 text a site gives when it sets up
+two-factor login, the one behind its QR code. Case, spaces and `=` padding
+do not matter. It goes anywhere in a macro, so `{totp …}{Enter}` types the
+code and sends it.
+
+The page does not store the secret as it was typed. It works out the two
+HMAC-SHA1 midstates the secret leads to — RFC 2104's precomputation, which
+is all the board needs to make a code — and writes those: 40 bytes, 42 of
+the table's 480 with the escape in front. They cannot be turned back into
+the secret, so a `{totp}` read back from the board shows as `{totp @…}`, 80
+hex digits, which writes back as it came, and the page says so beside the
+macro. To change one, type the new secret in its place.
+
+Anyone who reads the EEPROM can make codes from those 40 bytes as well as
+the secret itself, so a code worth guarding goes inside a secret
+(*Secrets*, below):
+
+```
+ {secret!}{totp JBSW Y3DP EHPK 3PXP}{Enter}
+```
+
+There the midstates are encrypted with the rest, and only this computer's
+key gets a code out of the board.
+
+A code needs the time, and the board's clock is lost whenever it is
+unplugged (*The clock*, below). The page sets it on the way in, after the
+hold and the password, and `digimacro-host` sets it with the key. Until one
+of them has, a `{totp}` types `000000` and stops the macro there, so a
+`{Enter}` after it is not pressed.
+
+The page refuses to write a `{totp}` to a board on firmware 17, the last
+of the C app, which does not know it: update the board first (*Updating the
+firmware*).
+
 ### The remote
 
 With an IR receiver on P2, a button on a remote starts typing just after its
@@ -265,12 +304,12 @@ Buttons that are not in the table do nothing at all, and never count toward
 the lockout: rooms are full of other people's remotes. A locked board ignores
 the remote, as it ignores taps, and a secret needs the key wherever the
 remote starts. Holding a button plays its macro once. The receiver is
-optional, and `HAVE_IR 0` in `DigiMacro.ino` builds without it.
+optional, and a board without one is no different.
 
 A remote that **remote button** never hears is one the decoder cannot read:
 `make irspike` (*Building*) shows what the receiver gets from it. That is how an
 LG TV's remote turned out to be NEC after all, with a leader the receiver
-had cut short; firmware 15 takes it.
+had cut short; the decoder takes it now.
 
 ### Startup
 
@@ -358,7 +397,8 @@ can — and keep it out of the power-on macro, which anybody can play by
 plugging the board in.
 
 Everything is kept in EEPROM, so unplugging the board gets nobody anywhere.
-The board has no clock to tell it how long it was unplugged, so a soft lock
+The board's clock does not survive being unplugged, so nothing tells it how
+long it was out, and a soft lock
 found at power-up starts its whole wait again. A wrong code is counted
 *before* the three blinks that report it, so pulling the plug as soon as the
 blinks start saves nothing. A code that plays writes nothing, so ordinary use
@@ -371,9 +411,8 @@ types a password types it for whoever holds it, and anyone who reads its
 EEPROM reads the password. For a computer whose software you control, there
 is an answer to both: what follows `{secret}` in a macro is kept on the board
 encrypted, and the key is not kept on the board at all. A small client on the
-computer sends it, and for a while afterwards — a minute by default, up to
-forty — secrets play. Plugged into any other computer, or stolen, the board
-holds only scrambled bytes.
+computer sends it, and for a while afterwards secrets play. Plugged into any
+other computer, or stolen, the board holds only scrambled bytes.
 
 ```
  user{Tab}{secret}hunter2{Enter}
@@ -397,9 +436,10 @@ refused macro does not count as a code that worked, so tapping a guarded code
 on the wrong computer does not clear a guesser's misses.
 
 A secret runs to the end of its macro, 255 keystrokes at most, and holds
-anything a macro can: pauses, repeats, modifiers, a `{goto}` — which carries on
-in the other macro as that macro is, in the clear unless it has a secret of
-its own.
+anything a macro can: pauses, repeats, modifiers, a `{totp}`, a `{goto}` —
+which carries on in the other macro as that macro is, in the clear unless it
+has a secret of its own. Only `{IR}` cannot go inside one: the remote has to
+find it without the key.
 
 **The key** is sixteen random bytes, made in the app's Secrets section and
 downloaded as a file named after the board's serial number. The board keeps
@@ -412,9 +452,13 @@ position, but not read or changed. **Keep the file**: without it nobody, you
 included, can read the secrets again — only make a new key and type them in
 again.
 
-The board forgets the key when its time runs out, when it is unplugged or
-restarts, and whenever anything is written to it, the table included. A key
-that runs out part way through a macro stops it there.
+**How long the key is held:** 60 seconds after it is sent, by default, and
+each send starts the time again — which is why `digimacro-host -e 30`, below,
+keeps it held for as long as it runs. The Secrets section sets it from 10
+seconds to 2,400 (forty minutes), in steps of ten. The board forgets the key
+sooner when it is unplugged or restarts, and whenever anything is written to
+it, the table included. A key that runs out part way through a macro stops
+it there.
 
 **A copied board** could take the key: a board made to look like yours, with
 your serial number, plugged in where the client runs. So before sending the
@@ -437,7 +481,14 @@ cat ~/Downloads/digimacro-*.key >> ~/.config/digimacro/host.key
 chmod 600 ~/.config/digimacro/host.key
 digimacro-host                            # once
 digimacro-host -e 30                      # every 30 seconds, for as long as it runs
+digimacro-host -E 30                      # the same, in the background
 ```
+
+`-E` is `-e` that gives the terminal back: it reads the keys, leaves the
+session in a process of its own with nowhere to write, and prints that
+process's pid, which is what to `kill` to stop it. `digimacro-host -E 30` is
+what to put in the desktop's autostart, to have the key held while you are
+logged in.
 
 For Windows, take `digimacro-host.exe` from the releases page, or let
 `make -C tools/hostauth windows` cross-compile it with MinGW-w64
@@ -450,51 +501,58 @@ type digimacro-*.key >> "%APPDATA%\digimacro\host.key"
 digimacro-host.exe -e 30
 ```
 
+On Windows `-E` starts the client again, detached, with no console window,
+and prints its process id, to stop it with Task Manager or `taskkill /pid`.
 To keep it running while you are logged in, put a shortcut to
-`digimacro-host.exe -e 30` in the Startup folder (`shell:startup`).
+`digimacro-host.exe -E 30` in the Startup folder (`shell:startup`).
 
-Run with `-e` from your session, and stopped when the screen locks, the key
-is held "while I am logged in". The client finds every board plugged in by
-its serial number, so one key file serves several boards, and says for each
-whether it now holds the key, refused it, failed to prove itself — a copy,
-or a key that is not that board's — or runs firmware older than 16. `-k`
-names another key file; on Linux the default honours `$XDG_CONFIG_HOME`.
+Run with `-e` or `-E` from your session, and stopped when the screen locks,
+the key is held "while I am logged in". The client finds every board plugged
+in by its serial number, so one key file serves several boards, and says for
+each whether it now holds the key, refused it, or failed to prove itself — a
+copy, or a key that is not that board's. `-k` names another key file; on
+Linux the default honours `$XDG_CONFIG_HOME`.
+
+With the key the client sends the time, as a second begins, and the board
+takes it only if the key is right: a board on a computer that runs the
+client has its clock set, for `{totp}`, without the page ever being opened.
+It is set again each time the client runs, which matters after the computer
+has slept: that leaves the clock off by up to a minute a night (*The
+clock*). So for `{totp}`, keep the client running with `-e` or `-E`, or, if
+you would rather not, run it once from a keyboard shortcut just before you
+type a code.
 
 Sending the key, and the proof before it, need neither the hold nor the
 password, because nobody is at the board — like INFO, and reading the flash,
 which holds nothing secret. So they can do nothing else: they open no window,
-unlock nothing and read nothing, and a wrong key does **not** count against
+unlock nothing and read nothing, the time sent with a wrong key is thrown
+away with it — the page's way of setting the clock needs the hold and the
+password — and a wrong key does **not** count against
 the lockout. If it did, any program on any computer could hard-lock the board
 without anyone touching it. A wrong key costs a second instead, on a clock of
 its own.
 
-**`{host}` and `{host!}`**, which firmware 15 and older had, are gone: a
-`{secret}` at the start of a macro does everything they did, and encrypts
-what follows besides. Firmware 16 refuses a `{host}` left in a table every
-time, quietly or as an empty code, as it asked. After the update, the page
-marks each one and offers **Turn {host} into {secret}**; then **Make a key**
-and write the table, and replace the board's line in the key file on each
-computer with the new one. Both the client and the page skip a v2 host key,
-which is sixteen digits rather than thirty-two, with a word.
+**`{host}` and `{host!}`**, which older firmware had, are gone: a `{secret}`
+at the start of a macro does everything they did, and encrypts what follows
+besides. One left in a table is refused every time, quietly or as an empty
+code, as it asked. The page marks each one and offers **Turn {host} into
+{secret}**; then **Make a key** and write the table, and replace the board's
+line in the key file on each computer with the new one.
 
-The secrets' design record — the format, the measurements, and why `{host}`
-went — was retired once everything in it was built, and `git show
-295ba67:PLAN-v3.md` has it.
+The secrets' design record — the format and the measurements — was retired
+once everything in it was built, and `git show 295ba67:PLAN-v3.md` has it.
 
 ### Backups
 
 **Backup** saves the board's whole EEPROM to a file — macros, startup,
 lockout, the secrets' check value, password and serial number — and
 **Restore** puts it back, so a board erased by a programmer comes back as
-itself, Chrome's permission and key files included. v1 and v2 keep the same EEPROM map, so a v1
-board's backup restores onto a v2 one. The password goes in last, or the board would lock
+itself, Chrome's permission and key files included. The password goes in last, or the board would lock
 itself half way through its own restore, and the lockout's wrong-code and
 soft-lock counts start again. Then the board restarts itself — leaves the bus and comes back, as if
 replugged — because the serial number is only sent when the board is plugged
 in, and a restored one is easy to forget about. To Chrome a new serial is a
 new device, so the page asks you to press Connect and pick the board again.
-Firmware older than 8 cannot restart itself, and the page asks you to replug
-it instead.
 
 On a board with a password, the file is encrypted with it: scrypt with BIP38's
 parameters derives the key, and AES-256-GCM encrypts the image and says
@@ -536,6 +594,8 @@ same connection, a page of flash at a time, and the board restarts into it a
 few seconds later and asks for the hold again. No bootloader, no second
 picker, no driver. The macros, the password, the lockout, the secrets' check
 value and the serial number all live in EEPROM, which an update leaves alone.
+A board on firmware 17, the last of the C app, updates to 19 this way and
+keeps its table.
 
 - **Six seconds.** While firmware runs, the core takes the first page of an
   update only in the six seconds after the board was plugged in, as
@@ -559,12 +619,11 @@ value and the serial number all live in EEPROM, which an update leaves alone.
 
 ### A board on an older core
 
-Firmware 17 needs core 5, which leaves the firmware 128 bytes more than
-earlier cores did: it starts at `0x0F80`, where they start it at `0x1000`
-(core API 2, where theirs is 1). A board set up before firmware 17 — core 3
-or 4 — shows **(a new core, and firmware 17…)** in the status line, and the
-dialog offers **Update the core**. It goes in two steps, each behind the
-hold and the password as any update is:
+The firmware needs core 5, which starts it at `0x0F80` (core API 2). An
+older core starts it at `0x1000` (API 1), 128 bytes too late for the
+firmware to fit. A board with one shows **(a new core, and firmware 19…)**
+in the status line, and the dialog offers **Update the core**. It goes in
+two steps, each behind the hold and the password as any update is:
 
 1. The page installs the **core updater** as it would firmware, through the
    old core (`app/coreupdate.S`, `make coreupdate`). It carries the new core
@@ -572,7 +631,7 @@ hold and the password as any update is:
    it. Started, it writes the new core in place of the old in half a second,
    before USB connects, erases its own header, and restarts the board.
 2. The board comes back as DigiMacro with only its core — the new one — and
-   the page offers DigiMacro 17, as it does after a cut-off update.
+   the page offers the firmware, as it does after a cut-off update.
 
 The EEPROM is not touched: the macros, the password, the secrets' check value
 and the serial number come through. An upload of the updater cut off half way
@@ -584,11 +643,11 @@ core too; it uses the uninstaller built for that core's layout.
 
 ### Setting a board up
 
-**Set up a new board**, beside Connect, puts v2 on a Digispark as it comes.
+**Set up a new board**, beside Connect, puts DigiMacro on a Digispark as it comes.
 Press it with the board unplugged, plug the board in while the browser's list
 is open, and pick it as soon as it shows up: Micronucleus waits only a few
 seconds, and a 1.x board left past them stays on the bus but no longer answers
-until it is plugged in again. The page writes v2's core through it. The board
+until it is plugged in again. The page writes the core through it. The board
 then comes back as DigiMacro with only its core — serial `FFFFFFFF` until the
 firmware makes one — and **Connect** leads to the install. The firmware goes
 on over Micronucleus itself, and at its first page the core takes back the
@@ -596,11 +655,6 @@ reset vector Micronucleus had pointed at itself, so Micronucleus is never run
 again. A power cut in those few milliseconds needs a programmer to put right,
 the same risk as any upload through Micronucleus; it happens once in a board's
 life.
-
-**A v1 board** moves the same way: connect it, and **(move to v2…)** in the
-status line opens the firmware dialog. The board restarts into Micronucleus,
-takes the core, and comes back asking for the firmware. Its macros, password and serial number come
-along: v2 keeps v1's EEPROM map.
 
 Micronucleus is reached over WebUSB: Linux needs its line in
 `web/60-digimacro.rules`, and Windows needs [Zadig](https://zadig.akeo.ie/)
@@ -627,7 +681,7 @@ board works as a Digispark meanwhile.
 ### With a programmer
 
 `web/firmware/digimacro-v2-full.hex` is the core and the firmware in one
-image, with the fuses a v2 board wants:
+image, with the fuses a DigiMacro board wants:
 
 ```
 avrdude -c <programmer> -p t85 -e -U flash:w:web/firmware/digimacro-v2-full.hex:i \
@@ -640,26 +694,25 @@ extended `0xFE` keeps SELFPRGEN, without which the board cannot update itself.
 The erase takes the EEPROM with it: back up first. Hardening goes further:
 [HARDENED_MODE.md](HARDENED_MODE.md).
 
-### v1 boards
+### A board that kept its bootloader
 
-The only update a v1 board gets from the page is the move to v2: v1 is frozen
-at firmware 9, and v2 does everything it did. The board restarts into its
-bootloader and the browser asks you to pick it — a second picker, plain
-vendor class over WebUSB.
+DigiMacro once ran beside Micronucleus rather than in its place. The page
+still moves such a board: connect it, and the status line opens the firmware
+dialog. The board restarts into its bootloader and the browser asks you to
+pick it — a second picker, plain vendor class over WebUSB — then it takes the
+core and comes back asking for the firmware. Its macros, password and serial
+number come along: the EEPROM map is the same.
 
 - **Pick it within a few seconds.** The bootloader waits about six and then
   goes back to the old firmware, so the click that starts the move has to
   find the window already open. If it is not, that click asks for the hold,
   and the next click does the move.
-- **Firmware older than 3** cannot restart itself into the bootloader, so it
-  needs the core written by hand: `micronucleus --run
-  web/firmware/digimacro-v2-core.hex`. Plug the board in, and the page
-  installs the firmware.
-- **A hardened v1 board** has no bootloader, and says **(hardened)** instead,
-  or **(not fully hardened…)** with a list of what is missing — *(hardened:
-  no bootloader)* on firmware older than 8.
-- v1's REBOOT command sits behind the window and the password: a board in its
-  bootloader can be flashed with anything.
+- **If the page says the board cannot restart into its bootloader,** write
+  the core by hand: `micronucleus --run web/firmware/digimacro-v2-core.hex`,
+  then plug the board in, and the page installs the firmware.
+- **One built without a bootloader**, for hardened mode, says **(hardened)**
+  instead, or **(not fully hardened…)** with a list of what is missing; only
+  a programmer moves it (*With a programmer*).
 
 The uploader is [DigiISP](https://digiisp.postcogito.org)'s, ported to plain
 JavaScript in `web/micronucleus.js`.
@@ -667,8 +720,9 @@ JavaScript in `web/micronucleus.js`.
 ### Releasing
 
 A new firmware reaches the page through `make release`, which copies the
-build into `web/firmware/` with a json naming its version and the core it is
-for: `digimacro-v2.hex` for updates, `digimacro-v2-core.hex` for setting a
+build — the assembly app as it ships, with no build options — into
+`web/firmware/` with a json naming its version and the core it is for:
+`digimacro-v2.hex` for updates, `digimacro-v2-core.hex` for setting a
 board up, `digimacro-v2-full.hex` for a programmer, `digimacro-uninstall.hex`
 for **Back to a plain Digispark**, and for boards on an older core
 `digimacro-coreupdate.hex` and `digimacro-uninstall-api1.hex`. Commit them,
@@ -696,17 +750,15 @@ It cost two things. The keyboard gave up boot protocol, since two collections
 on one interface need report IDs and a boot report may not have one, which
 also caps it at three key slots rather than six — nothing that presses one key
 at a time notices. And there is no landing page: Chrome offers one for a
-WebUSB device, not a HID one. An earlier version re-enumerated as a WebUSB
-device after the hold, and back again afterwards; v1's design record tells
-that story (`git show v1.0:PLAN.md`).
+WebUSB device, not a HID one.
 
-The mouse, from firmware 17, is a third collection on the same interface,
+The mouse is a third collection on the same interface,
 report ID 3, so it costs no endpoint: a relative mouse, which is what a TV
 takes. It has three buttons; macros use the left and the right.
 
 Chrome on Android has no WebHID at all, and WebUSB will not claim a HID
 interface, nor take a request addressed to the device in its stead. So
-core 4 adds a second interface, vendor class and no endpoints, which WebUSB
+the core adds a second interface, vendor class and no endpoints, which WebUSB
 does claim. The board takes the same feature report sent to it, since the
 core looks at the request and not at the interface it was sent to, and the
 page (`web/webusb.js`) dresses WebUSB up as WebHID where there is no WebHID.
@@ -721,18 +773,96 @@ descriptors, the feature report, the password check, and the page writer
 that takes new firmware and refuses any address below the boundary. It is
 never rewritten from USB, so it is kept small and dull, and tested on the
 host harder than anything else. Above it, the **firmware**: the pad, morse,
-the table, playback, the lockout, the secrets, the clock and the window.
+the table, playback, the lockout, the secrets, `{totp}`, the clock and the
+window.
+
+The firmware is written in AVR assembly, by hand: `app/asm/digimacro.S`,
+4,102 of the 4,224 bytes above the boundary. It began as a translation of
+the C app, `DigiMacro.ino`, which was firmware 17 and is kept as the
+reference the tests compare the assembly against (*Testing*); the C is
+3,956 bytes without `{totp}` or the clock, which the assembly made room for.
+The C app is not shipped.
 
 They call each other through two tables of jumps at fixed addresses — the
 core's just below the boundary, the firmware's header at it — and agree on
 nothing else; `core/layout.h` is the whole contract. The firmware's header
 carries a magic, its length, its version and the core API it was built for,
-and a CRC follows it: the core runs only firmware that checks out. Cores 3
-and 4 split it at `0x1000`, as API 1; core 5's API 2 is the split two pages
-lower, so firmware built for one does not run on the other. Every
+and a CRC follows it: the core runs only firmware that checks out. A core
+that splits the flash at `0x1000` speaks API 1; core 5's API 2 is the split
+two pages lower, so firmware built for one does not run on the other. Every
 interrupt but V-USB's is passed on to the firmware, and the watchdog watches
-it. v2's design record tells how it was decided and why: it was retired once
-everything in it was built, and `git show 5890dee:PLAN-v2.md` has it.
+it.
+
+The assembly relies on more than the C calling convention, and that is in
+the contract too: the core never touches `r2`–`r11`, where the firmware
+keeps its clock and state, nor a few spare I/O registers, nor the analog
+comparator but to switch its interrupt off before writing a page or
+restarting; it holds nothing in the saved registers across the firmware's
+calls; a handful of its small functions change only `r24`, `r25` and the
+flags; and its page buffer may be borrowed as scratch while no page is half
+received. A core that broke any of it would break the firmware without a
+word, so `tools/checkcore.py` reads the core's disassembly at every build
+and fails the build instead.
+The design record of the split was retired once everything in it was built,
+and `git show 5890dee:PLAN-v2.md` has it.
+
+### The clock
+
+The firmware keeps the time, as seconds since 1970 and milliseconds into the
+second, for `{totp}`. It is in RAM, so unplugging the board or a power cut
+loses it. The page sets it on the way in, after the hold and the password,
+and `digimacro-host` sends it with the key; both wait for a second to begin
+before sending, so the board's count into the second starts from zero, not
+up to a second behind.
+
+The chip's own oscillator is an RC one, tuned to USB's timing as the board
+starts and off by thousands of ppm as it warms or cools: minutes a day. So
+the millisecond is not the chip's but the computer's. A low-speed USB device
+gets a keep-alive from the computer at the start of every 1 ms frame, and
+the firmware watches D− with the analog comparator, against the chip's
+voltage reference, to see them. It locks its timer to them, moving each
+tick by half its error and the tick's length by a little of that: the board
+then counts the computer's crystal. Measured on hardware on two PCs, the
+clock ran at about −20 to −33 ppm, a few seconds a day — each PC's crystal
+error against true time. Packets on the bus make edges too; only the one
+where a keep-alive is due counts.
+
+While the computer sleeps the bus is suspended: there are no frames, and
+the clock runs on the last tick length it had, on the chip's oscillator
+alone, until the frames come back and it locks again. That is good to about
+0.4%: measured, a night's eight hours' sleep cost 47 seconds. More than a
+TOTP step, so after a sleep the clock wants setting again. `digimacro-host`
+does it every time it runs: with `-e` or `-E` at its next sweep, or run once
+from a keyboard shortcut before typing a code (*Secrets*). A replug or the
+page sets it too.
+
+The firmware can be trimmed to one computer, without building it again:
+`python3 tools/settrim.py IMAGE.hex n OUT.hex` makes the clock gain `n` ppm,
+or lose with `n` negative — `n` being the computer's crystal error as
+`tools/clockdrift.py` measures it, with its sign turned. A board whose clock
+drifts −25 ppm on that computer wants 25. Trimmed by 20 and 28 ppm, the
+two boards above stayed within a tenth and a third of a second of true
+time over a day. `tools/settrim.py IMAGE.hex` says
+what an image's trim is. `IMAGE.hex` is the firmware for updates
+(`web/firmware/digimacro-v2.hex`) or the full image for a programmer
+(`digimacro-v2-full.hex`); the trim is four bytes just after the
+firmware's header, at 0x0FA8, and the tool writes the firmware's checksum
+again with them. `make CLOCK_TRIM=n` (*Building*) builds the very same
+image. What ships is untrimmed.
+
+The page trims it too, on the way to the board: open it with
+`?advanced=true` at the end of its address, and the *Firmware* dialog has
+an *Advanced* part. It says how the board's clock is trimmed now, takes
+the trim in ppm, and installs the page's firmware with it, whatever
+firmware the board runs. Or flash a full image trimmed by
+`tools/settrim.py` with a programmer.
+
+`tools/clockdrift.py /dev/hidrawN 600` reads the board's clock every 600
+seconds — the read needs no gate, and sets nothing — and prints how far it
+has drifted, in ppm, against both this computer's system clock, which NTP
+keeps right, and its raw monotonic clock, which NTP never touches.
+`tools/probe.py /dev/hidrawN` watches the lock itself, second by second,
+on a board running a `make PROBE=1` build.
 
 ### The protocol
 
@@ -743,8 +873,8 @@ and get it to see the answer:
  [0] command   [1] address low   [2] address high   [3] count   [4..35] data
 ```
 
-Protocol 3, which v2 speaks. The core answers INFO, PAGE, FREAD and COMMIT,
-and UNLOCK when there is no firmware; the firmware answers the rest.
+Protocol 3. The core answers INFO, PAGE, FREAD and COMMIT, and UNLOCK when
+there is no firmware; the firmware answers the rest.
 
 | | |
 |---|---|
@@ -759,11 +889,12 @@ and UNLOCK when there is no firmware; the firmware answers the rest.
 | `0x67` COMMIT | the new firmware checks out: start it |
 | `0x68` UPDATE | the firmware opens the update window: six seconds for the first PAGE |
 | `0x69` LEARN | the next remote button, within ten seconds, is typed as two hex bytes rather than played |
-| `0x6A` KEYAUTH | the key, 16 bytes. Held for the time at `0x1F2` if it matches the check value; wiped from the report either way. Needs neither the window nor the password, and does nothing else |
+| `0x6A` KEYAUTH | the key, 16 bytes; or 20, the key and then the time as `0x6C` takes it. Held for the time at `0x1F2` if it matches the check value, and the time taken only then; wiped from the report either way. Needs neither the window nor the password, and does nothing else |
 | `0x6B` PROVE | 8 bytes in; back, in their place, XTEA of them under the check value twice over. No gate |
-| `0xEE` | comes back in place of the command when a request is refused: the window is shut, the password has not been given, the password or key is wrong or came within a second of a wrong one, or the command is not one there is — `0x64`, v2's HOSTAUTH before firmware 16, among them |
+| `0x6C` CLOCK | with a count of 0, the clock, with no gate: `[4..7]` seconds since 1970, `[8..9]` milliseconds into the second, `[10]` 1 if it has been set. With a count of 4 and the seconds at `[4..7]`, sets it, that second taken as beginning now |
+| `0xEE` | comes back in place of the command when a request is refused: the window is shut, the password has not been given, the password or key is wrong or came within a second of a wrong one, or the command is not one there is |
 
-INFO, KEYAUTH, PROVE, FREAD and LEARN need no gate. PAGE needs the password if one is set,
+INFO, KEYAUTH, PROVE, FREAD, LEARN and reading the clock need no gate. PAGE needs the password if one is set,
 and with firmware running, the update window; COMMIT needs only pages taken
 and firmware that checks out. UNLOCK needs the window — and with only the
 core, nothing at all. Everything else needs the window, and the password if
@@ -776,9 +907,8 @@ one is set. INFO's state byte:
 | `0x04` | ...and has been given, or there is none |
 | `0x08` | soft lock |
 | `0x10` | hard lock |
-| `0x20` | firmware 15 and older: the host sent its key lately |
-| `0x40` | firmware 15 and older: there is a host key |
-| `0x80` | firmware 16: the key is held; v1: built with no bootloader |
+| `0x20`, `0x40` | not used |
+| `0x80` | the key is held |
 
 and the core's, in `[12]`: `0x01` firmware running, `0x02` taking pages,
 `0x04` firmware there but not started — the watchdog reset it, or it
@@ -799,10 +929,6 @@ Whether the report ID travels in the payload as well as in the request is the
 one thing the HID specification leaves to taste. Chrome does not send one
 back; the app looks rather than assuming, and the firmware accepts either,
 which is safe because no command byte is 2.
-
-v1 (protocol 2) differs in INFO — `[4]` is its firmware's version, and
-`[12..19]` are not there — has `0x41` REBOOT into Micronucleus, and none of
-PAGE to UPDATE.
 
 ### The table
 
@@ -841,10 +967,11 @@ taken:
 | `0x81 hh` | carry on with the macro whose header is `hh-1` |
 | `0x81 FE` | `{secret}`: what follows is encrypted (below); `0x81 FF` is `{secret!}` |
 | `0x82` | mark: what follows repeats as a group, not as one keystroke |
-| `0x83 nn` | the mouse, for `nn` from 3 on: `1xxxxxxx` sets where x goes, 0–127 across, and `01yyyyyy` y, 0–63 down, and moves there — 0 drives into that edge; `001c00bb` presses buttons `bb` (bit 0 left, bit 1 right; none is a release), and `c` lets them up again, a click. Anything below `0x20` sets the next move's speed: bit 4 picks y, and the low four bits are counts a report, 4 if not set, so `{x*a}` is `4a`. `nn` 1 and 2 were `{host}`, before firmware 16; now always refused, quietly if 1, as an empty code if 2 |
+| `0x83 nn` | the mouse, for `nn` from 3 on: `1xxxxxxx` sets where x goes, 0–127 across, and `01yyyyyy` y, 0–63 down, and moves there — 0 drives into that edge; `001c00bb` presses buttons `bb` (bit 0 left, bit 1 right; none is a release), and `c` lets them up again, a click. Anything below `0x20` sets the next move's speed: bit 4 picks y, and the low four bits are counts a report, 4 if not set, so `{x*a}` is `4a`. `nn` 1 and 2 are `{host}` and `{host!}`, always refused: quietly if 1, as an empty code if 2 |
 | `0x81 F7` | `{clear}`: the lockout's counts back to zero. `F7` cannot be a header: `F6` would be seven symbols |
 | `0x81 F6` | after `0x02 mm`: the modifiers `mm` pressed with no key, `{Gui}` — which no keystroke byte can say, zero ending the macro. `F5` would be six symbols |
 | `0x80 a c x` | where the remote's button `a`/`c` starts this macro: `a` and `c` with bit 7 forced on, `x` = `0x80` plus their own top bits (`a`'s in bit 0, `c`'s in bit 1). Played through, it does nothing |
+| `0x80 7F` + 40 | `{totp}`: `7F` has bit 7 clear, so no `{IR}` can start so. Then the HMAC-SHA1 midstates after the key's ipad and opad blocks, each reversed byte for byte, inner first. The forty may hold anything, zeros included: a walk steps over them whole |
 
 No argument may be zero, since a zero byte ends the macro. `0x03` is
 run-length coding: "left arrow eleven times" costs three bytes rather than
@@ -856,12 +983,12 @@ says where the repeated thing began. It takes no argument — its position is
 its argument — and marks do not nest.
 
 This is the interface between the firmware and the app, so neither end is
-trusted on its own: `web/table.js` is one original, shared by the app and a
-test that plays what it encodes through the real firmware, and another test
-reads the escape values out of `DigiMacro.ino` and checks the two agree.
+trusted on its own: `web/table.js` is one original, shared by the app and
+the tests that play what it encodes through the C reference and, on the
+simulated board, through the assembly; another test reads the escape values
+out of `DigiMacro.ino` and checks the two agree.
 
-A secret is a jump to a code no macro can have, so firmware older than 16
-types nothing of it:
+A secret is a jump to a code no macro can have:
 
 ```
  [0x81][FE or FF][nonce, 4 bytes][the rest of the macro and its 0x00, encrypted][0x00]
@@ -869,12 +996,13 @@ types nothing of it:
 
 The cipher is XTEA in counter mode: byte `j` of the secret is XORed with the
 first byte of XTEA under the key of the block (nonce, `j`), both
-little-endian 32-bit words. The board only ever encrypts, and its XTEA is
-`app/xtea.S`, 214 bytes. There is no length: the page tries random nonces
-until neither nonce nor ciphertext has a zero byte, nothing in them reads as
-the remote's escape, and a walk with the usual escape rules lands exactly on
-the final `0x00` — so anything that walks the table, old firmware and old
-pages included, keeps its place. The check value is XTEA under the key of
+little-endian 32-bit words. The board only ever encrypts; its XTEA is
+`app/xtea.S`'s (214 bytes, which the C reference links), moved off the
+registers the assembly keeps its state in. There is no length: the page tries random
+nonces until neither nonce nor ciphertext has a zero byte, nothing in them
+reads as the remote's escape, and a walk with the usual escape rules lands
+exactly on the final `0x00` — so anything that walks the table keeps its
+place. The check value is XTEA under the key of
 the block (0, 0), which no secret's nonce can be.
 
 ### The EEPROM
@@ -883,32 +1011,53 @@ the block (0, 0), which no secret's nonce can be.
 |---|---|
 | `0x000`–`0x1DF` | the macro table |
 | `0x1E0`–`0x1E3` | the serial number |
-| `0x1E4`–`0x1EB` | the secrets' check value; all `0xFF` for none. Before firmware 16, the host key |
+| `0x1E4`–`0x1EB` | the secrets' check value; all `0xFF` for none |
 | `0x1EC` | lockout: wrong codes before a soft lock; 0 or `0xFF` for no lockout |
 | `0x1ED` | ...soft locks before a hard lock; 0 or `0xFF` for never |
 | `0x1EE` | ...a soft lock's length in tens of seconds, 1–240; anything else is 6 |
 | `0x1EF` | ...wrong codes so far |
 | `0x1F0` | ...soft locks so far |
 | `0x1F1` | ...hard locks lifted with the password, ever |
-| `0x1F2` | how long the key is held, in tens of seconds, 1–240; anything else is 6 |
+| `0x1F2` | how long the key is held, in tens of seconds, 1–240; anything else is 6, a minute |
 | `0x1F3` | the power-on macro's header; anything impossible as one means none |
 | `0x1F4`–`0x1FF` | the password, zero-padded; `0xFF` in the first byte for none |
 
 The three lockout counters are stored inverted, so an erased byte reads as
 zero. The reserved block is full: anything more will have to come out of the
-table.
+table. The clock is not here: it lives in RAM only.
 
 ## Building
 
 ```
 make                            # the core and DigiMacro, into build/v2/
 make release                    # ...and into web/firmware/, for the page
+make reference                  # the C reference app
 make test                       # the core's own tests, and the uninstallers'
 ```
 
-`make` writes `digimacro.hex`, the firmware for updates, and
-`digimacro-full.hex`, the core and the firmware for a programmer. Options,
-each `=1`:
+`make` writes `digimacro-asm.hex`, the firmware for updates, and
+`digimacro-asm-full.hex`, the core and the firmware for a programmer. Two
+options, neither of which ships:
+
+- `CLOCK_TRIM=n`: the clock gains `n` ppm, or loses with `n` negative, from
+  −1000 to 1000 but not −3 to 3; 0, the default, is untrimmed. `n` is a
+  computer's crystal error as `tools/clockdrift.py` measures it, with its
+  sign turned (*The clock*). `tools/settrim.py` makes the same image from
+  one already built.
+- `PROBE=1`: the clock's read also carries what the frame lock is doing, for
+  `tools/probe.py`. It has no room for the trim, so it is never trimmed.
+
+`make release` refuses both: it is the stock firmware. `make asmweb` puts
+this build into a copy of the page, `build/v2/asm-web/`, to serve locally
+and install from. The page recommends it only to a board on older firmware
+than its json says, but installs it on any: **Update the firmware** stays
+open for a board already on the same firmware. To trim its clock, open the
+copy with `?advanced=true` (*The clock*).
+
+`make reference` builds the C app, `DigiMacro.ino`, as `digimacro.hex` and
+`digimacro-full.hex`. It is what the differential tests compare the
+assembly against, and it has build options the shipped firmware does not,
+each `=1`, as in `make reference BUTTON=1`:
 
 - `BUTTON`: a pushbutton from P0 to ground instead of a pad.
 - `RC`: a pad read through a bleed resistor rather than the chip's pull-up.
@@ -918,9 +1067,11 @@ each `=1`:
   diagnostic channel a device with no serial port has. `web/README.md` says
   how to read them.
 
-`make release` takes none: it is the stock firmware. `make spike` and `make
-page` build what proved v2 before DigiMacro moved onto it — a core that keeps
-below Micronucleus, three small apps, and a page that swaps them — into
+The C app has no `{totp}` and no clock.
+
+`make spike` and `make page` build what proved the split between the core
+and the firmware before DigiMacro moved onto it — a core that keeps below
+Micronucleus, three small apps, and a page that swaps them — into
 `build/v2-spike/`.
 
 `make irspike` builds the IR spike, `app/irspike.c`: an app in place of
@@ -933,65 +1084,98 @@ page puts DigiMacro back with no hold.
 `make uninstall` builds the uninstaller the page installs for **Back to a
 plain Digispark**: the app at the boundary, a blank gap, and Micronucleus 2.6
 as released (`app/micronucleus/`) at 0x1A00, with the core's CRC over all of
-it — once for core 5, at `0x0F80`, and once for older cores, at `0x1000`
-(`uninstall1.hex`, byte for byte v3.0's). `make release` copies them to
+it — once for core 5, at `0x0F80`, and once for an older core, at `0x1000`
+(`uninstall1.hex`). `make release` copies them to
 `web/firmware/digimacro-uninstall.hex` and `digimacro-uninstall-api1.hex`.
 
 `make coreupdate` builds the core updater, for boards on an older core: an
 app at `0x1000` that carries the core just built (*A board on an older
-core*). `make simcoreupdate` runs it on a simulated board, from v2.0's core
-and from v3.0's, and checks that the new core is in place byte for byte and
+core*). `make simcoreupdate` runs it on a simulated board, from each older
+core released, and checks that the new core is in place byte for byte and
 enumerates. `make release` copies it to `web/firmware/digimacro-coreupdate.hex`.
+
+`make size` says what each part takes, and `tools/sizemap.py` breaks the
+firmware down by subsystem.
 
 ## Testing
 
 ```
 test/run.sh
+make difftest
 ```
 
-compiles the real `DigiMacro.ino` for the host against stub hardware and
-exercises the table walk, every escape, the bounds that keep a malformed table
-from reaching the reserved bytes, the morse decoding from the input pin, the
-password, the lockout and the secrets, and both ways of reading the pad.
-Then the mouse, `app/hidusb.c`'s own code cut out of it and run, the
-reports added up; the app's macro language on its own; the two languages against each
-other; v2's core laid out for Micronucleus, with both jumps decoded and
-followed to where they land; the page's updates against a fake v2 board that
+`test/run.sh` compiles the C reference, `DigiMacro.ino`, for the host
+against stub hardware and exercises the table walk, every escape, the
+bounds that keep a malformed table from reaching the reserved bytes, the
+morse decoding from the input pin, the password, the lockout and the
+secrets, and both ways of reading the pad. Then the mouse, `app/hidusb.c`'s
+own code cut out of it and run, the reports added up; the app's macro
+language on its own, `{totp}`'s base32 and midstates and the clock's
+second included; the two languages against each other; the core laid out
+for Micronucleus, with both jumps decoded and followed to where they land;
+the page's updates, with the assembly image, against a fake board that
 halts, reads back old pages, is interrupted by another program and is
-unplugged half way; WebUSB standing in for WebHID, against another; the page's
-own keyboard, every key held to what the board can type; the core itself,
-compiled for the host with the firmware's library and asked everything a host
-can ask, twice — with the firmware's region to the end of the chip and
-stopping below Micronucleus; the uninstallers, built for the chip and run on
-the host, for core 5's layout and for the older one; the backups, with scrypt checked against node's
-own and a file that opens only for its password; the published page, one file
-with the firmware in it; and last, across the language boundary, a table
-encoded by `web/table.js` played through the firmware, secrets sealed by the
-page among them. Then the secrets end to end on a simulated board — the real
-firmware, `xtea.S` and all, which nothing compiled for the PC runs, enumerated
-by a simulated USB host and tapped by a simulated finger — and the core
-updater, from v2.0's core and from v3.0's, both when
-`../simavr-softusb` is built beside this repository (`make simtest` runs it on
-its own); and `digimacro-host`'s own code against a fake board, a copy of it
-and an old one. Seventeen suites, a few seconds and the simulated minute.
-Without `node`, the ten that need it are skipped, and without avr-gcc the
-uninstallers'.
+unplugged half way; WebUSB
+standing in for WebHID, against another; the page's own keyboard, every key
+held to what the board can type; the core itself, compiled for the host
+with the firmware's library and asked everything a host can ask, twice —
+with the firmware's region to the end of the chip and stopping below
+Micronucleus; the uninstallers, built for the chip and run on the host, for
+core 5's layout and for the older one; the backups, with scrypt checked
+against node's own and a file that opens only for its password; the
+published page, one file with the firmware in it; and, across the language
+boundary, a table encoded by `web/table.js` played through the C, secrets
+sealed by the page among them.
+
+The firmware that ships is assembly, which nothing compiled for the PC can
+run, so the rest runs on a simulated ATtiny85 — the real image, enumerated
+by a simulated USB host and tapped by a simulated finger — when
+`../simavr-softusb` is built beside this repository: the secrets end to end
+on the assembly image (`make simtest`, or `make simtest IMAGE=digimacro`
+for the C); a hung app, for the core's watchdog; the core updater, from
+each older core; a sample of the differential scenarios below; and
+`{totp}` end to end, the page's own code making the table and the clock set
+both ways a host can, with the digits checked against Python's `hmac`. Last,
+`digimacro-host`'s own code against a fake board, a copy of it and an old
+one. Nineteen suites, a few seconds and the simulated minutes. Without
+`node`, the suites that need it are skipped; without avr-gcc, the
+uninstallers'; and without `../simavr-softusb`, the simulated board's.
+
+`make difftest` runs every differential scenario, `test/diff/scenarios.py`,
+on the C reference and on the assembly, and fails if the two differ
+anywhere: what they type and when, the LED, their answers over USB, the
+EEPROM and what is left in RAM. Every C-bound test has its scenario, and
+`test/diff/INVENTORY.md` maps one to the other and says what is not
+covered, such as the C's build options. `{totp}` and the clock, which the C
+does not have, run on the assembly alone and are checked against Python's
+`hmac`, RFC 4226's and RFC 6238's vectors among them.
+
+`python3 test/diff/mutate.py -j 4` checks that the scenarios would notice:
+it changes one thing at a time in `app/asm/digimacro.S` — a threshold, a
+branch, a bound — builds it, and runs the scenarios of that subsystem
+against the C. A mutant they do not catch is a test missing. It is slow.
 
 ## Layout
 
 | | |
 |---|---|
-| `DigiMacro.ino` | the firmware: touch, morse, the table walk, playback, the lockout, the secrets |
-| `app/` | what every firmware links: its header, the calls into the core, and `hidusb.c` — the clock, the window, typing, the mouse and the protocol's verbs; `xtea.S`, the cipher; `uninstall.c` and `coreupdate.S`. Also the spike's apps, `spikectl.py` and its page |
+| `app/asm/` | the firmware: `digimacro.S`, in hand-written assembly — touch, morse, the table walk, playback, the lockout, the secrets, `{totp}`, the clock and the protocol's verbs; and `straight.S`, the plain translation of the C it was tuned from, kept for the differential tests |
+| `DigiMacro.ino` | the C reference app, firmware 17: what the assembly is tested against |
+| `app/` | the C app's library: its header, the calls into the core (`coreapi.S`, which the assembly links too), and `hidusb.c` — the clock, the window, typing, the mouse and the protocol's verbs; `xtea.S`, the cipher; `uninstall.c` and `coreupdate.S`. Also the spike's apps, `spikectl.py` and its page |
 | `core/` | the core: V-USB with its configuration, the descriptors, the password check and the page writer; `layout.h`, the contract with the firmware; and its host tests |
 | `Makefile` | builds all of it |
-| `test/` | host build of the real sketch against stub hardware, and the web side's tests |
-| `tools/hostauth/` | the client that sends the key, for Linux and Windows, and `xtea.h`, the C reference the tests share |
-| `web/` | `index.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates v2 boards, `micronucleus.js` reaches Micronucleus, `webusb.js` reaches the board without WebHID, `vkbd.js` the on-screen keyboard, `backup.js` the backups, `60-digimacro.rules` the udev rule |
-| `web/firmware/` | what the page installs: v2's firmware, core and full image, the uninstallers, and the core updater |
+| `test/` | host build of the C reference against stub hardware, the web side's tests, and `sim/`, the simulated board's |
+| `test/diff/` | the differential tests: the scenarios, their runner, `{totp}` end to end, the mutations, and `INVENTORY.md` |
+| `tools/` | `checkcore.py`, the contract checked at every core build; `clockdrift.py` and `probe.py`, the clock against this computer's; `settrim.py`, an image's clock trimmed; `sizemap.py`, flash by subsystem; `site.py`, the page as one file |
+| `tools/hostauth/` | the client that sends the key and the time, for Linux and Windows, and `xtea.h`, the C reference the tests share |
+| `web/` | `index.html` is the app, `hid.html` a raw protocol page for developers, `table.js` and `i18n.js` what they share, `coreupdate.js` updates the firmware, `micronucleus.js` reaches Micronucleus, `webusb.js` reaches the board without WebHID, `vkbd.js` the on-screen keyboard, `backup.js` the backups, `60-digimacro.rules` the udev rule |
+| `web/firmware/` | what the page installs: the firmware, the core and the full image, the uninstallers, and the core updater |
 | `docs/` | the photos above |
 | `HARDENED_MODE.md` | how to make a board fit to hold secrets, and what that still does not protect |
 | `*.pt-BR.md` | this README and HARDENED_MODE.md in Brazilian Portuguese |
+
+The assembly rewrite's progress notes were retired once it shipped, and
+`git show b37194a:PROGRESS.md` has them.
 
 ## Related
 
@@ -1000,7 +1184,7 @@ uninstallers'.
   where the Micronucleus uploader and the serial-number trick came from.
 - [V-USB](https://www.obdev.at/products/vusb/) is the USB stack, and
   [Micronucleus](https://github.com/micronucleus/micronucleus) the bootloader
-  v1 used and v2 is set up through.
+  a board is set up through.
 
 ## Licence
 

@@ -65,21 +65,13 @@ else
 fi
 
 echo
-echo "== v2 updates: the page's side, against a fake board (the assembly app's image) =="
+echo "== v2 updates: the page's side, against a fake board =="
 if command -v node >/dev/null 2>&1; then
-    # The published firmware directory, with the assembly app in the C app's place
-    make -s -C .. build/v2/digimacro-asm.hex >/dev/null
-    FWA="$OUT"_fw
-    mkdir -p "$FWA"
-    cp ../web/firmware/* "$FWA"/
-    cp ../build/v2/digimacro-asm.hex "$FWA"/digimacro-v2.hex
-    sed -i 's/"app": *[0-9]*/"app": 18/' "$FWA"/digimacro-v2.json   # its version, for the check
-    DM_FW="$FWA" node coreupdate.js
+    node coreupdate.js
 else
     echo "node not found, skipped"
 fi
 
-echo
 echo "== WebUSB in place of WebHID, for Android: against a fake board =="
 if command -v node >/dev/null 2>&1; then
     node webusb.js

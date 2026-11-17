@@ -382,6 +382,15 @@ function totpBlob(keyBytes) {
   return [...bytesOf(sha1Block(IV, pad(0x36))), ...bytesOf(sha1Block(IV, pad(0x5C)))];
 }
 
+/* The time to set the clock to, on a whole second: waits for the next one
+   to begin and gives it, so that the board's count into the second starts
+   within a few ms of the truth, not up to a second behind. Under a second's
+   wait, which a timer may end a little early or late: hence the rounding. */
+async function nextSecond(sleep, now = Date.now) {
+  await sleep((1000 - now() % 1000) % 1000);
+  return Math.round(now() / 1000);
+}
+
 function setMessages(fn) { translate = fn; }
 function fail(key, params = {}) {
   const s = translate && translate(key, params);
@@ -1165,5 +1174,5 @@ if (typeof module !== 'undefined') module.exports = {
   usages, header, codeOf, tappable, IR_CODES, packTable, unpackTable,
   encodeMacro, decodeMacro, encodeTable, decodeTable, sampleRows,
   irKeyChar, irHeard,
-  base32, totpBlob, TOTP_MARK, TOTP_BYTES, FW_TOTP,
+  base32, totpBlob, TOTP_MARK, TOTP_BYTES, FW_TOTP, nextSecond,
 };

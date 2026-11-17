@@ -722,10 +722,12 @@ function renderWho() {
     }
   } else if ((!meant || core) && latest !== null) {
     el.append(' ');
-    if (fwOnBoard < latest && stage === 'board') {
+    /* ?advanced=true: the dialog is wanted on any v2 board, for its trim */
+    const behind = fwOnBoard < latest;
+    if ((behind || (core && ADVANCED)) && stage === 'board') {
       const b = document.createElement('button');
       b.className = 'link';
-      b.textContent = t(core ? 'fw-link-update' : 'fw-link-move');
+      b.textContent = t(!behind ? 'fw-link-latest' : core ? 'fw-link-update' : 'fw-link-move');
       b.onclick = openFirmware;
       el.append(b);
     } else {
